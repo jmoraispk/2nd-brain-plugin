@@ -1,0 +1,84 @@
+.second-brain-container {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+}
+
+.second-brain-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.second-brain-button {
+  min-height: 80px;
+  font-size: 20px;
+  font-weight: 600;
+  border-radius: 12px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.second-brain-button:hover {
+  background: var(--background-modifier-hover);
+}
+
+.second-brain-button-primary {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+.second-brain-button-primary:hover {
+  background: var(--interactive-accent-hover);
+}
+
+.second-brain-button[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.second-brain-modal-textarea {
+  width: 100%;
+  min-height: 200px;
+  font-size: 18px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  resize: vertical;
+  font-family: var(--font-text);
+}
+
+.second-brain-modal-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.second-brain-modal-actions button {
+  flex: 1;
+  min-height: 56px;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.second-brain-modal-save {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+.second-brain-modal-cancel {
+  background: var(--background-secondary);
+  color: var(--text-normal);
+}

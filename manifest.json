@@ -1,0 +1,9 @@
+{
+  "id": "obsidian-second-brain",
+  "name": "Second Brain",
+  "version": "0.0.1",
+  "minAppVersion": "1.5.0",
+  "description": "Big-button capture into today's log and one-tap daily review with Claude. Mobile-first.",
+  "author": "João Morais",
+  "isDesktopOnly": false
+}
