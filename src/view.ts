@@ -1,7 +1,9 @@
 import { ItemView, WorkspaceLeaf, Notice, Modal, App } from "obsidian";
 import SecondBrainPlugin from "../main";
 import { appendCapture } from "./capture";
-import { generateDailyReview } from "./review";
+import { runCommand } from "./runner";
+import { BUILT_IN_COMMANDS } from "./commands";
+import { Command } from "./types";
 
 export const VIEW_TYPE_SECOND_BRAIN = "second-brain-view";
 
@@ -30,6 +32,8 @@ export class SecondBrainView extends ItemView {
 
     const buttonRow = container.createDiv({ cls: "second-brain-buttons" });
 
+    // Capture stays a hardcoded primary button — it's the only one that takes
+    // direct user input rather than transforming existing notes.
     const captureBtn = buttonRow.createEl("button", {
       text: "Capture",
       cls: "second-brain-button second-brain-button-primary",
@@ -38,25 +42,31 @@ export class SecondBrainView extends ItemView {
       new CaptureModal(this.app, this.plugin).open();
     });
 
-    const reviewBtn = buttonRow.createEl("button", {
-      text: "Today's Review",
-      cls: "second-brain-button",
-    });
-    reviewBtn.addEventListener("click", async () => {
-      reviewBtn.setText("Working…");
-      reviewBtn.setAttr("disabled", "true");
-      try {
-        const file = await generateDailyReview(this.app, this.plugin.settings);
-        new Notice(`Review written: ${file.path}`);
-        await this.app.workspace.getLeaf(false).openFile(file);
-      } catch (err) {
-        new Notice(`Review failed: ${(err as Error).message}`);
-        console.error(err);
-      } finally {
-        reviewBtn.setText("Today's Review");
-        reviewBtn.removeAttribute("disabled");
-      }
-    });
+    // Render one button per command (built-in for v0.1.0).
+    for (const command of BUILT_IN_COMMANDS) {
+      const btn = buttonRow.createEl("button", {
+        text: command.label,
+        cls: "second-brain-button",
+      });
+      btn.addEventListener("click", () => this.runCommandHandler(btn, command));
+    }
+  }
+
+  async runCommandHandler(btn: HTMLButtonElement, command: Command) {
+    const originalLabel = command.label;
+    btn.setText("Working…");
+    btn.setAttr("disabled", "true");
+    try {
+      const file = await runCommand(this.app, this.plugin.settings, command);
+      new Notice(`${command.label}: wrote ${file.path}`);
+      await this.app.workspace.getLeaf(false).openFile(file);
+    } catch (err) {
+      new Notice(`${command.label} failed: ${(err as Error).message}`);
+      console.error(err);
+    } finally {
+      btn.setText(originalLabel);
+      btn.removeAttribute("disabled");
+    }
   }
 
   async onClose() {}

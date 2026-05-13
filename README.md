@@ -6,12 +6,13 @@ This is v0 of the PWA-equivalent surface for the [2nd-brain](https://github.com/
 
 ## What it does
 
-Two buttons inside the plugin view:
+Three buttons inside the plugin view:
 
 1. **Capture** — opens a textarea, saves with a `[HH:MM]` timestamp into today's daily log.
-2. **Today's Review** — reads today's daily log, calls Claude, writes a synthesized review to `_AI/Reviews/Daily/<today>.md`, opens the file.
+2. **Today's Review** — reads today's daily log, sends it to your configured LLM (OpenAI or Anthropic), writes a synthesized review to `_AI/Reviews/Daily/<today>.md`, and opens it.
+3. **Plan Tomorrow** — reads today's review (which you've presumably edited with your own reflections), produces a focused scaffold for tomorrow at `_AI/Plans/Daily/<tomorrow>.md`. Run this after editing the daily review.
 
-That's it for v0. Voice capture, weekly review, and `/plan` come next.
+The natural daily loop: **Capture** throughout the day → **Today's Review** at end of day → edit the review with your own thoughts → **Plan Tomorrow** before bed.
 
 ## Install (mobile, the easy path)
 
@@ -79,8 +80,11 @@ This means the plugin adapts to whatever folder structure already exists (`Logs/
 
 ## Roadmap
 
-- v0.1: voice capture (record + Whisper transcription)
-- v0.2: weekly / monthly review
-- v0.3: `/plan` — produces tomorrow's scaffold from today's review
-- v1.0: multiple LLM providers (OpenAI, Google), Obsidian community-store release
-- v2.0: port to Tauri for a standalone app
+- v0.0.2 ✅ multi-provider (OpenAI + Anthropic)
+- v0.1.0 ✅ Commands abstraction + Plan Tomorrow
+- v0.2.0 — User-editable commands via settings UI (add your own buttons + prompts)
+- v0.3.0 — Weekly / monthly review commands
+- v1.0.0 — Obsidian community-store release; additional providers (Google, local)
+- v2.0.0 — Optional port to Tauri for a standalone app outside Obsidian
+
+Voice capture is intentionally not on the roadmap: phone OS dictation already covers it.

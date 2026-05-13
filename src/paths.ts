@@ -2,25 +2,60 @@ import { App, TFile, TFolder } from "obsidian";
 import { SecondBrainSettings } from "./settings";
 
 export function todayISO(): string {
+  return toISO(new Date());
+}
+
+export function yesterdayISO(): string {
   const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
+  d.setDate(d.getDate() - 1);
+  return toISO(d);
+}
+
+export function tomorrowISO(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return toISO(d);
 }
 
 export function todayHHMM(): string {
   const d = new Date();
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${hh}:${mm}`;
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+function toISO(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
 }
 
 /**
- * Resolve the vault-relative path to today's daily log.
+ * Apply all date placeholders in a template string, anchored on `today` (defaults to actual today).
+ * Supports: {YYYY-MM-DD}, {TOMORROW}, {YESTERDAY}, {YYYY}, {MM}, {DD}, {WEEK_NUM_2DIGIT}.
+ */
+export function applyDatePlaceholders(template: string, today: string = todayISO()): string {
+  const d = new Date(today + "T00:00:00");
+  const tomorrow = new Date(d.valueOf());
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const yesterday = new Date(d.valueOf());
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  return template
+    .replace(/\{YYYY-MM-DD\}/g, today)
+    .replace(/\{TOMORROW\}/g, toISO(tomorrow))
+    .replace(/\{YESTERDAY\}/g, toISO(yesterday))
+    .replace(/\{YYYY\}/g, String(d.getFullYear()))
+    .replace(/\{MM\}/g, pad2(d.getMonth() + 1))
+    .replace(/\{DD\}/g, pad2(d.getDate()))
+    .replace(/\{WEEK_NUM_2DIGIT\}/g, pad2(isoWeek(d)));
+}
+
+/**
+ * Resolve the vault-relative path to a daily log for a given date.
  * Strategy:
- *   1. If a file named `<date>.md` already exists anywhere under the logs folder, return that exact path.
- *   2. Otherwise, derive a path from `settings.dailyLogPathTemplate`.
+ *   1. If a file named `<date>.md` already exists anywhere under settings.logsFolder, return that exact path.
+ *   2. Otherwise, derive a path from settings.dailyLogPathTemplate with placeholders applied.
  */
 export async function resolveDailyLogPath(
   app: App,
@@ -29,16 +64,7 @@ export async function resolveDailyLogPath(
 ): Promise<string> {
   const existing = findExistingDailyFile(app, settings, date);
   if (existing) return existing;
-
-  let path = settings.dailyLogPathTemplate.replace("{YYYY-MM-DD}", date);
-  const d = new Date(date + "T00:00:00");
-  if (path.includes("{WEEK_NUM_2DIGIT}")) {
-    path = path.replace(
-      "{WEEK_NUM_2DIGIT}",
-      String(isoWeek(d)).padStart(2, "0")
-    );
-  }
-  return path;
+  return applyDatePlaceholders(settings.dailyLogPathTemplate, date);
 }
 
 function findExistingDailyFile(
