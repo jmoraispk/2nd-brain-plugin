@@ -1,6 +1,7 @@
-import { App, TFile, requestUrl } from "obsidian";
+import { App, TFile } from "obsidian";
 import { SecondBrainSettings } from "./settings";
 import { resolveDailyLogPath, todayISO } from "./paths";
+import { callLLM } from "./llm";
 
 const DEFAULT_REVIEW_PROMPT = `You are synthesizing a daily review for the user.
 
@@ -38,12 +39,6 @@ export async function generateDailyReview(
   app: App,
   settings: SecondBrainSettings
 ): Promise<TFile> {
-  if (!settings.anthropicApiKey) {
-    throw new Error(
-      "Anthropic API key not set. Configure in plugin settings."
-    );
-  }
-
   const today = todayISO();
   const logPath = await resolveDailyLogPath(app, settings, today);
   const logFile = app.vault.getAbstractFileByPath(logPath);
@@ -62,35 +57,7 @@ export async function generateDailyReview(
     settings.reviewPromptOverride.trim() || DEFAULT_REVIEW_PROMPT;
   const userMsg = `Today's date: ${today}\nSource file: ${logFile.name}\n\nCaptures:\n\n${captures}`;
 
-  const body = JSON.stringify({
-    model: settings.model,
-    max_tokens: 4096,
-    system: systemPrompt,
-    messages: [{ role: "user", content: userMsg }],
-  });
-
-  const res = await requestUrl({
-    url: "https://api.anthropic.com/v1/messages",
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": settings.anthropicApiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body,
-    throw: false,
-  });
-
-  if (res.status >= 400) {
-    const errMsg =
-      res.json?.error?.message || res.text || `HTTP ${res.status}`;
-    throw new Error(`Anthropic error: ${errMsg}`);
-  }
-
-  const reviewText = res.json?.content?.[0]?.text;
-  if (!reviewText) {
-    throw new Error("No content returned by Anthropic API.");
-  }
+  const reviewText = await callLLM(settings, systemPrompt, userMsg);
 
   const reviewPath = settings.reviewsPathTemplate.replace(
     "{YYYY-MM-DD}",

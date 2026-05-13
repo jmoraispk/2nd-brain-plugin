@@ -1,9 +1,14 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import SecondBrainPlugin from "../main";
 
+export type LLMProvider = "anthropic" | "openai";
+
 export interface SecondBrainSettings {
+  provider: LLMProvider;
   anthropicApiKey: string;
-  model: string;
+  anthropicModel: string;
+  openaiApiKey: string;
+  openaiModel: string;
   logsFolder: string;
   dailyLogPathTemplate: string;
   reviewsPathTemplate: string;
@@ -11,8 +16,11 @@ export interface SecondBrainSettings {
 }
 
 export const DEFAULT_SETTINGS: SecondBrainSettings = {
+  provider: "openai",
   anthropicApiKey: "",
-  model: "claude-opus-4-7",
+  anthropicModel: "claude-opus-4-7",
+  openaiApiKey: "",
+  openaiModel: "gpt-4o",
   logsFolder: "Logs",
   dailyLogPathTemplate: "Logs/{YYYY-MM-DD}.md",
   reviewsPathTemplate: "_AI/Reviews/Daily/{YYYY-MM-DD}.md",
@@ -31,32 +39,79 @@ export class SecondBrainSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
+    containerEl.createEl("h3", { text: "LLM provider" });
+
     new Setting(containerEl)
-      .setName("Anthropic API key")
-      .setDesc(
-        "Required. Stored in this plugin's data.json — sent only to api.anthropic.com."
-      )
-      .addText((text) =>
-        text
-          .setPlaceholder("sk-ant-...")
-          .setValue(this.plugin.settings.anthropicApiKey)
+      .setName("Provider")
+      .setDesc("Which LLM to use for reviews. Keys are stored per-provider so you can switch without re-pasting.")
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("openai", "OpenAI (GPT)")
+          .addOption("anthropic", "Anthropic (Claude)")
+          .setValue(this.plugin.settings.provider)
           .onChange(async (v) => {
-            this.plugin.settings.anthropicApiKey = v.trim();
+            this.plugin.settings.provider = v as LLMProvider;
             await this.plugin.saveSettings();
+            this.display();
           })
       );
 
-    new Setting(containerEl).setName("Model").addText((text) =>
-      text.setValue(this.plugin.settings.model).onChange(async (v) => {
-        this.plugin.settings.model = v.trim();
-        await this.plugin.saveSettings();
-      })
-    );
+    if (this.plugin.settings.provider === "openai") {
+      new Setting(containerEl)
+        .setName("OpenAI API key")
+        .setDesc("Sent only to api.openai.com.")
+        .addText((text) =>
+          text
+            .setPlaceholder("sk-...")
+            .setValue(this.plugin.settings.openaiApiKey)
+            .onChange(async (v) => {
+              this.plugin.settings.openaiApiKey = v.trim();
+              await this.plugin.saveSettings();
+            })
+        );
+
+      new Setting(containerEl)
+        .setName("OpenAI model")
+        .setDesc("Any chat-completions model id (e.g. gpt-4o, gpt-4o-mini, gpt-4-turbo).")
+        .addText((text) =>
+          text.setValue(this.plugin.settings.openaiModel).onChange(async (v) => {
+            this.plugin.settings.openaiModel = v.trim();
+            await this.plugin.saveSettings();
+          })
+        );
+    } else if (this.plugin.settings.provider === "anthropic") {
+      new Setting(containerEl)
+        .setName("Anthropic API key")
+        .setDesc("Sent only to api.anthropic.com.")
+        .addText((text) =>
+          text
+            .setPlaceholder("sk-ant-...")
+            .setValue(this.plugin.settings.anthropicApiKey)
+            .onChange(async (v) => {
+              this.plugin.settings.anthropicApiKey = v.trim();
+              await this.plugin.saveSettings();
+            })
+        );
+
+      new Setting(containerEl)
+        .setName("Anthropic model")
+        .setDesc("e.g. claude-opus-4-7, claude-sonnet-4-6, claude-haiku-4-5.")
+        .addText((text) =>
+          text
+            .setValue(this.plugin.settings.anthropicModel)
+            .onChange(async (v) => {
+              this.plugin.settings.anthropicModel = v.trim();
+              await this.plugin.saveSettings();
+            })
+        );
+    }
+
+    containerEl.createEl("h3", { text: "Paths" });
 
     new Setting(containerEl)
       .setName("Logs folder")
       .setDesc(
-        "Folder under which daily logs live. The plugin searches recursively for <today>.md inside this folder."
+        "Folder under which daily logs live. Recursively searched for <today>.md."
       )
       .addText((text) =>
         text.setValue(this.plugin.settings.logsFolder).onChange(async (v) => {
@@ -68,7 +123,7 @@ export class SecondBrainSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Daily log path template")
       .setDesc(
-        "Used when today's file doesn't exist yet. Placeholders: {YYYY-MM-DD}, {WEEK_NUM_2DIGIT}."
+        "Used only when today's file doesn't exist yet. Placeholders: {YYYY-MM-DD}, {WEEK_NUM_2DIGIT}."
       )
       .addText((text) =>
         text
@@ -91,10 +146,12 @@ export class SecondBrainSettingTab extends PluginSettingTab {
           })
       );
 
+    containerEl.createEl("h3", { text: "Advanced" });
+
     new Setting(containerEl)
-      .setName("Review prompt (advanced)")
+      .setName("Review prompt override")
       .setDesc(
-        "Optional. Override the built-in review prompt. Leave empty to use the default."
+        "Optional. Replace the built-in review prompt. Leave empty to use the default."
       )
       .addTextArea((text) =>
         text

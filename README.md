@@ -54,12 +54,15 @@ Reload Obsidian (Cmd/Ctrl-R on desktop) after each rebuild.
 
 | Setting | Default | Notes |
 |---|---|---|
-| Anthropic API key | _empty_ | Required. Stored in plugin data.json, only sent to api.anthropic.com. |
-| Model | `claude-opus-4-7` | Any Anthropic model id. |
+| Provider | `openai` | `openai` or `anthropic`. Switching preserves both keys. |
+| OpenAI API key | _empty_ | Required when provider = openai. Sent only to api.openai.com. |
+| OpenAI model | `gpt-4o` | Any chat-completions model id. |
+| Anthropic API key | _empty_ | Required when provider = anthropic. Sent only to api.anthropic.com. |
+| Anthropic model | `claude-opus-4-7` | Any Anthropic model id. |
 | Logs folder | `Logs` | Recursively searched for `<today>.md`. |
 | Daily log path template | `Logs/{YYYY-MM-DD}.md` | Used only when today's file doesn't exist yet. Placeholders: `{YYYY-MM-DD}`, `{WEEK_NUM_2DIGIT}`. |
 | Reviews path template | `_AI/Reviews/Daily/{YYYY-MM-DD}.md` | Where the review is written. Overwrites on rerun. |
-| Review prompt (advanced) | _empty_ | Override the built-in review prompt. |
+| Review prompt override | _empty_ | Optional. Replace the built-in review prompt. |
 
 ## How capture finds today's log
 
