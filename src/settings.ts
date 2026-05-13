@@ -22,7 +22,7 @@ export const DEFAULT_SETTINGS: SecondBrainSettings = {
   openaiApiKey: "",
   openaiModel: "gpt-4o",
   logsFolder: "Logs",
-  dailyLogPathTemplate: "Logs/{YYYY-MM-DD}.md",
+  dailyLogPathTemplate: "Logs/{ISO_YEAR}/Q{Q}/W{WW}/{YYYY-MM-DD}.md",
   reviewsPathTemplate: "_AI/Reviews/Daily/{YYYY-MM-DD}.md",
   reviewPromptOverride: "",
 };
@@ -123,7 +123,7 @@ export class SecondBrainSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Daily log path template")
       .setDesc(
-        "Used only when today's file doesn't exist yet. Placeholders: {YYYY-MM-DD}, {WEEK_NUM_2DIGIT}."
+        "Used only when today's file doesn't exist yet. Placeholders: {YYYY-MM-DD}, {ISO_YEAR}, {YYYY}, {YYYY-MM}, {MM}, {DD}, {Q}, {WW} (zero-padded ISO week), {TOMORROW}, {YESTERDAY}."
       )
       .addText((text) =>
         text

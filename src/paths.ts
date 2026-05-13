@@ -31,30 +31,54 @@ function pad2(n: number): string {
 }
 
 /**
- * Apply all date placeholders in a template string, anchored on `today` (defaults to actual today).
- * Supports: {YYYY-MM-DD}, {TOMORROW}, {YESTERDAY}, {YYYY}, {MM}, {DD}, {WEEK_NUM_2DIGIT}.
+ * Apply all date placeholders, anchored on `today` (defaults to actual today).
+ *
+ * Placeholders:
+ *   {YYYY-MM-DD}        the anchor date
+ *   {TOMORROW}          anchor + 1 day
+ *   {YESTERDAY}         anchor − 1 day
+ *   {YYYY-MM}           anchor's calendar year-month
+ *   {YYYY}              anchor's calendar year
+ *   {MM}                anchor's calendar month, zero-padded
+ *   {DD}                anchor's calendar day, zero-padded
+ *   {ISO_YEAR}          ISO week year (differs from calendar year for some days in late Dec / early Jan)
+ *   {WW}                ISO week, zero-padded
+ *   {WEEK_NUM_2DIGIT}   alias for {WW} (kept for back-compat)
+ *   {Q}                 quarter (1–4) of the week's Monday
  */
-export function applyDatePlaceholders(template: string, today: string = todayISO()): string {
+export function applyDatePlaceholders(
+  template: string,
+  today: string = todayISO()
+): string {
   const d = new Date(today + "T00:00:00");
   const tomorrow = new Date(d.valueOf());
   tomorrow.setDate(tomorrow.getDate() + 1);
   const yesterday = new Date(d.valueOf());
   yesterday.setDate(yesterday.getDate() - 1);
 
+  const ww = pad2(isoWeek(d));
+  const isoY = isoYear(d);
+  const q = quarterOfWeek(d);
+
   return template
     .replace(/\{YYYY-MM-DD\}/g, today)
     .replace(/\{TOMORROW\}/g, toISO(tomorrow))
     .replace(/\{YESTERDAY\}/g, toISO(yesterday))
+    .replace(/\{YYYY-MM\}/g, today.slice(0, 7))
+    .replace(/\{ISO_YEAR\}/g, String(isoY))
     .replace(/\{YYYY\}/g, String(d.getFullYear()))
     .replace(/\{MM\}/g, pad2(d.getMonth() + 1))
     .replace(/\{DD\}/g, pad2(d.getDate()))
-    .replace(/\{WEEK_NUM_2DIGIT\}/g, pad2(isoWeek(d)));
+    .replace(/\{Q\}/g, String(q))
+    .replace(/\{WW\}/g, ww)
+    .replace(/\{WEEK_NUM_2DIGIT\}/g, ww);
 }
 
 /**
  * Resolve the vault-relative path to a daily log for a given date.
  * Strategy:
  *   1. If a file named `<date>.md` already exists anywhere under settings.logsFolder, return that exact path.
+ *      (Preserves older notes filed under the legacy Week_NN/ scheme.)
  *   2. Otherwise, derive a path from settings.dailyLogPathTemplate with placeholders applied.
  */
 export async function resolveDailyLogPath(
@@ -93,6 +117,7 @@ function walkFolder(
   return null;
 }
 
+/** ISO 8601 week number (Mon–Sun, week 1 contains first Thursday). */
 function isoWeek(d: Date): number {
   const target = new Date(d.valueOf());
   const dayNr = (d.getDay() + 6) % 7;
@@ -103,4 +128,28 @@ function isoWeek(d: Date): number {
     target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
   }
   return 1 + Math.ceil((firstThursday - target.valueOf()) / 604800000);
+}
+
+/**
+ * ISO week year — usually equals the calendar year, but for the last few
+ * days of December and the first few days of January it can differ.
+ * Example: 2024-12-30 is in ISO Week 1 of 2025.
+ */
+function isoYear(d: Date): number {
+  const target = new Date(d.valueOf());
+  const dayNr = (d.getDay() + 6) % 7;
+  target.setDate(target.getDate() - dayNr + 3);
+  return target.getFullYear();
+}
+
+/**
+ * Quarter (1–4) of the ISO week containing date `d`, determined by the
+ * week's Monday. Picks a single deterministic quarter for weeks that span
+ * a Q-boundary (Q1↔Q2, Q2↔Q3, Q3↔Q4).
+ */
+function quarterOfWeek(d: Date): number {
+  const dayNr = (d.getDay() + 6) % 7;
+  const monday = new Date(d.valueOf());
+  monday.setDate(monday.getDate() - dayNr);
+  return Math.floor(monday.getMonth() / 3) + 1;
 }
