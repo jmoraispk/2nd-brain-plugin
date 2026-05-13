@@ -13,25 +13,30 @@ Two buttons inside the plugin view:
 
 That's it for v0. Voice capture, weekly review, and `/plan` come next.
 
-## Install (dev / local)
+## Install (mobile, the easy path)
 
-Until the plugin is in the Obsidian community store, install manually:
+Use [BRAT](https://github.com/TfTHacker/obsidian42-brat) — Obsidian's standard way to install plugins from GitHub releases, with auto-update on new tags. Works on iOS and Android Obsidian.
+
+1. In Obsidian (phone or desktop): **Settings → Community plugins → Browse**. Install **BRAT** and enable it.
+2. **Settings → BRAT → Add Beta plugin** → paste this repo's URL (e.g. `https://github.com/jmoraispk/2nd-brain-plugin`).
+3. BRAT downloads from the latest release and installs into `<vault>/.obsidian/plugins/obsidian-second-brain/`.
+4. **Settings → Community plugins → Installed** → toggle **Second Brain** on.
+5. **Settings → Second Brain** → paste your Anthropic API key.
+
+To push an update: bump `version` in `manifest.json`, commit, and push a tag matching that version (`git tag v0.0.2 && git push --tags`). The GitHub Actions workflow builds and publishes a release. BRAT picks it up automatically on phone.
+
+## Install (desktop, manual)
 
 ```bash
-# 1. Clone & build
 git clone <this repo> 2nd-brain-plugin
 cd 2nd-brain-plugin
 npm install
 npm run build
-
-# 2. Copy build artifacts into your vault
 mkdir -p "<vault>/.obsidian/plugins/obsidian-second-brain"
 cp manifest.json main.js styles.css "<vault>/.obsidian/plugins/obsidian-second-brain/"
 ```
 
-Then in Obsidian: **Settings → Community plugins → Installed → toggle "Second Brain" on**.
-
-On mobile: use [BRAT](https://github.com/TfTHacker/obsidian42-brat) and point it at this repo, or copy the same three files into the same path on your phone.
+Then **Settings → Community plugins → Installed → toggle "Second Brain" on**.
 
 ### Faster dev loop
 
