@@ -30,6 +30,21 @@ export class SecondBrainView extends ItemView {
     container.empty();
     container.addClass("second-brain-container");
 
+    const topbar = container.createDiv({ cls: "second-brain-topbar" });
+    const settingsBtn = topbar.createEl("button", {
+      text: "⚙ Settings",
+      cls: "second-brain-settingsbtn",
+    });
+    settingsBtn.addEventListener("click", () => {
+      // Obsidian's settings API is on `app.setting`. Not in the public types yet.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const setting = (this.app as any).setting;
+      if (setting) {
+        setting.open();
+        setting.openTabById?.(this.plugin.manifest.id);
+      }
+    });
+
     const buttonRow = container.createDiv({ cls: "second-brain-buttons" });
 
     // Capture stays a hardcoded primary button — it's the only one that takes
