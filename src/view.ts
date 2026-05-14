@@ -47,14 +47,16 @@ export class SecondBrainView extends ItemView {
         container,
         this.plugin,
         (id) => this.handleQuickAction(id),
-        (commandId) => this.runCommandById(commandId)
+        (commandId, anchorOverride) =>
+          this.runCommandById(commandId, anchorOverride),
+        () => this.render()
       );
     } else {
       this.renderButtonsMode(container);
     }
   }
 
-  private async runCommandById(commandId: string) {
+  private async runCommandById(commandId: string, anchorOverride?: string) {
     const cmd =
       getEffectiveCommands(this.plugin.settings).find(
         (c) => c.id === commandId
@@ -64,7 +66,7 @@ export class SecondBrainView extends ItemView {
       return;
     }
     const ghost = document.createElement("button");
-    await this.runCommandHandler(ghost, cmd);
+    await this.runCommandHandler(ghost, cmd, anchorOverride);
     if (this.mode === "dashboard") await this.render();
   }
 
@@ -159,12 +161,21 @@ export class SecondBrainView extends ItemView {
     if (this.mode === "dashboard") await this.render();
   }
 
-  async runCommandHandler(btn: HTMLButtonElement, command: Command) {
+  async runCommandHandler(
+    btn: HTMLButtonElement,
+    command: Command,
+    anchorOverride?: string
+  ) {
     const originalLabel = btn.textContent;
     btn.setText("Working…");
     btn.setAttr("disabled", "true");
     try {
-      const file = await runCommand(this.app, this.plugin.settings, command);
+      const file = await runCommand(
+        this.app,
+        this.plugin.settings,
+        command,
+        anchorOverride
+      );
       new Notice(`${command.label}: wrote ${file.path}`);
       await this.app.workspace.getLeaf(false).openFile(file);
     } catch (err) {

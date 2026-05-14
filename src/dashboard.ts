@@ -14,6 +14,10 @@ import {
 export interface PendingReview {
   commandId: string;
   label: string;
+  /** Resolved output path — needed for the skip button to write a marker there. */
+  outputPath: string;
+  /** Optional anchor override for per-day daily reviews; undefined for "last-X" commands. */
+  anchorOverride?: string;
 }
 
 /**
@@ -62,52 +66,141 @@ export function computePendingReviews(plugin: SecondBrainPlugin): PendingReview[
     pending.push({
       commandId: c.commandId,
       label: periodLabel(c.inputKind),
+      outputPath: path,
     });
   }
   return pending;
 }
 
 /**
+ * Surface daily reviews missing for the last `daysBack` days. Only days that
+ * have an actual daily log (some captures) qualify — days with no log produce
+ * no banner row, since there's nothing to review.
+ */
+export async function computePendingDailies(
+  plugin: SecondBrainPlugin,
+  daysBack = 7
+): Promise<PendingReview[]> {
+  const pending: PendingReview[] = [];
+  const today = new Date();
+  for (let i = 1; i <= daysBack; i++) {
+    const d = new Date(today.valueOf());
+    d.setDate(d.getDate() - i);
+    const date = toISO(d);
+
+    // Already reviewed (or skip-marker exists)?
+    const reviewPath = applyDatePlaceholders(
+      plugin.settings.reviewsPathTemplate,
+      date
+    );
+    if (plugin.app.vault.getAbstractFileByPath(reviewPath)) continue;
+
+    // Did the user even capture that day? If not, don't nag.
+    const logPath = await resolveDailyLogPath(plugin.app, plugin.settings, date);
+    const logFile = plugin.app.vault.getAbstractFileByPath(logPath);
+    if (!(logFile instanceof TFile)) continue;
+
+    pending.push({
+      commandId: "todays-review",
+      anchorOverride: date,
+      outputPath: reviewPath,
+      label: formatDailyLabel(date),
+    });
+  }
+  return pending;
+}
+
+function formatDailyLabel(date: string): string {
+  const d = new Date(date + "T00:00:00");
+  const wk = d.toLocaleDateString("en-US", { weekday: "short" });
+  const mo = d.toLocaleDateString("en-US", { month: "short" });
+  return `Daily ${wk} ${mo} ${d.getDate()}`;
+}
+
+/**
+ * Write a "Skipped" marker at the target path so the existence check treats
+ * the review as done. User can unskip by deleting the file in Obsidian.
+ */
+export async function skipReview(
+  plugin: SecondBrainPlugin,
+  outputPath: string
+): Promise<void> {
+  const parts = outputPath.split("/");
+  parts.pop();
+  const folder = parts.join("/");
+  if (folder && !plugin.app.vault.getAbstractFileByPath(folder)) {
+    await plugin.app.vault.createFolder(folder);
+  }
+  const content = `---\nskipped: true\nskippedOn: ${todayISO()}\n---\n\n_Skipped — delete this file to bring back the pending-review prompt._\n`;
+  await plugin.app.vault.create(outputPath, content);
+}
+
+/**
  * Render the dashboard sections into `parent`. Heuristic-only, no LLM
  * calls — all data comes from local vault reads. Re-rendering is cheap.
+ *
+ * Order: Today first (so the live action surface is always at the top), then
+ * pending reviews, then context (threads, projects, recent reviews).
  */
 export async function renderDashboard(
   parent: HTMLElement,
   plugin: SecondBrainPlugin,
   onAction: (id: "capture" | "todays-review") => void,
-  onRunCommand: (commandId: string) => void
+  onRunCommand: (commandId: string, anchorOverride?: string) => void,
+  onRefresh: () => void
 ): Promise<void> {
   const body = parent.createDiv({ cls: "second-brain-dashboard" });
-  renderPendingReviewsBanner(body, plugin, onRunCommand);
   await renderTodaySection(body, plugin, onAction);
+  await renderPendingReviewsBanner(body, plugin, onRunCommand, onRefresh);
   await renderThreadsSection(body, plugin);
   renderProjectsSection(body, plugin);
   renderReviewsSection(body, plugin);
 }
 
-function renderPendingReviewsBanner(
+async function renderPendingReviewsBanner(
   parent: HTMLElement,
   plugin: SecondBrainPlugin,
-  onRunCommand: (commandId: string) => void
+  onRunCommand: (commandId: string, anchorOverride?: string) => void,
+  onRefresh: () => void
 ) {
-  const pending = computePendingReviews(plugin);
-  if (pending.length === 0) return;
+  const dailies = await computePendingDailies(plugin, 7);
+  const periods = computePendingReviews(plugin);
+  const all = [...dailies, ...periods];
+  if (all.length === 0) return;
 
   const banner = parent.createDiv({ cls: "second-brain-banner" });
   banner.createEl("div", {
     cls: "second-brain-banner-title",
-    text: `⏰ Reviews pending (${pending.length})`,
+    text: `⏰ Reviews pending (${all.length})`,
   });
 
   const list = banner.createEl("ul", { cls: "second-brain-banner-list" });
-  for (const p of pending) {
+  for (const p of all) {
     const li = list.createEl("li");
     li.createSpan({ text: p.label });
-    const btn = li.createEl("button", {
+
+    const actions = li.createDiv({ cls: "second-brain-banner-actions" });
+    const runBtn = actions.createEl("button", {
       text: "Run",
       cls: "second-brain-banner-run",
     });
-    btn.addEventListener("click", () => onRunCommand(p.commandId));
+    runBtn.addEventListener("click", () =>
+      onRunCommand(p.commandId, p.anchorOverride)
+    );
+
+    const skipBtn = actions.createEl("button", {
+      text: "✕",
+      cls: "second-brain-banner-skip",
+      attr: { title: "Skip — write a marker so this row disappears" },
+    });
+    skipBtn.addEventListener("click", async () => {
+      try {
+        await skipReview(plugin, p.outputPath);
+        onRefresh();
+      } catch (err) {
+        console.error(err);
+      }
+    });
   }
 }
 

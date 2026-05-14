@@ -95,6 +95,12 @@
   gap: 12px;
 }
 
+.second-brain-banner-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
 .second-brain-banner-run {
   min-height: 36px;
   padding: 4px 14px;
@@ -109,6 +115,24 @@
 
 .second-brain-banner-run:hover {
   background: var(--interactive-accent-hover);
+}
+
+.second-brain-banner-skip {
+  min-height: 36px;
+  min-width: 36px;
+  padding: 4px 8px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--background-modifier-border);
+  cursor: pointer;
+}
+
+.second-brain-banner-skip:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
 }
 
 .second-brain-section {

@@ -24,20 +24,24 @@ interface InputContent {
 export async function runCommand(
   app: App,
   settings: SecondBrainSettings,
-  command: Command
+  command: Command,
+  anchorOverride?: string
 ): Promise<TFile> {
-  const inputs: InputContent[] = [];
-  for (const spec of command.inputs) {
-    inputs.push(await readInput(app, settings, spec));
-  }
-
   const today = todayISO();
   // Output path anchors on the first input's canonical date so e.g. a
   // "last-week-logs" command writes to last week's Weekly file, not this week's.
+  // An explicit override (e.g. the dashboard banner asking for a specific past
+  // day's review) takes precedence.
   const anchor =
-    command.inputs.length > 0
+    anchorOverride ??
+    (command.inputs.length > 0
       ? anchorForInputKind(command.inputs[0].kind)
-      : today;
+      : today);
+
+  const inputs: InputContent[] = [];
+  for (const spec of command.inputs) {
+    inputs.push(await readInput(app, settings, spec, anchor));
+  }
   const userMsg = [
     `Today's date: ${today}`,
     `Period anchor: ${anchor}`,
@@ -64,7 +68,8 @@ export async function runCommand(
 async function readInput(
   app: App,
   settings: SecondBrainSettings,
-  input: CommandInput
+  input: CommandInput,
+  anchor: string
 ): Promise<InputContent> {
   const labelDefaults: Record<CommandInput["kind"], string> = {
     "today-log": "Today's log",
@@ -117,21 +122,33 @@ async function readInput(
     };
   }
 
+  // For single-day inputs, resolve relative to the anchor (which is "today"
+  // for normal runs but may be overridden for, e.g., reviewing a past day from
+  // the dashboard banner).
+  const dayBefore = (iso: string) => {
+    const d = new Date(iso + "T00:00:00");
+    d.setDate(d.getDate() - 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+      2,
+      "0"
+    )}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+
   let path: string;
   switch (input.kind) {
     case "today-log":
-      path = await resolveDailyLogPath(app, settings, todayISO());
+      path = await resolveDailyLogPath(app, settings, anchor);
       break;
     case "yesterday-log":
-      path = await resolveDailyLogPath(app, settings, yesterdayISO());
+      path = await resolveDailyLogPath(app, settings, dayBefore(anchor));
       break;
     case "today-review":
-      path = applyDatePlaceholders(settings.reviewsPathTemplate, todayISO());
+      path = applyDatePlaceholders(settings.reviewsPathTemplate, anchor);
       break;
     case "yesterday-review":
       path = applyDatePlaceholders(
         settings.reviewsPathTemplate,
-        yesterdayISO()
+        dayBefore(anchor)
       );
       break;
     default:
