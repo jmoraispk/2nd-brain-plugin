@@ -1,4 +1,5 @@
 import { Command } from "./types";
+import { SecondBrainSettings } from "./settings";
 
 const REVIEW_PROMPT = `You are synthesizing a daily review for the user.
 
@@ -63,6 +64,44 @@ Rules:
 - If the review is empty, trivial, or unreviewed, write "No substantial review found — run /Today's Review first and edit it before planning." and stop. Do not produce the scaffold.
 - Be brief. Plans get longer when the day starts; this is the seed.`;
 
+const WEEKLY_REVIEW_PROMPT = `You are synthesizing a weekly review for the user.
+
+You will be given the user's daily logs from the Monday of this ISO week through today (some days may be missing — skip them silently). Produce a clean Markdown weekly review using exactly this structure (do not invent content):
+
+# Weekly Review — Week of <human-readable Monday date>
+
+## Themes of the week
+3–6 bullets identifying recurring topics, projects with momentum, unresolved threads. Reference which days each appeared.
+
+## What got done
+A factual recap: items the user mentioned completing, shipping, or finishing this week. Direct quotes welcome where striking.
+
+## What's still in motion
+Projects or threads that span multiple days and aren't done. Brief status for each.
+
+## Lessons and observations
+What the user noticed, learned, or flagged this week. Direct quotes welcome.
+
+## Stats
+Count days where recurring themes appeared. Examples:
+- Exercise: N days mentioned
+- Sleep: any patterns or notes
+- Deep-work blocks: how many
+- Recurring concerns: count days mentioned
+
+Skip stats that don't apply. Don't pad with placeholder values.
+
+## Forward to next week
+3–5 things to carry forward. Anchor to a target day or week when possible:
+- [target: YYYY-MM-DD or next week] item
+
+## Open questions (for the user's weekly reflection)
+3–5 questions in the user's voice.
+
+Rules:
+- Be faithful. No fluff. No invented content.
+- Weekly = ISO Mon–Sun. You may only have Mon–today; that's fine.`;
+
 export const BUILT_IN_COMMANDS: Command[] = [
   {
     id: "todays-review",
@@ -78,9 +117,33 @@ export const BUILT_IN_COMMANDS: Command[] = [
     outputPath: "_AI/Plans/Daily/{TOMORROW}.md",
     systemPrompt: PLAN_PROMPT,
   },
+  {
+    id: "weeks-review",
+    label: "Week's Review",
+    inputs: [{ kind: "this-week-logs", label: "This week's daily logs" }],
+    outputPath: "_AI/Reviews/Weekly/{ISO_YEAR}-W{WW}.md",
+    systemPrompt: WEEKLY_REVIEW_PROMPT,
+  },
 ];
 
 /** Look up a built-in command by id. Returns null if not found. */
 export function getBuiltInCommand(id: string): Command | null {
   return BUILT_IN_COMMANDS.find((c) => c.id === id) ?? null;
+}
+
+/**
+ * Merge built-in commands with user customizations. Custom commands sharing
+ * an id with a built-in OVERRIDE that built-in (preserving its display order).
+ * Truly-custom commands (no matching built-in id) are appended after the built-ins.
+ */
+export function getEffectiveCommands(settings: SecondBrainSettings): Command[] {
+  const customs = settings.customCommands ?? [];
+  const resolved = BUILT_IN_COMMANDS.map((b) => {
+    const override = customs.find((c) => c.id === b.id);
+    return override ?? b;
+  });
+  const trulyCustom = customs.filter(
+    (c) => !BUILT_IN_COMMANDS.some((b) => b.id === c.id)
+  );
+  return [...resolved, ...trulyCustom];
 }

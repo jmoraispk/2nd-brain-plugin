@@ -1,5 +1,11 @@
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { App, PluginSettingTab, Setting, Notice } from "obsidian";
 import SecondBrainPlugin from "../main";
+import { Command } from "./types";
+import {
+  BUILT_IN_COMMANDS,
+  getEffectiveCommands,
+} from "./commands";
+import { CommandEditModal } from "./commandEditModal";
 
 export type LLMProvider = "anthropic" | "openai";
 
@@ -12,7 +18,10 @@ export interface SecondBrainSettings {
   logsFolder: string;
   dailyLogPathTemplate: string;
   reviewsPathTemplate: string;
-  reviewPromptOverride: string;
+  /** @deprecated as of v0.2.0 — migrated into customCommands. Kept for read-time migration only. */
+  reviewPromptOverride?: string;
+  /** User-edited or user-added commands. Built-in commands sharing an id are overridden by entries here. */
+  customCommands: Command[];
 }
 
 export const DEFAULT_SETTINGS: SecondBrainSettings = {
@@ -24,7 +33,7 @@ export const DEFAULT_SETTINGS: SecondBrainSettings = {
   logsFolder: "Logs",
   dailyLogPathTemplate: "Logs/{ISO_YEAR}/Q{Q}/W{WW}/{YYYY-MM-DD}.md",
   reviewsPathTemplate: "_AI/Reviews/Daily/{YYYY-MM-DD}.md",
-  reviewPromptOverride: "",
+  customCommands: [],
 };
 
 export class SecondBrainSettingTab extends PluginSettingTab {
@@ -43,7 +52,9 @@ export class SecondBrainSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Provider")
-      .setDesc("Which LLM to use for reviews. Keys are stored per-provider so you can switch without re-pasting.")
+      .setDesc(
+        "Which LLM to use for commands. Keys are stored per-provider so you can switch without re-pasting."
+      )
       .addDropdown((dropdown) =>
         dropdown
           .addOption("openai", "OpenAI (GPT)")
@@ -74,10 +85,12 @@ export class SecondBrainSettingTab extends PluginSettingTab {
         .setName("OpenAI model")
         .setDesc("Any chat-completions model id (e.g. gpt-4o, gpt-4o-mini, gpt-4-turbo).")
         .addText((text) =>
-          text.setValue(this.plugin.settings.openaiModel).onChange(async (v) => {
-            this.plugin.settings.openaiModel = v.trim();
-            await this.plugin.saveSettings();
-          })
+          text
+            .setValue(this.plugin.settings.openaiModel)
+            .onChange(async (v) => {
+              this.plugin.settings.openaiModel = v.trim();
+              await this.plugin.saveSettings();
+            })
         );
     } else if (this.plugin.settings.provider === "anthropic") {
       new Setting(containerEl)
@@ -135,8 +148,10 @@ export class SecondBrainSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Reviews path template")
-      .setDesc("Placeholder: {YYYY-MM-DD}.")
+      .setName("Daily review path template")
+      .setDesc(
+        "Where Today's Review writes. Placeholder: {YYYY-MM-DD}. Available to commands via {REVIEWS_TEMPLATE}."
+      )
       .addText((text) =>
         text
           .setValue(this.plugin.settings.reviewsPathTemplate)
@@ -146,20 +161,90 @@ export class SecondBrainSettingTab extends PluginSettingTab {
           })
       );
 
-    containerEl.createEl("h3", { text: "Advanced" });
+    this.renderCommandsSection(containerEl);
+  }
 
-    new Setting(containerEl)
-      .setName("Review prompt override")
-      .setDesc(
-        "Optional. Replace the built-in review prompt. Leave empty to use the default."
-      )
-      .addTextArea((text) =>
-        text
-          .setValue(this.plugin.settings.reviewPromptOverride)
-          .onChange(async (v) => {
-            this.plugin.settings.reviewPromptOverride = v;
-            await this.plugin.saveSettings();
-          })
+  private renderCommandsSection(containerEl: HTMLElement) {
+    containerEl.createEl("h3", { text: "Commands" });
+    containerEl.createEl("p", {
+      text: "Buttons in the plugin view. Edit any built-in to change its prompt or output; reset reverts it. Add your own to extend the kit (provider-agnostic — works with whichever LLM you've configured).",
+    });
+
+    const effective = getEffectiveCommands(this.plugin.settings);
+    for (const cmd of effective) {
+      const isBuiltin = BUILT_IN_COMMANDS.some((b) => b.id === cmd.id);
+      const isOverridden = this.plugin.settings.customCommands.some(
+        (c) => c.id === cmd.id
       );
+
+      const inputSummary = cmd.inputs.map((i) => i.kind).join(", ");
+      const setting = new Setting(containerEl)
+        .setName(cmd.label)
+        .setDesc(`Input: ${inputSummary}  ·  Output: ${cmd.outputPath}`);
+
+      setting.addButton((btn) =>
+        btn.setButtonText("Edit").onClick(() => {
+          new CommandEditModal(this.app, cmd, async (updated: Command) => {
+            await this.upsertCustomCommand(updated);
+            this.display();
+          }).open();
+        })
+      );
+
+      if (isBuiltin && isOverridden) {
+        setting.addButton((btn) =>
+          btn.setButtonText("Reset").onClick(async () => {
+            await this.removeCustomCommand(cmd.id);
+            new Notice(`Reset "${cmd.label}" to its built-in default.`);
+            this.display();
+          })
+        );
+      } else if (!isBuiltin) {
+        setting.addButton((btn) =>
+          btn
+            .setButtonText("Delete")
+            .setWarning()
+            .onClick(async () => {
+              await this.removeCustomCommand(cmd.id);
+              new Notice(`Deleted "${cmd.label}".`);
+              this.display();
+            })
+        );
+      }
+    }
+
+    new Setting(containerEl).addButton((btn) =>
+      btn
+        .setButtonText("+ Add command")
+        .setCta()
+        .onClick(() => {
+          const stub: Command = {
+            id: `custom-${Date.now().toString(36)}`,
+            label: "New command",
+            inputs: [{ kind: "today-log" }],
+            outputPath: "_AI/Notes/{YYYY-MM-DD}-custom.md",
+            systemPrompt:
+              "You will be given the input below. Summarize it faithfully in 5–10 bullets.",
+          };
+          new CommandEditModal(this.app, stub, async (created: Command) => {
+            await this.upsertCustomCommand(created);
+            this.display();
+          }).open();
+        })
+    );
+  }
+
+  private async upsertCustomCommand(updated: Command) {
+    const customs = this.plugin.settings.customCommands;
+    const idx = customs.findIndex((c) => c.id === updated.id);
+    if (idx >= 0) customs[idx] = updated;
+    else customs.push(updated);
+    await this.plugin.saveSettings();
+  }
+
+  private async removeCustomCommand(id: string) {
+    this.plugin.settings.customCommands =
+      this.plugin.settings.customCommands.filter((c) => c.id !== id);
+    await this.plugin.saveSettings();
   }
 }

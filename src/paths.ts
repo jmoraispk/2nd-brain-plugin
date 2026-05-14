@@ -17,6 +17,22 @@ export function tomorrowISO(): string {
   return toISO(d);
 }
 
+/**
+ * Dates from the Monday of the ISO week containing `anchor` through (and including) `anchor`.
+ * Used by the weekly review command to gather captures for the week so far.
+ */
+export function thisWeekDatesThroughAnchor(anchor: string = todayISO()): string[] {
+  const d = new Date(anchor + "T00:00:00");
+  const dayNr = (d.getDay() + 6) % 7; // Mon=0
+  const out: string[] = [];
+  for (let i = 0; i <= dayNr; i++) {
+    const dt = new Date(d.valueOf());
+    dt.setDate(dt.getDate() - dayNr + i);
+    out.push(toISO(dt));
+  }
+  return out;
+}
+
 export function todayHHMM(): string {
   const d = new Date();
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;

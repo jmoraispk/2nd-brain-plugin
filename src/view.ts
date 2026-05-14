@@ -2,7 +2,7 @@ import { ItemView, WorkspaceLeaf, Notice, Modal, App } from "obsidian";
 import SecondBrainPlugin from "../main";
 import { appendCapture } from "./capture";
 import { runCommand } from "./runner";
-import { BUILT_IN_COMMANDS } from "./commands";
+import { getEffectiveCommands } from "./commands";
 import { Command } from "./types";
 
 export const VIEW_TYPE_SECOND_BRAIN = "second-brain-view";
@@ -57,8 +57,8 @@ export class SecondBrainView extends ItemView {
       new CaptureModal(this.app, this.plugin).open();
     });
 
-    // Render one button per command (built-in for v0.1.0).
-    for (const command of BUILT_IN_COMMANDS) {
+    // Render one button per effective command (built-ins + user customs + overrides).
+    for (const command of getEffectiveCommands(this.plugin.settings)) {
       const btn = buttonRow.createEl("button", {
         text: command.label,
         cls: "second-brain-button",

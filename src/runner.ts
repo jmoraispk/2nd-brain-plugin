@@ -7,6 +7,7 @@ import {
   applyDatePlaceholders,
   todayISO,
   yesterdayISO,
+  thisWeekDatesThroughAnchor,
 } from "./paths";
 
 interface InputContent {
@@ -58,8 +59,35 @@ async function readInput(
     "yesterday-log": "Yesterday's log",
     "today-review": "Today's review",
     "yesterday-review": "Yesterday's review",
+    "this-week-logs": "This week's daily logs",
   };
   const label = input.label ?? labelDefaults[input.kind];
+
+  // Multi-file input: this-week-logs concatenates daily logs Mon→today.
+  if (input.kind === "this-week-logs") {
+    const dates = thisWeekDatesThroughAnchor(todayISO());
+    const sections: string[] = [];
+    const paths: string[] = [];
+    for (const date of dates) {
+      const p = await resolveDailyLogPath(app, settings, date);
+      const f = app.vault.getAbstractFileByPath(p);
+      if (f instanceof TFile) {
+        const c = await app.vault.read(f);
+        if (c.trim()) {
+          sections.push(`### ${date}\n\n${c}`);
+          paths.push(p);
+        }
+      }
+    }
+    if (sections.length === 0) {
+      throw new Error("No daily logs found for this week so far.");
+    }
+    return {
+      label,
+      sourcePath: `${paths.length} daily file(s) this week`,
+      content: sections.join("\n\n---\n\n"),
+    };
+  }
 
   let path: string;
   switch (input.kind) {
@@ -78,6 +106,8 @@ async function readInput(
         yesterdayISO()
       );
       break;
+    default:
+      throw new Error(`Unknown input kind: ${(input as CommandInput).kind}`);
   }
 
   const file = app.vault.getAbstractFileByPath(path);

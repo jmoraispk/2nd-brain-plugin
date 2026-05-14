@@ -6,13 +6,26 @@ This is v0 of the PWA-equivalent surface for the [2nd-brain](https://github.com/
 
 ## What it does
 
-Three buttons inside the plugin view:
+The plugin view shows one **Capture** button plus one button per configured command. v0.2.0 ships with three built-in commands:
 
 1. **Capture** — opens a textarea, saves with a `[HH:MM]` timestamp into today's daily log.
 2. **Today's Review** — reads today's daily log, sends it to your configured LLM (OpenAI or Anthropic), writes a synthesized review to `_AI/Reviews/Daily/<today>.md`, and opens it.
 3. **Plan Tomorrow** — reads today's review (which you've presumably edited with your own reflections), produces a focused scaffold for tomorrow at `_AI/Plans/Daily/<tomorrow>.md`. Run this after editing the daily review.
+4. **Week's Review** — reads all daily logs from Monday through today of the current ISO week, writes a weekly synthesis to `_AI/Reviews/Weekly/{ISO_YEAR}-W{WW}.md`.
 
-The natural daily loop: **Capture** throughout the day → **Today's Review** at end of day → edit the review with your own thoughts → **Plan Tomorrow** before bed.
+The natural daily loop: **Capture** throughout the day → **Today's Review** at end of day → edit the review with your own thoughts → **Plan Tomorrow** before bed. On Sunday: **Week's Review**.
+
+## Custom commands (v0.2.0+)
+
+Settings → Second Brain → **Commands** lets you edit any built-in (label / input / output path / prompt) or add your own. Built-ins can be reset to their default; custom commands can be deleted. Custom commands appear as additional buttons in the plugin view.
+
+A custom command consists of:
+- **Label** — button text.
+- **Input** — one of: today's log, yesterday's log, today's review, yesterday's review, this week's logs.
+- **Output path** — templated; supports `{YYYY-MM-DD}`, `{TOMORROW}`, `{YESTERDAY}`, `{ISO_YEAR}`, `{YYYY}`, `{YYYY-MM}`, `{MM}`, `{DD}`, `{Q}`, `{WW}`. Use `{REVIEWS_TEMPLATE}` to refer to the daily review template path.
+- **System prompt** — instructions for the LLM.
+
+Because commands are just prompts sent to whichever LLM provider you've configured, they're provider-agnostic. The same custom command works with OpenAI or Anthropic — no plugin install needed for each.
 
 ## Install (mobile, the easy path)
 
@@ -82,8 +95,10 @@ This means the plugin adapts to whatever folder structure already exists (`Logs/
 
 - v0.0.2 ✅ multi-provider (OpenAI + Anthropic)
 - v0.1.0 ✅ Commands abstraction + Plan Tomorrow
-- v0.2.0 — User-editable commands via settings UI (add your own buttons + prompts)
-- v0.3.0 — Weekly / monthly review commands
+- v0.1.1 ✅ Settings button in main view
+- v0.1.2 ✅ Year/Quarter/Week folder layout
+- v0.2.0 ✅ User-editable commands UI + Week's Review + settings auto-migration
+- v0.3.0 — Monthly / Quarterly / Yearly review commands; multi-input commands
 - v1.0.0 — Obsidian community-store release; additional providers (Google, local)
 - v2.0.0 — Optional port to Tauri for a standalone app outside Obsidian
 
