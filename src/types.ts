@@ -17,7 +17,10 @@ export type CommandInputKind =
   | "last-week-logs"
   | "last-month-logs"
   | "last-quarter-logs"
-  | "last-year-logs";
+  | "last-year-logs"
+  | "month-logs"
+  | "quarter-logs"
+  | "all-logs";
 
 export interface CommandInput {
   kind: CommandInputKind;
@@ -41,4 +44,15 @@ export interface Command {
    */
   outputPath: string;
   systemPrompt: string;
+  /** Quality / signal tier for display in the Think tab. */
+  tier?: "S" | "A" | "B" | "C";
+  /** One-line human description; rendered under the title in the Think tab. */
+  description?: string;
+  /**
+   * If set, the runner pops a modal before running the command, asking the
+   * user for a topic. The text the user types is appended to the LLM user
+   * message (so prompts like Trace and Challenge can scope to a specific
+   * belief / idea / project). Use this as the question shown in the modal.
+   */
+  topicPromptText?: string;
 }

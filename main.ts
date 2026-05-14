@@ -61,6 +61,22 @@ export default class SecondBrainPlugin extends Plugin {
       changed = true;
     }
 
+    // v0.5.1: AI-writable zone renamed from `_AI/` to `🤖 AI/`.
+    // Migrate the reviews-path template and any custom commands.
+    if (this.settings.reviewsPathTemplate.startsWith("_AI/")) {
+      this.settings.reviewsPathTemplate =
+        "🤖 AI/" + this.settings.reviewsPathTemplate.slice("_AI/".length);
+      changed = true;
+    }
+    if (Array.isArray(this.settings.customCommands)) {
+      for (const c of this.settings.customCommands) {
+        if (typeof c.outputPath === "string" && c.outputPath.startsWith("_AI/")) {
+          c.outputPath = "🤖 AI/" + c.outputPath.slice("_AI/".length);
+          changed = true;
+        }
+      }
+    }
+
     // v0.1.x reviewPromptOverride → v0.2.0 customCommands entry for "todays-review".
     const legacyOverride = this.settings.reviewPromptOverride?.trim();
     if (legacyOverride) {

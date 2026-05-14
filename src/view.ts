@@ -1,12 +1,19 @@
-import { ItemView, WorkspaceLeaf, Notice, Modal, App } from "obsidian";
+import { ItemView, WorkspaceLeaf, Notice, Modal, App, TFile } from "obsidian";
 import SecondBrainPlugin from "../main";
 import { appendCapture } from "./capture";
 import { runCommand } from "./runner";
 import { getEffectiveCommands, getBuiltInCommand } from "./commands";
 import { Command } from "./types";
 import { renderDashboard } from "./dashboard";
-import { renderReview } from "./reviewTab";
+import {
+  renderReview,
+  appendUserReview,
+  defaultReviewTabState,
+  ReviewTabState,
+  SelectionOption,
+} from "./reviewTab";
 import { renderThink } from "./thinkTab";
+import { TopicInputModal } from "./topicInputModal";
 
 export const VIEW_TYPE_SECOND_BRAIN = "second-brain-view";
 
@@ -15,6 +22,7 @@ type ViewMode = "dashboard" | "review" | "think";
 export class SecondBrainView extends ItemView {
   plugin: SecondBrainPlugin;
   mode: ViewMode = "dashboard";
+  reviewState: ReviewTabState = defaultReviewTabState();
 
   constructor(leaf: WorkspaceLeaf, plugin: SecondBrainPlugin) {
     super(leaf);
@@ -54,8 +62,20 @@ export class SecondBrainView extends ItemView {
         () => this.render()
       );
     } else if (this.mode === "review") {
-      renderReview(container, this.plugin, (commandId, anchorOverride) =>
-        this.runCommandById(commandId, anchorOverride)
+      renderReview(
+        container,
+        this.plugin,
+        this.reviewState,
+        {
+          setState: (changes) => {
+            Object.assign(this.reviewState, changes);
+            this.render();
+          },
+          runSelection: (option, anchor) =>
+            this.runReviewSelection(option, anchor),
+          finish: () => this.finishReview(),
+        },
+        this
       );
     } else {
       renderThink(container, this.plugin, (commandId) =>
@@ -117,7 +137,11 @@ export class SecondBrainView extends ItemView {
     await this.runCommandById("todays-review");
   }
 
-  private async runCommandById(commandId: string, anchorOverride?: string) {
+  private async runCommandById(
+    commandId: string,
+    anchorOverride?: string,
+    topicInput?: string
+  ) {
     const cmd =
       getEffectiveCommands(this.plugin.settings).find(
         (c) => c.id === commandId
@@ -126,15 +150,84 @@ export class SecondBrainView extends ItemView {
       new Notice(`Command not found: ${commandId}`);
       return;
     }
+    if (cmd.topicPromptText && !topicInput) {
+      new TopicInputModal(this.app, cmd.topicPromptText, (topic) => {
+        this.runCommandById(commandId, anchorOverride, topic);
+      }).open();
+      return;
+    }
     const ghost = document.createElement("button");
-    await this.runCommandHandler(ghost, cmd, anchorOverride);
+    await this.runCommandHandler(ghost, cmd, anchorOverride, topicInput);
     if (this.mode === "dashboard") await this.render();
+  }
+
+  /**
+   * Run a Review-tab selection and store the resulting file content in
+   * `reviewState` so the markdown can be rendered inline (and the user can
+   * write their own reflection below).
+   */
+  private async runReviewSelection(
+    option: SelectionOption,
+    anchorOverride?: string
+  ): Promise<void> {
+    const cmd =
+      getEffectiveCommands(this.plugin.settings).find(
+        (c) => c.id === option.commandId
+      ) ?? getBuiltInCommand(option.commandId);
+    if (!cmd) {
+      new Notice(`Command not found: ${option.commandId}`);
+      return;
+    }
+    try {
+      const file = await runCommand(
+        this.app,
+        this.plugin.settings,
+        cmd,
+        anchorOverride
+      );
+      const content = await this.app.vault.read(file);
+      // Strip an existing "## My review" section from inline display so we
+      // don't double-render the user's prior reflection above the textarea.
+      const display = content.replace(/\n## My review\b[\s\S]*$/m, "").trimEnd();
+      this.reviewState.resultFile = file;
+      this.reviewState.resultContent = display;
+      this.reviewState.userReview = "";
+      await this.render();
+      new Notice(`${cmd.label}: wrote ${file.path}`);
+    } catch (err) {
+      new Notice(`${cmd.label} failed: ${(err as Error).message}`);
+      console.error(err);
+    }
+  }
+
+  private async finishReview(): Promise<void> {
+    const { resultFile, userReview } = this.reviewState;
+    if (!resultFile) {
+      new Notice("No review to finish — run one first.");
+      return;
+    }
+    if (!userReview.trim()) {
+      new Notice("Write your reflection first, or just open the file directly.");
+      return;
+    }
+    try {
+      await appendUserReview(this.app, resultFile, userReview);
+      await this.app.workspace.getLeaf(false).openFile(resultFile);
+      new Notice(`Saved your review to ${resultFile.path}`);
+      // Reset state so the picker is fresh next time.
+      this.reviewState = defaultReviewTabState();
+      await this.render();
+    } catch (err) {
+      new Notice(`Finish failed: ${(err as Error).message}`);
+      console.error(err);
+    }
   }
 
   async runCommandHandler(
     btn: HTMLButtonElement,
     command: Command,
-    anchorOverride?: string
+    anchorOverride?: string,
+    topicInput?: string
   ) {
     const originalLabel = btn.textContent;
     btn.setText("Working…");
@@ -144,7 +237,8 @@ export class SecondBrainView extends ItemView {
         this.app,
         this.plugin.settings,
         command,
-        anchorOverride
+        anchorOverride,
+        topicInput
       );
       new Notice(`${command.label}: wrote ${file.path}`);
       await this.app.workspace.getLeaf(false).openFile(file);

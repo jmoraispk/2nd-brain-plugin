@@ -38,22 +38,22 @@ export function computePendingReviews(plugin: SecondBrainPlugin): PendingReview[
     {
       commandId: "review-last-week",
       inputKind: "last-week-logs",
-      pathTemplate: "_AI/Reviews/Weekly/{ISO_YEAR}-W{WW}.md",
+      pathTemplate: "🤖 AI/Reviews/Weekly/{ISO_YEAR}-W{WW}.md",
     },
     {
       commandId: "review-last-month",
       inputKind: "last-month-logs",
-      pathTemplate: "_AI/Reviews/Monthly/{YYYY-MM}.md",
+      pathTemplate: "🤖 AI/Reviews/Monthly/{YYYY-MM}.md",
     },
     {
       commandId: "review-last-quarter",
       inputKind: "last-quarter-logs",
-      pathTemplate: "_AI/Reviews/Quarterly/{YYYY}-Q{Q}.md",
+      pathTemplate: "🤖 AI/Reviews/Quarterly/{YYYY}-Q{Q}.md",
     },
     {
       commandId: "review-last-year",
       inputKind: "last-year-logs",
-      pathTemplate: "_AI/Reviews/Yearly/{YYYY}.md",
+      pathTemplate: "🤖 AI/Reviews/Yearly/{YYYY}.md",
     },
   ];
 
@@ -419,7 +419,12 @@ function renderProjectsSection(parent: HTMLElement, plugin: SecondBrainPlugin) {
 }
 
 function findProjectsFolder(app: App): TFolder | null {
-  const candidates = ["🎯 1. Projects", "1. Projects", "Projects"];
+  const candidates = [
+    "1. 🎯 Projects",
+    "🎯 1. Projects",
+    "1. Projects",
+    "Projects",
+  ];
   for (const name of candidates) {
     const f = app.vault.getAbstractFileByPath(name);
     if (f instanceof TFolder) return f;

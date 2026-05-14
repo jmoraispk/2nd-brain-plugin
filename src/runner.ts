@@ -12,8 +12,11 @@ import {
   lastMonthDates,
   lastQuarterDates,
   lastYearDates,
+  thisMonthDatesThroughToday,
+  thisQuarterDatesThroughToday,
   anchorForInputKind,
 } from "./paths";
+import { TFolder } from "obsidian";
 
 interface InputContent {
   label: string;
@@ -25,7 +28,8 @@ export async function runCommand(
   app: App,
   settings: SecondBrainSettings,
   command: Command,
-  anchorOverride?: string
+  anchorOverride?: string,
+  topicInput?: string
 ): Promise<TFile> {
   const today = todayISO();
   // Output path anchors on the first input's canonical date so e.g. a
@@ -42,14 +46,20 @@ export async function runCommand(
   for (const spec of command.inputs) {
     inputs.push(await readInput(app, settings, spec, anchor));
   }
-  const userMsg = [
+  const userMsgParts = [
     `Today's date: ${today}`,
     `Period anchor: ${anchor}`,
+  ];
+  if (topicInput && topicInput.trim()) {
+    userMsgParts.push("", `## Topic / focus\n\n${topicInput.trim()}`);
+  }
+  userMsgParts.push(
     "",
     ...inputs.map(
       (i) => `## ${i.label} — _from ${i.sourcePath}_\n\n${i.content}`
-    ),
-  ].join("\n\n");
+    )
+  );
+  const userMsg = userMsgParts.join("\n\n");
 
   const result = await callLLM(settings, command.systemPrompt, userMsg);
 
@@ -81,22 +91,40 @@ async function readInput(
     "last-month-logs": "Last month's daily logs",
     "last-quarter-logs": "Last quarter's daily logs",
     "last-year-logs": "Last year's daily logs",
+    "month-logs": "This month's daily logs (through today)",
+    "quarter-logs": "This quarter's daily logs (through today)",
+    "all-logs": "All daily logs in the vault",
   };
   const label = input.label ?? labelDefaults[input.kind];
 
-  // Multi-file inputs concatenate daily logs across a date range.
-  const multiDayDates =
-    input.kind === "this-week-logs"
-      ? thisWeekDatesThroughAnchor(todayISO())
-      : input.kind === "last-week-logs"
-      ? lastWeekDates()
-      : input.kind === "last-month-logs"
-      ? lastMonthDates()
-      : input.kind === "last-quarter-logs"
-      ? lastQuarterDates()
-      : input.kind === "last-year-logs"
-      ? lastYearDates()
-      : null;
+  // Multi-file inputs concatenate daily logs across a date range or the whole vault.
+  let multiDayDates: string[] | null = null;
+  switch (input.kind) {
+    case "this-week-logs":
+      multiDayDates = thisWeekDatesThroughAnchor(todayISO());
+      break;
+    case "last-week-logs":
+      multiDayDates = lastWeekDates();
+      break;
+    case "last-month-logs":
+      multiDayDates = lastMonthDates();
+      break;
+    case "last-quarter-logs":
+      multiDayDates = lastQuarterDates();
+      break;
+    case "last-year-logs":
+      multiDayDates = lastYearDates();
+      break;
+    case "month-logs":
+      multiDayDates = thisMonthDatesThroughToday();
+      break;
+    case "quarter-logs":
+      multiDayDates = thisQuarterDatesThroughToday();
+      break;
+    case "all-logs":
+      multiDayDates = await collectAllDailyDates(app, settings);
+      break;
+  }
 
   if (multiDayDates) {
     const sections: string[] = [];
@@ -188,4 +216,30 @@ async function ensureFolderExists(app: App, filePath: string) {
   if (!folderPath) return;
   if (app.vault.getAbstractFileByPath(folderPath)) return;
   await app.vault.createFolder(folderPath);
+}
+
+/**
+ * Walk the configured Logs folder and return every `YYYY-MM-DD.md` filename
+ * (sans extension), sorted ascending. Used for the `all-logs` input kind.
+ */
+async function collectAllDailyDates(
+  app: App,
+  settings: SecondBrainSettings
+): Promise<string[]> {
+  const root = app.vault.getAbstractFileByPath(settings.logsFolder);
+  if (!(root instanceof TFolder)) return [];
+  const out: string[] = [];
+  walkForDailyFilenames(root, out);
+  out.sort();
+  return out;
+}
+
+function walkForDailyFilenames(folder: TFolder, out: string[]) {
+  for (const child of folder.children) {
+    if (child instanceof TFolder) {
+      walkForDailyFilenames(child, out);
+    } else if (child instanceof TFile && /^\d{4}-\d{2}-\d{2}\.md$/.test(child.name)) {
+      out.push(child.basename);
+    }
+  }
 }

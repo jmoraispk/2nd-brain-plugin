@@ -72,6 +72,20 @@ export function lastYearDates(): string[] {
   return datesInRange(new Date(y, 0, 1), new Date(y, 11, 31));
 }
 
+/** Calendar days of the CURRENT month through today. */
+export function thisMonthDatesThroughToday(): string[] {
+  const today = new Date();
+  const first = new Date(today.getFullYear(), today.getMonth(), 1);
+  return datesInRange(first, today);
+}
+
+/** Calendar days of the CURRENT quarter through today. */
+export function thisQuarterDatesThroughToday(): string[] {
+  const today = new Date();
+  const qStart = new Date(today.getFullYear(), Math.floor(today.getMonth() / 3) * 3, 1);
+  return datesInRange(qStart, today);
+}
+
 function datesInRange(from: Date, to: Date): string[] {
   const out: string[] = [];
   const d = new Date(from.valueOf());
@@ -89,6 +103,9 @@ export function anchorForInputKind(kind: string): string {
     case "today-log":
     case "today-review":
     case "this-week-logs":
+    case "month-logs":
+    case "quarter-logs":
+    case "all-logs":
       return toISO(today);
     case "yesterday-log":
     case "yesterday-review": {
@@ -97,13 +114,13 @@ export function anchorForInputKind(kind: string): string {
       return toISO(d);
     }
     case "last-week-logs":
-      return lastWeekDates()[0]; // Monday of last ISO week
+      return lastWeekDates()[0];
     case "last-month-logs":
-      return lastMonthDates()[0]; // 1st of last calendar month
+      return lastMonthDates()[0];
     case "last-quarter-logs":
-      return lastQuarterDates()[0]; // 1st of last calendar quarter
+      return lastQuarterDates()[0];
     case "last-year-logs":
-      return lastYearDates()[0]; // Jan 1 of last year
+      return lastYearDates()[0];
     default:
       return toISO(today);
   }

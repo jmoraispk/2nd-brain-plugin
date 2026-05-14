@@ -32,7 +32,7 @@ export const DEFAULT_SETTINGS: SecondBrainSettings = {
   openaiModel: "gpt-4o",
   logsFolder: "Logs",
   dailyLogPathTemplate: "Logs/{ISO_YEAR}/Q{Q}/W{WW}/{YYYY-MM-DD}.md",
-  reviewsPathTemplate: "_AI/Reviews/Daily/{YYYY-MM-DD}.md",
+  reviewsPathTemplate: "🤖 AI/Reviews/Daily/{YYYY-MM-DD}.md",
   customCommands: [],
 };
 

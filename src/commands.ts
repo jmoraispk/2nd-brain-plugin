@@ -169,6 +169,97 @@ Rules:
 - Year-scale demands narrative + the honest sentence. Less listing, more synthesis.
 - Use the user's own words where they're striking.`;
 
+const CONTRADICT_PROMPT = `You will be given the user's daily notes. Find places where they hold two beliefs, positions, or values that contradict each other across different times or contexts.
+
+Rules:
+- Cite verbatim. Quote both sides of the contradiction with the source filename and date.
+- Don't manufacture contradictions out of evolution (changing your mind is not a contradiction; holding both simultaneously is).
+- Don't flag tradeoffs ("I value X and Y, they're in tension") — only true contradictions ("I claim X is true here and not-X is true there").
+- Aim for 3–5 high-confidence findings, not exhaustive coverage.
+- For each, end with one sentence: "What would it take to resolve this?"
+
+Output Markdown:
+
+# Contradictions in the vault — <YYYY-MM-DD>
+
+For each finding:
+## Contradiction N
+**Side A:** "<quote>" — _<filename>, <date>_
+**Side B:** "<quote>" — _<filename>, <date>_
+**Resolution question:** ...
+
+Be honest. If you find few or none, say so. Don't pad.`;
+
+const DRIFT_PROMPT = `You will be given the user's daily notes. Surface topics, projects, or commitments they're quietly avoiding — detectable via patterns of absence, decline in mention, or being talked about without action.
+
+Cues:
+- A project mentioned frequently, then dropped (no mention for 2+ weeks).
+- A commitment ("I will…", "I need to…") that recurs but never becomes "I did".
+- A topic discussed at length without ever becoming a concrete action.
+- Stated intentions losing specificity over time ("definitely doing X this week" → "want to do X eventually" → silence).
+
+Output Markdown:
+
+# Drift report — <YYYY-MM-DD>
+
+For each drifting item:
+## <item>
+- **Last mentioned:** <date>
+- **Pattern:** <how often it appeared, when it stopped>
+- **Hypothesis:** <one-line honest read of why it's drifting — procrastination, mismatched priority, fear, etc.>
+
+Be direct. The user wants signal here. Don't soften.`;
+
+const TRACE_PROMPT = `You will be given the user's daily notes plus a topic / idea / decision (in the "Topic / focus" section of the user message). Trace how their thinking on that topic evolved.
+
+Steps:
+1. Find every mention of the topic across the notes (verbatim quotes).
+2. Group chronologically into phases (e.g., "early exploration", "doubt", "commitment", "execution").
+3. For each phase, summarize what they were thinking and what changed between phases.
+4. End with: "Where is this thinking now?" — based on the most recent entries.
+
+Output Markdown:
+
+# Trace: <topic> — <YYYY-MM-DD>
+
+## Phase 1: <name>
+<dates spanned>
+<summary>
+> "<verbatim quote>" — _<filename>, <date>_
+
+(repeat phases)
+
+## Where this stands now
+<one paragraph>
+
+Cite each quote with date. Don't editorialize beyond paraphrasing. Show evolution; don't interpret motive.`;
+
+const CHALLENGE_PROMPT = `You will be given the user's daily notes plus a current belief or position (in the "Topic / focus" section). Argue against that belief using only evidence from their own vault.
+
+Rules:
+- Use only content from the notes. Don't import external arguments.
+- Find specific instances where their own notes contradict, weaken, or complicate the belief.
+- Present 3–5 of the strongest counterpoints. Quote verbatim.
+- For each: "X says Y, but Z (their own note dated…) suggests not-Y."
+- End with one question that, if answered, would resolve the strongest tension.
+
+Output Markdown:
+
+# Challenge — <YYYY-MM-DD>
+
+**Belief under examination:** <restate>
+
+## Counterpoint N
+**Their own claim:** "<quote>" — _<filename>, <date>_
+**Tension:** <how it undermines the belief>
+
+(repeat 3–5 counterpoints)
+
+## The question that resolves the strongest tension
+<one sentence>
+
+Be adversarial but fair. The point is to steel-man against them so they can sharpen the belief or update it.`;
+
 const WEEKLY_REVIEW_PROMPT = `You are synthesizing a weekly review for the user.
 
 You will be given the user's daily logs for one ISO week (some days may be missing — skip them silently). Produce a clean Markdown weekly review using exactly this structure (do not invent content):
@@ -219,43 +310,82 @@ export const BUILT_IN_COMMANDS: Command[] = [
     id: "plan-tomorrow",
     label: "Plan Tomorrow",
     inputs: [{ kind: "today-review", label: "Today's review" }],
-    outputPath: "_AI/Plans/Daily/{TOMORROW}.md",
+    outputPath: "🤖 AI/Plans/Daily/{TOMORROW}.md",
     systemPrompt: PLAN_PROMPT,
   },
   {
     id: "weeks-review",
     label: "Week's Review",
     inputs: [{ kind: "this-week-logs", label: "This week's daily logs" }],
-    outputPath: "_AI/Reviews/Weekly/{ISO_YEAR}-W{WW}.md",
+    outputPath: "🤖 AI/Reviews/Weekly/{ISO_YEAR}-W{WW}.md",
     systemPrompt: WEEKLY_REVIEW_PROMPT,
   },
   {
     id: "review-last-week",
     label: "Last Week's Review",
     inputs: [{ kind: "last-week-logs", label: "Last week's daily logs" }],
-    outputPath: "_AI/Reviews/Weekly/{ISO_YEAR}-W{WW}.md",
+    outputPath: "🤖 AI/Reviews/Weekly/{ISO_YEAR}-W{WW}.md",
     systemPrompt: WEEKLY_REVIEW_PROMPT,
   },
   {
     id: "review-last-month",
     label: "Last Month's Review",
     inputs: [{ kind: "last-month-logs", label: "Last month's daily logs" }],
-    outputPath: "_AI/Reviews/Monthly/{YYYY-MM}.md",
+    outputPath: "🤖 AI/Reviews/Monthly/{YYYY-MM}.md",
     systemPrompt: MONTHLY_REVIEW_PROMPT,
   },
   {
     id: "review-last-quarter",
     label: "Last Quarter's Review",
     inputs: [{ kind: "last-quarter-logs", label: "Last quarter's daily logs" }],
-    outputPath: "_AI/Reviews/Quarterly/{YYYY}-Q{Q}.md",
+    outputPath: "🤖 AI/Reviews/Quarterly/{YYYY}-Q{Q}.md",
     systemPrompt: QUARTERLY_REVIEW_PROMPT,
   },
   {
     id: "review-last-year",
     label: "Last Year's Review",
     inputs: [{ kind: "last-year-logs", label: "Last year's daily logs" }],
-    outputPath: "_AI/Reviews/Yearly/{YYYY}.md",
+    outputPath: "🤖 AI/Reviews/Yearly/{YYYY}.md",
     systemPrompt: YEARLY_REVIEW_PROMPT,
+  },
+  // Tier-S thinking commands (v0.5.1) — vault-scanning tools of thought.
+  {
+    id: "think-contradict",
+    label: "Contradict",
+    tier: "S",
+    description: "Surface incompatible beliefs you hold simultaneously, across the whole vault.",
+    inputs: [{ kind: "all-logs", label: "All daily logs" }],
+    outputPath: "🤖 AI/Thinking/Contradict/{YYYY-MM-DD}.md",
+    systemPrompt: CONTRADICT_PROMPT,
+  },
+  {
+    id: "think-drift",
+    label: "Drift",
+    tier: "S",
+    description: "Topics, projects, or commitments you've been quietly avoiding (via absence in your notes).",
+    inputs: [{ kind: "all-logs", label: "All daily logs" }],
+    outputPath: "🤖 AI/Thinking/Drift/{YYYY-MM-DD}.md",
+    systemPrompt: DRIFT_PROMPT,
+  },
+  {
+    id: "think-trace",
+    label: "Trace",
+    tier: "S",
+    description: "Trace how your thinking on a specific topic evolved over time.",
+    topicPromptText: "Which topic, idea, or decision should I trace through your notes?",
+    inputs: [{ kind: "all-logs", label: "All daily logs" }],
+    outputPath: "🤖 AI/Thinking/Trace/{YYYY-MM-DD}.md",
+    systemPrompt: TRACE_PROMPT,
+  },
+  {
+    id: "think-challenge",
+    label: "Challenge",
+    tier: "S",
+    description: "Steel-man against a current belief using evidence from your own vault.",
+    topicPromptText: "What belief or position do you want me to challenge?",
+    inputs: [{ kind: "all-logs", label: "All daily logs" }],
+    outputPath: "🤖 AI/Thinking/Challenge/{YYYY-MM-DD}.md",
+    systemPrompt: CHALLENGE_PROMPT,
   },
 ];
 

@@ -209,15 +209,117 @@
   margin-top: 8px;
 }
 
-.second-brain-date-input {
+.second-brain-date-input,
+.second-brain-select {
   width: 100%;
   font-size: 16px;
-  padding: 8px;
+  padding: 10px;
   border-radius: 6px;
   border: 1px solid var(--background-modifier-border);
   background: var(--background-primary);
   color: var(--text-normal);
   margin: 8px 0;
+}
+
+/* Think tab cards */
+.second-brain-card {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.second-brain-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.second-brain-card-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.second-brain-card-desc {
+  font-size: 14px;
+  color: var(--text-normal);
+  line-height: 1.4;
+}
+
+.second-brain-card-hint {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.second-brain-card-run {
+  align-self: flex-start;
+  min-height: 36px;
+  padding: 6px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 6px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: 1px solid var(--interactive-accent);
+  cursor: pointer;
+}
+
+.second-brain-card-run:hover {
+  background: var(--interactive-accent-hover);
+}
+
+.second-brain-tier-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: white;
+}
+
+.second-brain-tier-badge.tier-S {
+  background: #b8860b;
+}
+
+.second-brain-tier-badge.tier-A {
+  background: #6a4caf;
+}
+
+.second-brain-tier-badge.tier-B {
+  background: #6b7280;
+}
+
+.second-brain-tier-badge.tier-C {
+  background: #4b5563;
+}
+
+/* Review tab rendered markdown */
+.second-brain-rendered-md {
+  background: var(--background-primary-alt, var(--background-primary));
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-top: 8px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.second-brain-rendered-md h1,
+.second-brain-rendered-md h2,
+.second-brain-rendered-md h3 {
+  margin-top: 12px;
+  margin-bottom: 6px;
 }
 
 .second-brain-buttons {

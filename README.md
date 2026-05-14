@@ -107,8 +107,8 @@ This means the plugin adapts to whatever folder structure already exists (`Logs/
 - v0.3.0 ✅ Dashboard view (today's status, threads in motion, projects, recent reviews)
 - v0.4.0 ✅ Last-period reviews (week/month/quarter/year) + pending-review banner on Dashboard
 - v0.4.1 ✅ Today on top of Dashboard, per-day pending dailies, skip button on pending rows
-- v0.5.0 ✅ Three tabs (Dashboard / Review / Think); Review tab hosts all review commands + specific-day date picker + recent-reviews list; Think tab hosts custom commands (Tier S coming v0.5.1)
-- v0.5.1 — Tier-S "tools of thought" commands (Contradict, Drift, Trace, Challenge) with multi-month inputs and runtime topic prompts
+- v0.5.0 ✅ Three tabs (Dashboard / Review / Think)
+- v0.5.1 ✅ Tier-S Think commands (Contradict, Drift, Trace, Challenge); Review tab redesigned (single picker + inline AI summary + your-review textbox + Finish); AI-writable zone renamed `_AI/` → `🤖 AI/` with auto-migration; PARA folders reordered `1. 🎯 Projects` etc. so numeric prefix governs sort
 - v0.6.0 — Project context: tap a project in Dashboard → AI synthesizes its current state from project file + recent daily mentions, writes to _AI/Project-Context/. AI reads PARA, never writes there.
 - v0.7.0 — Interactive review chat: docked panel scoped to an open review file, streaming, can propose edits.
 - v1.0.0 — Obsidian community-store release; additional providers (Google, local)
