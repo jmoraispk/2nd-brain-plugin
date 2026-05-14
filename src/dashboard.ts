@@ -154,7 +154,7 @@ export async function renderDashboard(
   await renderPendingReviewsBanner(body, plugin, onRunCommand, onRefresh);
   await renderThreadsSection(body, plugin);
   renderProjectsSection(body, plugin);
-  renderReviewsSection(body, plugin);
+  // Recent reviews moved to the Review tab as of v0.5.0.
 }
 
 async function renderPendingReviewsBanner(
@@ -436,53 +436,3 @@ function countMarkdownFiles(folder: TFolder): number {
   return n;
 }
 
-// ── Recent reviews ───────────────────────────────────────────────────────
-
-function renderReviewsSection(parent: HTMLElement, plugin: SecondBrainPlugin) {
-  const sec = parent.createDiv({ cls: "second-brain-section" });
-  sec.createEl("h3", { text: "Recent reviews" });
-
-  const dailies = getRecentReviewsIn(plugin, "_AI/Reviews/Daily", 3);
-  const weeklies = getRecentReviewsIn(plugin, "_AI/Reviews/Weekly", 2);
-
-  if (dailies.length + weeklies.length === 0) {
-    sec.createEl("div", {
-      cls: "second-brain-muted",
-      text: "No reviews yet. Run Today's Review or Week's Review (in the Buttons tab) to create one.",
-    });
-    return;
-  }
-
-  const list = sec.createEl("ul", { cls: "second-brain-list" });
-  for (const f of dailies) addReviewLink(list, plugin, f, "Daily");
-  for (const f of weeklies) addReviewLink(list, plugin, f, "Weekly");
-}
-
-function getRecentReviewsIn(
-  plugin: SecondBrainPlugin,
-  folderPath: string,
-  limit: number
-): TFile[] {
-  const folder = plugin.app.vault.getAbstractFileByPath(folderPath);
-  if (!(folder instanceof TFolder)) return [];
-  return folder.children
-    .filter((c): c is TFile => c instanceof TFile && c.name.endsWith(".md"))
-    .sort((a, b) => b.stat.mtime - a.stat.mtime)
-    .slice(0, limit);
-}
-
-function addReviewLink(
-  list: HTMLElement,
-  plugin: SecondBrainPlugin,
-  file: TFile,
-  label: string
-) {
-  const li = list.createEl("li");
-  const link = li.createEl("a", {
-    text: `📄 ${label} ${file.basename}`,
-    cls: "second-brain-link",
-  });
-  link.addEventListener("click", () =>
-    plugin.app.workspace.getLeaf(false).openFile(file)
-  );
-}

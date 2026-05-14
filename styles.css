@@ -196,6 +196,30 @@
   font-size: 16px;
 }
 
+/* Review / Think tabs share the same buttons styling as the dashboard sections. */
+.second-brain-tab-body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  margin-top: 4px;
+}
+
+.second-brain-tab-body .second-brain-button {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.second-brain-date-input {
+  width: 100%;
+  font-size: 16px;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  margin: 8px 0;
+}
+
 .second-brain-buttons {
   display: flex;
   flex-direction: column;

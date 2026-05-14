@@ -5,10 +5,12 @@ import { runCommand } from "./runner";
 import { getEffectiveCommands, getBuiltInCommand } from "./commands";
 import { Command } from "./types";
 import { renderDashboard } from "./dashboard";
+import { renderReview } from "./reviewTab";
+import { renderThink } from "./thinkTab";
 
 export const VIEW_TYPE_SECOND_BRAIN = "second-brain-view";
 
-type ViewMode = "dashboard" | "buttons";
+type ViewMode = "dashboard" | "review" | "think";
 
 export class SecondBrainView extends ItemView {
   plugin: SecondBrainPlugin;
@@ -51,50 +53,37 @@ export class SecondBrainView extends ItemView {
           this.runCommandById(commandId, anchorOverride),
         () => this.render()
       );
+    } else if (this.mode === "review") {
+      renderReview(container, this.plugin, (commandId, anchorOverride) =>
+        this.runCommandById(commandId, anchorOverride)
+      );
     } else {
-      this.renderButtonsMode(container);
+      renderThink(container, this.plugin, (commandId) =>
+        this.runCommandById(commandId)
+      );
     }
-  }
-
-  private async runCommandById(commandId: string, anchorOverride?: string) {
-    const cmd =
-      getEffectiveCommands(this.plugin.settings).find(
-        (c) => c.id === commandId
-      ) ?? getBuiltInCommand(commandId);
-    if (!cmd) {
-      new Notice(`Command not found: ${commandId}`);
-      return;
-    }
-    const ghost = document.createElement("button");
-    await this.runCommandHandler(ghost, cmd, anchorOverride);
-    if (this.mode === "dashboard") await this.render();
   }
 
   private renderTopBar(container: HTMLElement) {
     const topbar = container.createDiv({ cls: "second-brain-topbar" });
 
     const tabs = topbar.createDiv({ cls: "second-brain-tabs" });
-    const dashTab = tabs.createEl("button", {
-      text: "Dashboard",
-      cls: `second-brain-tab${this.mode === "dashboard" ? " active" : ""}`,
-    });
-    dashTab.addEventListener("click", () => {
-      if (this.mode !== "dashboard") {
-        this.mode = "dashboard";
-        this.render();
-      }
-    });
-
-    const btnTab = tabs.createEl("button", {
-      text: "Buttons",
-      cls: `second-brain-tab${this.mode === "buttons" ? " active" : ""}`,
-    });
-    btnTab.addEventListener("click", () => {
-      if (this.mode !== "buttons") {
-        this.mode = "buttons";
-        this.render();
-      }
-    });
+    for (const tab of [
+      { mode: "dashboard" as ViewMode, label: "Dashboard" },
+      { mode: "review" as ViewMode, label: "Review" },
+      { mode: "think" as ViewMode, label: "Think" },
+    ]) {
+      const el = tabs.createEl("button", {
+        text: tab.label,
+        cls: `second-brain-tab${this.mode === tab.mode ? " active" : ""}`,
+      });
+      el.addEventListener("click", () => {
+        if (this.mode !== tab.mode) {
+          this.mode = tab.mode;
+          this.render();
+        }
+      });
+    }
 
     const right = topbar.createDiv({ cls: "second-brain-topbar-right" });
 
@@ -120,44 +109,25 @@ export class SecondBrainView extends ItemView {
     });
   }
 
-  private renderButtonsMode(container: HTMLElement) {
-    const buttonRow = container.createDiv({ cls: "second-brain-buttons" });
-
-    const captureBtn = buttonRow.createEl("button", {
-      text: "Capture",
-      cls: "second-brain-button second-brain-button-primary",
-    });
-    captureBtn.addEventListener("click", () => {
-      new CaptureModal(this.app, this.plugin).open();
-    });
-
-    for (const command of getEffectiveCommands(this.plugin.settings)) {
-      const btn = buttonRow.createEl("button", {
-        text: command.label,
-        cls: "second-brain-button",
-      });
-      btn.addEventListener("click", () => this.runCommandHandler(btn, command));
-    }
-  }
-
   private async handleQuickAction(id: "capture" | "todays-review") {
     if (id === "capture") {
       new CaptureModal(this.app, this.plugin).open();
       return;
     }
-    // Resolve the effective today's-review command (user overrides honoured).
+    await this.runCommandById("todays-review");
+  }
+
+  private async runCommandById(commandId: string, anchorOverride?: string) {
     const cmd =
       getEffectiveCommands(this.plugin.settings).find(
-        (c) => c.id === "todays-review"
-      ) ?? getBuiltInCommand("todays-review");
+        (c) => c.id === commandId
+      ) ?? getBuiltInCommand(commandId);
     if (!cmd) {
-      new Notice("Today's Review command not found.");
+      new Notice(`Command not found: ${commandId}`);
       return;
     }
-    // Build a transient button just to use the same disable/run flow.
     const ghost = document.createElement("button");
-    await this.runCommandHandler(ghost, cmd);
-    // Refresh dashboard so the "Today's review ready" line updates.
+    await this.runCommandHandler(ghost, cmd, anchorOverride);
     if (this.mode === "dashboard") await this.render();
   }
 

@@ -6,10 +6,11 @@ This is v0 of the PWA-equivalent surface for the [2nd-brain](https://github.com/
 
 ## What it does
 
-The plugin view has two tabs:
+The plugin view has three tabs:
 
-- **Dashboard** — auto-generated overview of your vault state: today's status, threads in motion (wikilinks recurring across recent captures), projects, recent reviews. Pure local reads, no LLM calls. Refreshes on open or via ↻.
-- **Buttons** — one button per configured command. Capture plus one button per command (built-in or custom).
+- **Dashboard** — auto-generated overview: today's status with Capture + Today's Review quick-action buttons, a pending-reviews banner, threads in motion (wikilinks recurring across recent captures), and a list of projects. Pure local reads, no LLM calls. Refreshes via ↻.
+- **Review** — every review-flavoured command in one place: daily (Today's Review, Plan Tomorrow), periodic (this week, last week/month/quarter/year), and a date picker for reviewing any specific past day. Also lists recent review outputs.
+- **Think** — tools-of-thought commands and any user-added custom commands. Tier-S thinking commands (Contradict, Drift, Trace, Challenge) arrive in v0.5.1; for now this tab houses your custom commands.
 
 Built-in commands shipped:
 
@@ -105,8 +106,11 @@ This means the plugin adapts to whatever folder structure already exists (`Logs/
 - v0.2.0 ✅ User-editable commands UI + Week's Review + settings auto-migration
 - v0.3.0 ✅ Dashboard view (today's status, threads in motion, projects, recent reviews)
 - v0.4.0 ✅ Last-period reviews (week/month/quarter/year) + pending-review banner on Dashboard
-- v0.5.0 — Tier-S "tools of thought" commands (Contradict, Drift, Trace, Challenge) grouped in a "Tools of thought" section; multi-month inputs; runtime topic prompts
+- v0.4.1 ✅ Today on top of Dashboard, per-day pending dailies, skip button on pending rows
+- v0.5.0 ✅ Three tabs (Dashboard / Review / Think); Review tab hosts all review commands + specific-day date picker + recent-reviews list; Think tab hosts custom commands (Tier S coming v0.5.1)
+- v0.5.1 — Tier-S "tools of thought" commands (Contradict, Drift, Trace, Challenge) with multi-month inputs and runtime topic prompts
 - v0.6.0 — Project context: tap a project in Dashboard → AI synthesizes its current state from project file + recent daily mentions, writes to _AI/Project-Context/. AI reads PARA, never writes there.
+- v0.7.0 — Interactive review chat: docked panel scoped to an open review file, streaming, can propose edits.
 - v1.0.0 — Obsidian community-store release; additional providers (Google, local)
 - v2.0.0 — Optional port to Tauri for a standalone app outside Obsidian
 
