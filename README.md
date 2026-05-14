@@ -6,7 +6,12 @@ This is v0 of the PWA-equivalent surface for the [2nd-brain](https://github.com/
 
 ## What it does
 
-The plugin view shows one **Capture** button plus one button per configured command. v0.2.0 ships with three built-in commands:
+The plugin view has two tabs:
+
+- **Dashboard** — auto-generated overview of your vault state: today's status, threads in motion (wikilinks recurring across recent captures), projects, recent reviews. Pure local reads, no LLM calls. Refreshes on open or via ↻.
+- **Buttons** — one button per configured command. Capture plus one button per command (built-in or custom).
+
+Built-in commands shipped:
 
 1. **Capture** — opens a textarea, saves with a `[HH:MM]` timestamp into today's daily log.
 2. **Today's Review** — reads today's daily log, sends it to your configured LLM (OpenAI or Anthropic), writes a synthesized review to `_AI/Reviews/Daily/<today>.md`, and opens it.
@@ -98,7 +103,9 @@ This means the plugin adapts to whatever folder structure already exists (`Logs/
 - v0.1.1 ✅ Settings button in main view
 - v0.1.2 ✅ Year/Quarter/Week folder layout
 - v0.2.0 ✅ User-editable commands UI + Week's Review + settings auto-migration
-- v0.3.0 — Monthly / Quarterly / Yearly review commands; multi-input commands
+- v0.3.0 ✅ Dashboard view (today's status, threads in motion, projects, recent reviews)
+- v0.4.0 — Automatic end-of-week detection that proposes the Week's Review when last week wasn't reviewed
+- v0.5.0 — Tier-S "tools of thought" commands (Contradict, Drift, Trace, Challenge) + multi-month inputs + runtime topic prompts
 - v1.0.0 — Obsidian community-store release; additional providers (Google, local)
 - v2.0.0 — Optional port to Tauri for a standalone app outside Obsidian
 

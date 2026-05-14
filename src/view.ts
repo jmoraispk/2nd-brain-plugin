@@ -2,13 +2,17 @@ import { ItemView, WorkspaceLeaf, Notice, Modal, App } from "obsidian";
 import SecondBrainPlugin from "../main";
 import { appendCapture } from "./capture";
 import { runCommand } from "./runner";
-import { getEffectiveCommands } from "./commands";
+import { getEffectiveCommands, getBuiltInCommand } from "./commands";
 import { Command } from "./types";
+import { renderDashboard } from "./dashboard";
 
 export const VIEW_TYPE_SECOND_BRAIN = "second-brain-view";
 
+type ViewMode = "dashboard" | "buttons";
+
 export class SecondBrainView extends ItemView {
   plugin: SecondBrainPlugin;
+  mode: ViewMode = "dashboard";
 
   constructor(leaf: WorkspaceLeaf, plugin: SecondBrainPlugin) {
     super(leaf);
@@ -26,17 +30,68 @@ export class SecondBrainView extends ItemView {
   }
 
   async onOpen() {
-    const container = this.containerEl.children[1];
+    await this.render();
+  }
+
+  async onClose() {}
+
+  async render() {
+    const container = this.containerEl.children[1] as HTMLElement;
     container.empty();
     container.addClass("second-brain-container");
 
+    this.renderTopBar(container);
+
+    if (this.mode === "dashboard") {
+      await renderDashboard(container, this.plugin, (id) =>
+        this.handleQuickAction(id)
+      );
+    } else {
+      this.renderButtonsMode(container);
+    }
+  }
+
+  private renderTopBar(container: HTMLElement) {
     const topbar = container.createDiv({ cls: "second-brain-topbar" });
-    const settingsBtn = topbar.createEl("button", {
-      text: "⚙ Settings",
-      cls: "second-brain-settingsbtn",
+
+    const tabs = topbar.createDiv({ cls: "second-brain-tabs" });
+    const dashTab = tabs.createEl("button", {
+      text: "Dashboard",
+      cls: `second-brain-tab${this.mode === "dashboard" ? " active" : ""}`,
+    });
+    dashTab.addEventListener("click", () => {
+      if (this.mode !== "dashboard") {
+        this.mode = "dashboard";
+        this.render();
+      }
+    });
+
+    const btnTab = tabs.createEl("button", {
+      text: "Buttons",
+      cls: `second-brain-tab${this.mode === "buttons" ? " active" : ""}`,
+    });
+    btnTab.addEventListener("click", () => {
+      if (this.mode !== "buttons") {
+        this.mode = "buttons";
+        this.render();
+      }
+    });
+
+    const right = topbar.createDiv({ cls: "second-brain-topbar-right" });
+
+    const refreshBtn = right.createEl("button", {
+      text: "↻",
+      cls: "second-brain-iconbtn",
+      attr: { title: "Refresh" },
+    });
+    refreshBtn.addEventListener("click", () => this.render());
+
+    const settingsBtn = right.createEl("button", {
+      text: "⚙",
+      cls: "second-brain-iconbtn",
+      attr: { title: "Settings" },
     });
     settingsBtn.addEventListener("click", () => {
-      // Obsidian's settings API is on `app.setting`. Not in the public types yet.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const setting = (this.app as any).setting;
       if (setting) {
@@ -44,11 +99,11 @@ export class SecondBrainView extends ItemView {
         setting.openTabById?.(this.plugin.manifest.id);
       }
     });
+  }
 
+  private renderButtonsMode(container: HTMLElement) {
     const buttonRow = container.createDiv({ cls: "second-brain-buttons" });
 
-    // Capture stays a hardcoded primary button — it's the only one that takes
-    // direct user input rather than transforming existing notes.
     const captureBtn = buttonRow.createEl("button", {
       text: "Capture",
       cls: "second-brain-button second-brain-button-primary",
@@ -57,7 +112,6 @@ export class SecondBrainView extends ItemView {
       new CaptureModal(this.app, this.plugin).open();
     });
 
-    // Render one button per effective command (built-ins + user customs + overrides).
     for (const command of getEffectiveCommands(this.plugin.settings)) {
       const btn = buttonRow.createEl("button", {
         text: command.label,
@@ -67,8 +121,29 @@ export class SecondBrainView extends ItemView {
     }
   }
 
+  private async handleQuickAction(id: "capture" | "todays-review") {
+    if (id === "capture") {
+      new CaptureModal(this.app, this.plugin).open();
+      return;
+    }
+    // Resolve the effective today's-review command (user overrides honoured).
+    const cmd =
+      getEffectiveCommands(this.plugin.settings).find(
+        (c) => c.id === "todays-review"
+      ) ?? getBuiltInCommand("todays-review");
+    if (!cmd) {
+      new Notice("Today's Review command not found.");
+      return;
+    }
+    // Build a transient button just to use the same disable/run flow.
+    const ghost = document.createElement("button");
+    await this.runCommandHandler(ghost, cmd);
+    // Refresh dashboard so the "Today's review ready" line updates.
+    if (this.mode === "dashboard") await this.render();
+  }
+
   async runCommandHandler(btn: HTMLButtonElement, command: Command) {
-    const originalLabel = command.label;
+    const originalLabel = btn.textContent;
     btn.setText("Working…");
     btn.setAttr("disabled", "true");
     try {
@@ -79,12 +154,10 @@ export class SecondBrainView extends ItemView {
       new Notice(`${command.label} failed: ${(err as Error).message}`);
       console.error(err);
     } finally {
-      btn.setText(originalLabel);
+      if (originalLabel !== null) btn.setText(originalLabel);
       btn.removeAttribute("disabled");
     }
   }
-
-  async onClose() {}
 }
 
 class CaptureModal extends Modal {
@@ -136,11 +209,7 @@ class CaptureModal extends Modal {
       return;
     }
     try {
-      const path = await appendCapture(
-        this.app,
-        this.plugin.settings,
-        content
-      );
+      const path = await appendCapture(this.app, this.plugin.settings, content);
       new Notice(`Captured → ${path}`);
     } catch (err) {
       new Notice(`Capture failed: ${(err as Error).message}`);

@@ -8,22 +8,120 @@
 
 .second-brain-topbar {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
-.second-brain-settingsbtn {
-  font-size: 14px;
+.second-brain-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.second-brain-tab {
+  background: transparent;
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
   padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.second-brain-tab.active {
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  border-color: var(--background-modifier-border-hover);
+}
+
+.second-brain-topbar-right {
+  display: flex;
+  gap: 4px;
+}
+
+.second-brain-iconbtn {
+  font-size: 16px;
+  padding: 4px 10px;
   border-radius: 6px;
   background: transparent;
   border: 1px solid var(--background-modifier-border);
   color: var(--text-muted);
   cursor: pointer;
+  min-width: 36px;
 }
 
-.second-brain-settingsbtn:hover {
+.second-brain-iconbtn:hover {
   background: var(--background-modifier-hover);
   color: var(--text-normal);
+}
+
+/* Dashboard layout */
+.second-brain-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  margin-top: 4px;
+}
+
+.second-brain-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.second-brain-section h3 {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.second-brain-list {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.second-brain-list li {
+  margin: 4px 0;
+  line-height: 1.4;
+}
+
+.second-brain-link {
+  color: var(--link-color);
+  cursor: pointer;
+}
+
+.second-brain-link:hover {
+  text-decoration: underline;
+}
+
+.second-brain-muted {
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.second-brain-thread-meta {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.second-brain-drift {
+  color: var(--text-error);
+  font-size: 13px;
+  margin-left: 4px;
+}
+
+.second-brain-quickactions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.second-brain-quickactions .second-brain-button {
+  flex: 1;
+  min-height: 56px;
+  font-size: 16px;
 }
 
 .second-brain-buttons {

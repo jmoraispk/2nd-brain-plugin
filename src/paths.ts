@@ -38,11 +38,11 @@ export function todayHHMM(): string {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
-function toISO(d: Date): string {
+export function toISO(d: Date): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
-function pad2(n: number): string {
+export function pad2(n: number): string {
   return String(n).padStart(2, "0");
 }
 
@@ -134,7 +134,7 @@ function walkFolder(
 }
 
 /** ISO 8601 week number (Mon–Sun, week 1 contains first Thursday). */
-function isoWeek(d: Date): number {
+export function isoWeek(d: Date): number {
   const target = new Date(d.valueOf());
   const dayNr = (d.getDay() + 6) % 7;
   target.setDate(target.getDate() - dayNr + 3);
