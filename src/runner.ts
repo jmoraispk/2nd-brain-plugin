@@ -8,6 +8,11 @@ import {
   todayISO,
   yesterdayISO,
   thisWeekDatesThroughAnchor,
+  lastWeekDates,
+  lastMonthDates,
+  lastQuarterDates,
+  lastYearDates,
+  anchorForInputKind,
 } from "./paths";
 
 interface InputContent {
@@ -27,8 +32,15 @@ export async function runCommand(
   }
 
   const today = todayISO();
+  // Output path anchors on the first input's canonical date so e.g. a
+  // "last-week-logs" command writes to last week's Weekly file, not this week's.
+  const anchor =
+    command.inputs.length > 0
+      ? anchorForInputKind(command.inputs[0].kind)
+      : today;
   const userMsg = [
     `Today's date: ${today}`,
+    `Period anchor: ${anchor}`,
     "",
     ...inputs.map(
       (i) => `## ${i.label} — _from ${i.sourcePath}_\n\n${i.content}`
@@ -37,7 +49,7 @@ export async function runCommand(
 
   const result = await callLLM(settings, command.systemPrompt, userMsg);
 
-  const outputPath = resolveOutputPath(command.outputPath, settings);
+  const outputPath = resolveOutputPath(command.outputPath, settings, anchor);
   await ensureFolderExists(app, outputPath);
 
   const existing = app.vault.getAbstractFileByPath(outputPath);
@@ -60,15 +72,31 @@ async function readInput(
     "today-review": "Today's review",
     "yesterday-review": "Yesterday's review",
     "this-week-logs": "This week's daily logs",
+    "last-week-logs": "Last week's daily logs",
+    "last-month-logs": "Last month's daily logs",
+    "last-quarter-logs": "Last quarter's daily logs",
+    "last-year-logs": "Last year's daily logs",
   };
   const label = input.label ?? labelDefaults[input.kind];
 
-  // Multi-file input: this-week-logs concatenates daily logs Mon→today.
-  if (input.kind === "this-week-logs") {
-    const dates = thisWeekDatesThroughAnchor(todayISO());
+  // Multi-file inputs concatenate daily logs across a date range.
+  const multiDayDates =
+    input.kind === "this-week-logs"
+      ? thisWeekDatesThroughAnchor(todayISO())
+      : input.kind === "last-week-logs"
+      ? lastWeekDates()
+      : input.kind === "last-month-logs"
+      ? lastMonthDates()
+      : input.kind === "last-quarter-logs"
+      ? lastQuarterDates()
+      : input.kind === "last-year-logs"
+      ? lastYearDates()
+      : null;
+
+  if (multiDayDates) {
     const sections: string[] = [];
     const paths: string[] = [];
-    for (const date of dates) {
+    for (const date of multiDayDates) {
       const p = await resolveDailyLogPath(app, settings, date);
       const f = app.vault.getAbstractFileByPath(p);
       if (f instanceof TFile) {
@@ -80,11 +108,11 @@ async function readInput(
       }
     }
     if (sections.length === 0) {
-      throw new Error("No daily logs found for this week so far.");
+      throw new Error(`No daily logs found for ${input.kind}.`);
     }
     return {
       label,
-      sourcePath: `${paths.length} daily file(s) this week`,
+      sourcePath: `${paths.length} daily file(s)`,
       content: sections.join("\n\n---\n\n"),
     };
   }
@@ -125,14 +153,15 @@ async function readInput(
 
 function resolveOutputPath(
   template: string,
-  settings: SecondBrainSettings
+  settings: SecondBrainSettings,
+  anchor: string
 ): string {
-  // Inline {REVIEWS_TEMPLATE} first, then resolve date placeholders.
+  // Inline {REVIEWS_TEMPLATE} first, then resolve date placeholders against the anchor.
   const inlined = template.replace(
     "{REVIEWS_TEMPLATE}",
     settings.reviewsPathTemplate
   );
-  return applyDatePlaceholders(inlined);
+  return applyDatePlaceholders(inlined, anchor);
 }
 
 async function ensureFolderExists(app: App, filePath: string) {

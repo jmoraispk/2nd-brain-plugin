@@ -43,12 +43,29 @@ export class SecondBrainView extends ItemView {
     this.renderTopBar(container);
 
     if (this.mode === "dashboard") {
-      await renderDashboard(container, this.plugin, (id) =>
-        this.handleQuickAction(id)
+      await renderDashboard(
+        container,
+        this.plugin,
+        (id) => this.handleQuickAction(id),
+        (commandId) => this.runCommandById(commandId)
       );
     } else {
       this.renderButtonsMode(container);
     }
+  }
+
+  private async runCommandById(commandId: string) {
+    const cmd =
+      getEffectiveCommands(this.plugin.settings).find(
+        (c) => c.id === commandId
+      ) ?? getBuiltInCommand(commandId);
+    if (!cmd) {
+      new Notice(`Command not found: ${commandId}`);
+      return;
+    }
+    const ghost = document.createElement("button");
+    await this.runCommandHandler(ghost, cmd);
+    if (this.mode === "dashboard") await this.render();
   }
 
   private renderTopBar(container: HTMLElement) {

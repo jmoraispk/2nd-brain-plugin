@@ -33,6 +33,110 @@ export function thisWeekDatesThroughAnchor(anchor: string = todayISO()): string[
   return out;
 }
 
+/** Mon–Sun of the ISO week BEFORE the one containing today. Returns 7 dates. */
+export function lastWeekDates(): string[] {
+  const today = new Date();
+  const dayNr = (today.getDay() + 6) % 7; // Mon=0
+  const lastWeekMon = new Date(today.valueOf());
+  lastWeekMon.setDate(lastWeekMon.getDate() - dayNr - 7);
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(lastWeekMon.valueOf());
+    d.setDate(d.getDate() + i);
+    return toISO(d);
+  });
+}
+
+/** All calendar days of the month BEFORE the one containing today. */
+export function lastMonthDates(): string[] {
+  const today = new Date();
+  const first = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  const last = new Date(today.getFullYear(), today.getMonth(), 0); // day 0 = last day of previous month
+  return datesInRange(first, last);
+}
+
+/** All calendar days of the quarter BEFORE the one containing today. */
+export function lastQuarterDates(): string[] {
+  const today = new Date();
+  const q = Math.floor(today.getMonth() / 3); // 0..3 for current quarter
+  const lastQYear = q === 0 ? today.getFullYear() - 1 : today.getFullYear();
+  const lastQ = q === 0 ? 4 : q; // 1..4
+  const startMonth = (lastQ - 1) * 3;
+  const first = new Date(lastQYear, startMonth, 1);
+  const last = new Date(lastQYear, startMonth + 3, 0);
+  return datesInRange(first, last);
+}
+
+/** All calendar days of the year BEFORE the one containing today. */
+export function lastYearDates(): string[] {
+  const y = new Date().getFullYear() - 1;
+  return datesInRange(new Date(y, 0, 1), new Date(y, 11, 31));
+}
+
+function datesInRange(from: Date, to: Date): string[] {
+  const out: string[] = [];
+  const d = new Date(from.valueOf());
+  while (d <= to) {
+    out.push(toISO(d));
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
+}
+
+/** Canonical anchor date for an input kind — used by the runner to resolve output paths. */
+export function anchorForInputKind(kind: string): string {
+  const today = new Date();
+  switch (kind) {
+    case "today-log":
+    case "today-review":
+    case "this-week-logs":
+      return toISO(today);
+    case "yesterday-log":
+    case "yesterday-review": {
+      const d = new Date(today.valueOf());
+      d.setDate(d.getDate() - 1);
+      return toISO(d);
+    }
+    case "last-week-logs":
+      return lastWeekDates()[0]; // Monday of last ISO week
+    case "last-month-logs":
+      return lastMonthDates()[0]; // 1st of last calendar month
+    case "last-quarter-logs":
+      return lastQuarterDates()[0]; // 1st of last calendar quarter
+    case "last-year-logs":
+      return lastYearDates()[0]; // Jan 1 of last year
+    default:
+      return toISO(today);
+  }
+}
+
+/** Human-readable label for a period, used in dashboard banners. */
+export function periodLabel(kind: string): string {
+  switch (kind) {
+    case "last-week-logs": {
+      const ds = lastWeekDates();
+      const first = new Date(ds[0] + "T00:00:00");
+      const last = new Date(ds[6] + "T00:00:00");
+      const fmt = (d: Date) =>
+        d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      return `Week ${pad2(isoWeek(first))} (${fmt(first)}–${fmt(last)})`;
+    }
+    case "last-month-logs": {
+      const d = new Date(lastMonthDates()[0] + "T00:00:00");
+      return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    }
+    case "last-quarter-logs": {
+      const d = new Date(lastQuarterDates()[0] + "T00:00:00");
+      const q = Math.floor(d.getMonth() / 3) + 1;
+      return `Q${q} ${d.getFullYear()}`;
+    }
+    case "last-year-logs": {
+      return String(new Date(lastYearDates()[0] + "T00:00:00").getFullYear());
+    }
+    default:
+      return kind;
+  }
+}
+
 export function todayHHMM(): string {
   const d = new Date();
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;

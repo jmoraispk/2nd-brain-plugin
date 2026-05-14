@@ -104,8 +104,9 @@ This means the plugin adapts to whatever folder structure already exists (`Logs/
 - v0.1.2 ✅ Year/Quarter/Week folder layout
 - v0.2.0 ✅ User-editable commands UI + Week's Review + settings auto-migration
 - v0.3.0 ✅ Dashboard view (today's status, threads in motion, projects, recent reviews)
-- v0.4.0 — Automatic end-of-week detection that proposes the Week's Review when last week wasn't reviewed
-- v0.5.0 — Tier-S "tools of thought" commands (Contradict, Drift, Trace, Challenge) + multi-month inputs + runtime topic prompts
+- v0.4.0 ✅ Last-period reviews (week/month/quarter/year) + pending-review banner on Dashboard
+- v0.5.0 — Tier-S "tools of thought" commands (Contradict, Drift, Trace, Challenge) grouped in a "Tools of thought" section; multi-month inputs; runtime topic prompts
+- v0.6.0 — Project context: tap a project in Dashboard → AI synthesizes its current state from project file + recent daily mentions, writes to _AI/Project-Context/. AI reads PARA, never writes there.
 - v1.0.0 — Obsidian community-store release; additional providers (Google, local)
 - v2.0.0 — Optional port to Tauri for a standalone app outside Obsidian
 

@@ -13,7 +13,11 @@ export type CommandInputKind =
   | "yesterday-log"
   | "today-review"
   | "yesterday-review"
-  | "this-week-logs";
+  | "this-week-logs"
+  | "last-week-logs"
+  | "last-month-logs"
+  | "last-quarter-logs"
+  | "last-year-logs";
 
 export interface CommandInput {
   kind: CommandInputKind;

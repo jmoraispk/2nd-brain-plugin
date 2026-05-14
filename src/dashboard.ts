@@ -7,22 +7,108 @@ import {
   toISO,
   pad2,
   isoWeek,
+  anchorForInputKind,
+  periodLabel,
 } from "./paths";
 
+export interface PendingReview {
+  commandId: string;
+  label: string;
+}
+
 /**
- * Render the four dashboard sections into `parent`. Heuristic-only, no LLM
+ * For each "last X" period type (week, month, quarter, year), check whether
+ * the canonical review file for the most recent past period already exists.
+ * Return one entry per period type that's still unreviewed.
+ *
+ * We deliberately only look one period back (last week, last month, etc.) —
+ * not further. Users said they want to be nudged about the most recent
+ * missing review, not nagged about old ones they intentionally skipped.
+ */
+export function computePendingReviews(plugin: SecondBrainPlugin): PendingReview[] {
+  const checks: Array<{
+    commandId: string;
+    inputKind: string;
+    pathTemplate: string;
+  }> = [
+    {
+      commandId: "review-last-week",
+      inputKind: "last-week-logs",
+      pathTemplate: "_AI/Reviews/Weekly/{ISO_YEAR}-W{WW}.md",
+    },
+    {
+      commandId: "review-last-month",
+      inputKind: "last-month-logs",
+      pathTemplate: "_AI/Reviews/Monthly/{YYYY-MM}.md",
+    },
+    {
+      commandId: "review-last-quarter",
+      inputKind: "last-quarter-logs",
+      pathTemplate: "_AI/Reviews/Quarterly/{YYYY}-Q{Q}.md",
+    },
+    {
+      commandId: "review-last-year",
+      inputKind: "last-year-logs",
+      pathTemplate: "_AI/Reviews/Yearly/{YYYY}.md",
+    },
+  ];
+
+  const pending: PendingReview[] = [];
+  for (const c of checks) {
+    const anchor = anchorForInputKind(c.inputKind);
+    const path = applyDatePlaceholders(c.pathTemplate, anchor);
+    const existing = plugin.app.vault.getAbstractFileByPath(path);
+    if (existing instanceof TFile) continue;
+    pending.push({
+      commandId: c.commandId,
+      label: periodLabel(c.inputKind),
+    });
+  }
+  return pending;
+}
+
+/**
+ * Render the dashboard sections into `parent`. Heuristic-only, no LLM
  * calls — all data comes from local vault reads. Re-rendering is cheap.
  */
 export async function renderDashboard(
   parent: HTMLElement,
   plugin: SecondBrainPlugin,
-  onAction: (id: "capture" | "todays-review") => void
+  onAction: (id: "capture" | "todays-review") => void,
+  onRunCommand: (commandId: string) => void
 ): Promise<void> {
   const body = parent.createDiv({ cls: "second-brain-dashboard" });
+  renderPendingReviewsBanner(body, plugin, onRunCommand);
   await renderTodaySection(body, plugin, onAction);
   await renderThreadsSection(body, plugin);
   renderProjectsSection(body, plugin);
   renderReviewsSection(body, plugin);
+}
+
+function renderPendingReviewsBanner(
+  parent: HTMLElement,
+  plugin: SecondBrainPlugin,
+  onRunCommand: (commandId: string) => void
+) {
+  const pending = computePendingReviews(plugin);
+  if (pending.length === 0) return;
+
+  const banner = parent.createDiv({ cls: "second-brain-banner" });
+  banner.createEl("div", {
+    cls: "second-brain-banner-title",
+    text: `⏰ Reviews pending (${pending.length})`,
+  });
+
+  const list = banner.createEl("ul", { cls: "second-brain-banner-list" });
+  for (const p of pending) {
+    const li = list.createEl("li");
+    li.createSpan({ text: p.label });
+    const btn = li.createEl("button", {
+      text: "Run",
+      cls: "second-brain-banner-run",
+    });
+    btn.addEventListener("click", () => onRunCommand(p.commandId));
+  }
 }
 
 // ── Today section ────────────────────────────────────────────────────────
