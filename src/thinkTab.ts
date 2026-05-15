@@ -204,38 +204,63 @@ function renderRow(
       cls: "second-brain-row-prompt",
     });
 
-    // Edit + info inline (one row) — saves vertical space.
+    // Edit / Copy / Reset row.
+    const actions = previewWrap.createDiv({
+      cls: "second-brain-row-edit-row",
+    });
+
+    const editBtn = actions.createEl("button", {
+      text: "Edit",
+      cls: "second-brain-row-edit",
+      attr: {
+        title: isBuiltin
+          ? "Override this built-in in place. Reset to revert."
+          : "Edit this custom command.",
+      },
+    });
+    editBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      new CommandEditModal(plugin.app, cmd, async (updated: Command) => {
+        const customs = plugin.settings.customCommands;
+        const idx = customs.findIndex((c) => c.id === updated.id);
+        if (idx >= 0) customs[idx] = updated;
+        else customs.push(updated);
+        await plugin.saveSettings();
+        new Notice(`Saved ${updated.label}.`);
+        cb.onCommandSaved();
+      }).open();
+    });
+
     if (isBuiltin) {
-      const editRow = previewWrap.createDiv({
-        cls: "second-brain-row-edit-row",
-      });
-      const editBtn = editRow.createEl("button", {
-        text: "Edit",
+      const copyBtn = actions.createEl("button", {
+        text: "Copy",
         cls: "second-brain-row-edit",
+        attr: {
+          title:
+            "Create a new custom command from this one. The built-in stays untouched.",
+        },
       });
-      editBtn.addEventListener("click", (e) => {
+      copyBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        new CommandEditModal(plugin.app, cmd, async (updated: Command) => {
-          const customs = plugin.settings.customCommands;
-          const idx = customs.findIndex((c) => c.id === updated.id);
-          if (idx >= 0) customs[idx] = updated;
-          else customs.push(updated);
+        const dup: Command = JSON.parse(JSON.stringify(cmd));
+        dup.id = `${cmd.id}-mine-${Date.now().toString(36)}`;
+        dup.label = `${cmd.label} (my copy)`;
+        delete dup.tier;
+        new CommandEditModal(plugin.app, dup, async (updated: Command) => {
+          plugin.settings.customCommands.push(updated);
           await plugin.saveSettings();
-          new Notice(`Saved ${updated.label}.`);
+          new Notice(`Copied as "${updated.label}" — see Custom tab.`);
           cb.onCommandSaved();
         }).open();
       });
-      editRow.createEl("span", {
-        cls: "second-brain-row-edit-note",
-        text: hasOverride
-          ? "Working with your edited copy. Reset below reverts to default."
-          : "Editing creates a custom copy; the built-in default stays untouched.",
-      });
 
       if (hasOverride) {
-        const resetBtn = previewWrap.createEl("button", {
-          text: "Reset to default",
+        const resetBtn = actions.createEl("button", {
+          text: "Reset",
           cls: "second-brain-row-edit",
+          attr: {
+            title: "Delete your override and use the shipped built-in again.",
+          },
         });
         resetBtn.addEventListener("click", async (e) => {
           e.stopPropagation();
@@ -247,24 +272,6 @@ function renderRow(
           cb.onCommandSaved();
         });
       }
-    } else {
-      // Custom command — just an Edit button (no built-in default to revert to).
-      const editBtn = previewWrap.createEl("button", {
-        text: "Edit",
-        cls: "second-brain-row-edit",
-      });
-      editBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        new CommandEditModal(plugin.app, cmd, async (updated: Command) => {
-          const customs = plugin.settings.customCommands;
-          const idx = customs.findIndex((c) => c.id === updated.id);
-          if (idx >= 0) customs[idx] = updated;
-          else customs.push(updated);
-          await plugin.saveSettings();
-          new Notice(`Saved ${updated.label}.`);
-          cb.onCommandSaved();
-        }).open();
-      });
     }
 
     // Scroll the newly-expanded preview into view so the last row's content

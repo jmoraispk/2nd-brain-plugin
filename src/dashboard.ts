@@ -88,12 +88,10 @@ export async function computePendingDailies(
     d.setDate(d.getDate() - i);
     const date = toISO(d);
 
-    // Already reviewed (or skip-marker exists)?
-    const reviewPath = applyDatePlaceholders(
-      plugin.settings.reviewsPathTemplate,
-      date
-    );
-    if (plugin.app.vault.getAbstractFileByPath(reviewPath)) continue;
+    // Already reviewed? Check both the current templated path AND walk the
+    // daily-reviews folder recursively for a matching <date>.md anywhere
+    // (catches files at legacy flat paths from before the v0.6.4 nest migration).
+    if (dailyReviewExistsAnywhere(plugin, date)) continue;
 
     // Did the user even capture that day? If not, don't nag.
     const logPath = await resolveDailyLogPath(plugin.app, plugin.settings, date);
@@ -103,11 +101,43 @@ export async function computePendingDailies(
     pending.push({
       commandId: "todays-review",
       anchorOverride: date,
-      outputPath: reviewPath,
+      outputPath: applyDatePlaceholders(
+        plugin.settings.reviewsPathTemplate,
+        date
+      ),
       label: formatDailyLabel(date),
     });
   }
   return pending;
+}
+
+/**
+ * Return true if a daily review for `date` exists anywhere under
+ * `🤖 AI/Reviews/Daily/` — at the current template path, at a legacy flat
+ * path, or in any nested year/quarter/week folder. Closes the v0.6.4
+ * regression where pre-migration files were flagged as pending.
+ */
+function dailyReviewExistsAnywhere(
+  plugin: SecondBrainPlugin,
+  date: string
+): boolean {
+  const templatePath = applyDatePlaceholders(
+    plugin.settings.reviewsPathTemplate,
+    date
+  );
+  if (plugin.app.vault.getAbstractFileByPath(templatePath)) return true;
+
+  const root = plugin.app.vault.getAbstractFileByPath("🤖 AI/Reviews/Daily");
+  if (!(root instanceof TFolder)) return false;
+  return walkForFilename(root, `${date}.md`);
+}
+
+function walkForFilename(folder: TFolder, target: string): boolean {
+  for (const c of folder.children) {
+    if (c instanceof TFile && c.name === target) return true;
+    if (c instanceof TFolder && walkForFilename(c, target)) return true;
+  }
+  return false;
 }
 
 function formatDailyLabel(date: string): string {

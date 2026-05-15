@@ -121,6 +121,13 @@ export interface ReviewTabCallbacks {
   setUserReview: (text: string) => void;
   runSelection: (commandId: string, anchorOverride?: string) => Promise<void>;
   finish: () => Promise<void>;
+  /** Returns true if a file at `path` exists in the vault. Used for the "already reviewed" warning. */
+  fileExists: (path: string) => boolean;
+  /** Returns the resolved target path for the current picker selection (or null). */
+  targetPathForSelection: (
+    commandId: string,
+    anchorOverride?: string
+  ) => string | null;
 }
 
 export function renderReview(
@@ -216,6 +223,21 @@ function renderPicker(
     });
   }
 
+  // Warning when the AI review file already exists at the target.
+  const resolvedNow = resolveSelection(state);
+  if (resolvedNow) {
+    const targetPath = cb.targetPathForSelection(
+      resolvedNow.commandId,
+      resolvedNow.anchorOverride
+    );
+    if (targetPath && cb.fileExists(targetPath)) {
+      const warn = sec.createDiv({ cls: "second-brain-warning" });
+      warn.setText(
+        "⚠ A review already exists for this period. Running again OVERWRITES the AI summary (your own reflection in Reviews/ is APPENDED to, never overwritten)."
+      );
+    }
+  }
+
   const runBtn = sec.createEl("button", {
     text: "Run review",
     cls: "second-brain-button second-brain-button-primary",
@@ -229,6 +251,7 @@ function renderPicker(
     await cb.runSelection(resolved.commandId, resolved.anchorOverride);
   });
 }
+
 
 function renderInlineResult(
   body: HTMLElement,
@@ -360,6 +383,11 @@ export function userReviewPathFor(aiPath: string): string {
  * touches the AI review file — that one stays freely overwritable. If a
  * previous user review exists at the target path, it's replaced (whole file).
  */
+/**
+ * APPEND the user's review to their own file. Never overwrites existing
+ * content — each Finish & save adds a new dated session block. This
+ * upholds the invariant: AI never deletes from human files, only adds.
+ */
 export async function writeUserReview(
   app: App,
   aiFile: TFile,
@@ -372,13 +400,21 @@ export async function writeUserReview(
   if (dirPath && !app.vault.getAbstractFileByPath(dirPath)) {
     await app.vault.createFolder(dirPath);
   }
-  const content = `---\nperiod-anchor: ${anchorDate}\nreviewed-on: ${todayDate}\nai-summary: "[[${aiFile.path}|AI summary]]"\n---\n\n# My Review — ${anchorDate}\n\n_Reviewed on ${todayDate}. This file is yours; the plugin won't overwrite it on re-run._\n\n${userReview.trim()}\n`;
+
+  const session = `\n### Reviewed on ${todayDate}\n\n${userReview.trim()}\n`;
   const existing = app.vault.getAbstractFileByPath(userPath);
+
   if (existing instanceof TFile) {
-    await app.vault.modify(existing, content);
+    // Append a new dated session block; leave everything else intact.
+    const current = await app.vault.read(existing);
+    const next = current.replace(/\s*$/, "") + "\n" + session;
+    await app.vault.modify(existing, next);
     return existing;
   }
-  return await app.vault.create(userPath, content);
+
+  // Brand new user-review file. Frontmatter + an H1 + first session.
+  const header = `---\nperiod-anchor: ${anchorDate}\nfirst-reviewed-on: ${todayDate}\nai-summary: "[[${aiFile.path}|AI summary]]"\n---\n\n# My Review — ${anchorDate}\n\n_File owned by you. The plugin only appends a new dated section on each Finish & save — it never overwrites or removes prior content._\n${session}`;
+  return await app.vault.create(userPath, header);
 }
 
 /**

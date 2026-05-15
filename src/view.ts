@@ -3,6 +3,11 @@ import SecondBrainPlugin from "../main";
 import { appendCapture } from "./capture";
 import { runCommand } from "./runner";
 import { getEffectiveCommands, getBuiltInCommand } from "./commands";
+import {
+  anchorForInputKind as anchorForInputKindLocal,
+  applyDatePlaceholders as applyDatePlaceholdersLocal,
+  todayISO as todayISOLocal,
+} from "./paths";
 import { Command } from "./types";
 import { renderDashboard } from "./dashboard";
 import {
@@ -91,6 +96,27 @@ export class SecondBrainView extends ItemView {
           runSelection: (commandId, anchor) =>
             this.runReviewSelectionById(commandId, anchor),
           finish: () => this.finishReview(),
+          fileExists: (path) =>
+            !!this.app.vault.getAbstractFileByPath(path),
+          targetPathForSelection: (commandId, anchorOverride) => {
+            const cmd =
+              getEffectiveCommands(this.plugin.settings).find(
+                (c) => c.id === commandId
+              ) ?? getBuiltInCommand(commandId);
+            if (!cmd) return null;
+            // Inline {REVIEWS_TEMPLATE} like the runner does, then apply
+            // anchor-aware placeholders.
+            const inlined = cmd.outputPath.replace(
+              "{REVIEWS_TEMPLATE}",
+              this.plugin.settings.reviewsPathTemplate
+            );
+            const anchor =
+              anchorOverride ??
+              (cmd.inputs.length > 0
+                ? anchorForInputKindLocal(cmd.inputs[0].kind)
+                : todayISOLocal());
+            return applyDatePlaceholdersLocal(inlined, anchor);
+          },
         },
         this
       );
@@ -361,6 +387,10 @@ class CaptureModal extends Modal {
   constructor(app: App, plugin: SecondBrainPlugin) {
     super(app);
     this.plugin = plugin;
+    // Class hook so CSS can anchor this modal near the top of the screen
+    // (default Obsidian modals are vertically centered, which lands behind
+    // the on-screen keyboard on phone).
+    this.modalEl.addClass("second-brain-capture-modal");
   }
 
   onOpen() {
