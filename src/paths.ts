@@ -228,7 +228,7 @@ export async function resolveDailyLogPath(
   return applyDatePlaceholders(settings.dailyLogPathTemplate, date);
 }
 
-function findExistingDailyFile(
+export function findExistingDailyFile(
   app: App,
   settings: SecondBrainSettings,
   date: string

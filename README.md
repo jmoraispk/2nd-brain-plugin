@@ -108,7 +108,10 @@ This means the plugin adapts to whatever folder structure already exists (`Logs/
 - v0.4.0 ✅ Last-period reviews (week/month/quarter/year) + pending-review banner on Dashboard
 - v0.4.1 ✅ Today on top of Dashboard, per-day pending dailies, skip button on pending rows
 - v0.5.0 ✅ Three tabs (Dashboard / Review / Think)
-- v0.5.1 ✅ Tier-S Think commands (Contradict, Drift, Trace, Challenge); Review tab redesigned (single picker + inline AI summary + your-review textbox + Finish); AI-writable zone renamed `_AI/` → `🤖 AI/` with auto-migration; PARA folders reordered `1. 🎯 Projects` etc. so numeric prefix governs sort
+- v0.5.1 ✅ Tier-S Think commands (Contradict, Drift, Trace, Challenge); Review tab redesigned (single picker + inline AI summary + your-review textbox + Finish); AI-writable zone renamed `_AI/` → `🤖 AI/` with auto-migration; PARA folders reordered `1. 🎯 Projects` etc.
+- v0.5.2 ✅ Think tab sub-tabs (S / A / B) with thin one-row commands and Run on the right; Pending Reviews banner collapsible; bottom padding so Obsidian Mobile's toolbar never overlaps the last clickable element; capture-path bug fixed (captures now always land at the templated structured path, auto-migrating any legacy flat-path file)
+- v0.6.0 — Pending-banner click forwards to Review tab pre-configured; Project context command
+- v0.8.0–v0.9.0 — **Graph-connected reviews** (research-direction): during review/synthesis the AI auto-injects `[[wikilinks]]` for known topics so the Obsidian graph stays dense. Inspired by Kepano's "links over folders" philosophy. Likely implementation: pass the LLM a list of existing vault note titles + recently-mentioned wikilinks, instruct it to wrap matching mentions in `[[ ]]`. Possibly also auto-detect new "topic" candidates (capitalized recurring phrases) and propose new topic notes.
 - v0.6.0 — Project context: tap a project in Dashboard → AI synthesizes its current state from project file + recent daily mentions, writes to _AI/Project-Context/. AI reads PARA, never writes there.
 - v0.7.0 — Interactive review chat: docked panel scoped to an open review file, streaming, can propose edits.
 - v1.0.0 — Obsidian community-store release; additional providers (Google, local)

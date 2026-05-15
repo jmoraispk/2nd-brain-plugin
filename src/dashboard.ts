@@ -147,11 +147,20 @@ export async function renderDashboard(
   plugin: SecondBrainPlugin,
   onAction: (id: "capture" | "todays-review") => void,
   onRunCommand: (commandId: string, anchorOverride?: string) => void,
-  onRefresh: () => void
+  onRefresh: () => void,
+  pendingCollapsed: boolean,
+  togglePendingCollapsed: () => void
 ): Promise<void> {
   const body = parent.createDiv({ cls: "second-brain-dashboard" });
   await renderTodaySection(body, plugin, onAction);
-  await renderPendingReviewsBanner(body, plugin, onRunCommand, onRefresh);
+  await renderPendingReviewsBanner(
+    body,
+    plugin,
+    onRunCommand,
+    onRefresh,
+    pendingCollapsed,
+    togglePendingCollapsed
+  );
   await renderThreadsSection(body, plugin);
   renderProjectsSection(body, plugin);
   // Recent reviews moved to the Review tab as of v0.5.0.
@@ -161,7 +170,9 @@ async function renderPendingReviewsBanner(
   parent: HTMLElement,
   plugin: SecondBrainPlugin,
   onRunCommand: (commandId: string, anchorOverride?: string) => void,
-  onRefresh: () => void
+  onRefresh: () => void,
+  collapsed: boolean,
+  toggleCollapsed: () => void
 ) {
   const dailies = await computePendingDailies(plugin, 7);
   const periods = computePendingReviews(plugin);
@@ -169,10 +180,14 @@ async function renderPendingReviewsBanner(
   if (all.length === 0) return;
 
   const banner = parent.createDiv({ cls: "second-brain-banner" });
-  banner.createEl("div", {
-    cls: "second-brain-banner-title",
-    text: `⏰ Reviews pending (${all.length})`,
-  });
+  const titleRow = banner.createDiv({ cls: "second-brain-banner-titlerow" });
+  const arrow = collapsed ? "▶" : "▼";
+  titleRow.createEl("button", {
+    cls: "second-brain-banner-toggle",
+    text: `${arrow} ⏰ Reviews pending (${all.length})`,
+  }).addEventListener("click", () => toggleCollapsed());
+
+  if (collapsed) return;
 
   const list = banner.createEl("ul", { cls: "second-brain-banner-list" });
   for (const p of all) {

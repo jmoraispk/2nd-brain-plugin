@@ -12,7 +12,7 @@ import {
   ReviewTabState,
   SelectionOption,
 } from "./reviewTab";
-import { renderThink } from "./thinkTab";
+import { renderThink, ThinkSubtab } from "./thinkTab";
 import { TopicInputModal } from "./topicInputModal";
 
 export const VIEW_TYPE_SECOND_BRAIN = "second-brain-view";
@@ -23,6 +23,8 @@ export class SecondBrainView extends ItemView {
   plugin: SecondBrainPlugin;
   mode: ViewMode = "dashboard";
   reviewState: ReviewTabState = defaultReviewTabState();
+  thinkSubtab: ThinkSubtab = "S";
+  pendingReviewsCollapsed: boolean = true;
 
   constructor(leaf: WorkspaceLeaf, plugin: SecondBrainPlugin) {
     super(leaf);
@@ -59,7 +61,12 @@ export class SecondBrainView extends ItemView {
         (id) => this.handleQuickAction(id),
         (commandId, anchorOverride) =>
           this.runCommandById(commandId, anchorOverride),
-        () => this.render()
+        () => this.render(),
+        this.pendingReviewsCollapsed,
+        () => {
+          this.pendingReviewsCollapsed = !this.pendingReviewsCollapsed;
+          this.render();
+        }
       );
     } else if (this.mode === "review") {
       renderReview(
@@ -78,8 +85,17 @@ export class SecondBrainView extends ItemView {
         this
       );
     } else {
-      renderThink(container, this.plugin, (commandId) =>
-        this.runCommandById(commandId)
+      renderThink(
+        container,
+        this.plugin,
+        this.thinkSubtab,
+        {
+          setSubtab: (t) => {
+            this.thinkSubtab = t;
+            this.render();
+          },
+        },
+        (commandId) => this.runCommandById(commandId)
       );
     }
   }
