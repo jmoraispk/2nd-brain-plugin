@@ -180,12 +180,14 @@ async function renderPendingReviewsBanner(
   if (all.length === 0) return;
 
   const banner = parent.createDiv({ cls: "second-brain-banner" });
-  const titleRow = banner.createDiv({ cls: "second-brain-banner-titlerow" });
   const arrow = collapsed ? "▶" : "▼";
-  titleRow.createEl("button", {
+  // Use a div (not a button) so Obsidian's default button chrome doesn't
+  // paint a nested rectangle inside the banner.
+  const toggle = banner.createDiv({
     cls: "second-brain-banner-toggle",
     text: `${arrow} ⏰ Reviews pending (${all.length})`,
-  }).addEventListener("click", () => toggleCollapsed());
+  });
+  toggle.addEventListener("click", () => toggleCollapsed());
 
   if (collapsed) return;
 

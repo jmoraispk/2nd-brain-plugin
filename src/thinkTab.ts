@@ -62,13 +62,15 @@ export function renderThink(
         subtab === "S"
           ? "No tier-S commands here yet."
           : subtab === "A"
-          ? "Tier A is reserved for upcoming Synthesizer commands (Context, Emerge, Connect, Focus). Empty for now."
+          ? "No tier-A commands here yet."
           : "No tier-B commands yet. Add a custom command in Settings → Second Brain → Commands; it'll land here.",
     });
     return;
   }
 
-  for (const cmd of inTier) renderThinRow(body, cmd, onRunCommand);
+  // Tight row list — overrides the parent .second-brain-tab-body 24px gap.
+  const list = body.createDiv({ cls: "second-brain-row-list" });
+  for (const cmd of inTier) renderThinRow(list, cmd, onRunCommand);
 }
 
 function subtabTitle(t: ThinkSubtab): string {

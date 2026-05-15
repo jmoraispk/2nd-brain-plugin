@@ -7,6 +7,19 @@ import { testConnection } from "./llm";
 
 export type LLMProvider = "anthropic" | "openai";
 
+/** Curated model lists per provider, ordered roughly quality-first. */
+const OPENAI_MODELS: Array<{ id: string; label: string }> = [
+  { id: "gpt-4o", label: "gpt-4o — flagship, balanced quality/cost" },
+  { id: "gpt-4o-mini", label: "gpt-4o-mini — best value, ~10× cheaper than flagship" },
+  { id: "gpt-4-turbo", label: "gpt-4-turbo — older flagship, still solid" },
+];
+
+const ANTHROPIC_MODELS: Array<{ id: string; label: string }> = [
+  { id: "claude-opus-4-7", label: "claude-opus-4-7 — flagship, top quality" },
+  { id: "claude-sonnet-4-6", label: "claude-sonnet-4-6 — balanced quality/cost" },
+  { id: "claude-haiku-4-5", label: "claude-haiku-4-5 — fast & cheap" },
+];
+
 export interface SecondBrainSettings {
   provider: LLMProvider;
   anthropicApiKey: string;
@@ -110,19 +123,17 @@ export class SecondBrainSettingTab extends PluginSettingTab {
             })
         );
 
-      new Setting(containerEl)
-        .setName("OpenAI model")
-        .setDesc(
-          "Any chat-completions model id (e.g. gpt-4o, gpt-4o-mini, gpt-4-turbo)."
-        )
-        .addText((text) =>
-          text
-            .setValue(this.plugin.settings.openaiModel)
-            .onChange(async (v) => {
-              this.plugin.settings.openaiModel = v.trim();
-              await this.plugin.saveSettings();
-            })
-        );
+      this.renderModelPicker(
+        containerEl,
+        "OpenAI model",
+        "Recommendations balance quality vs cost. Mini tier is ~10× cheaper than flagship — fine for daily reviews; Tier-S Think commands benefit from the flagship.",
+        OPENAI_MODELS,
+        this.plugin.settings.openaiModel,
+        async (v) => {
+          this.plugin.settings.openaiModel = v;
+          await this.plugin.saveSettings();
+        }
+      );
     } else if (this.plugin.settings.provider === "anthropic") {
       new Setting(containerEl)
         .setName("Anthropic API key")
@@ -137,17 +148,17 @@ export class SecondBrainSettingTab extends PluginSettingTab {
             })
         );
 
-      new Setting(containerEl)
-        .setName("Anthropic model")
-        .setDesc("e.g. claude-opus-4-7, claude-sonnet-4-6, claude-haiku-4-5.")
-        .addText((text) =>
-          text
-            .setValue(this.plugin.settings.anthropicModel)
-            .onChange(async (v) => {
-              this.plugin.settings.anthropicModel = v.trim();
-              await this.plugin.saveSettings();
-            })
-        );
+      this.renderModelPicker(
+        containerEl,
+        "Anthropic model",
+        "Recommendations balance quality vs cost. Haiku is fastest and cheapest; Opus is best at multi-step reasoning (Tier-S Think commands).",
+        ANTHROPIC_MODELS,
+        this.plugin.settings.anthropicModel,
+        async (v) => {
+          this.plugin.settings.anthropicModel = v;
+          await this.plugin.saveSettings();
+        }
+      );
     }
 
     new Setting(containerEl)
@@ -169,6 +180,57 @@ export class SecondBrainSettingTab extends PluginSettingTab {
             );
           })
       );
+  }
+
+  /**
+   * Curated dropdown + optional text input for "Custom...". If the saved
+   * value matches a preset, only the dropdown shows. If it doesn't, the
+   * dropdown sits on "Custom..." and a text field appears below preserving
+   * whatever the user typed.
+   */
+  private renderModelPicker(
+    containerEl: HTMLElement,
+    name: string,
+    desc: string,
+    presets: Array<{ id: string; label: string }>,
+    currentValue: string,
+    onChange: (v: string) => Promise<void> | void
+  ) {
+    const isPresetMatch = presets.some((m) => m.id === currentValue);
+    const CUSTOM = "__custom__";
+
+    new Setting(containerEl)
+      .setName(name)
+      .setDesc(desc)
+      .addDropdown((d) => {
+        for (const m of presets) d.addOption(m.id, m.label);
+        d.addOption(CUSTOM, "Custom — type a model id below");
+        d.setValue(isPresetMatch ? currentValue : CUSTOM);
+        d.onChange(async (v) => {
+          if (v === CUSTOM) {
+            // Keep the current value as a starting point in the text field;
+            // re-rendering reveals the text input.
+            this.display();
+            return;
+          }
+          await onChange(v);
+          this.display();
+        });
+      });
+
+    if (!isPresetMatch) {
+      new Setting(containerEl)
+        .setName(`${name} (custom)`)
+        .setDesc("Any model id supported by the provider's chat API.")
+        .addText((t) =>
+          t
+            .setPlaceholder("e.g. gpt-4.1-mini, o1-mini")
+            .setValue(currentValue)
+            .onChange(async (v) => {
+              await onChange(v.trim());
+            })
+        );
+    }
   }
 
   private renderPaths(containerEl: HTMLElement) {

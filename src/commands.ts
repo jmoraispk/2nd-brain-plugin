@@ -260,6 +260,142 @@ Output Markdown:
 
 Be adversarial but fair. The point is to steel-man against them so they can sharpen the belief or update it.`;
 
+// ── Tier-A synthesizer prompts ───────────────────────────────────────────
+
+const CONTEXT_PROMPT = `You are building a comprehensive context document about the user. Synthesize from their daily logs a picture of who they are RIGHT NOW: what they care about, what they're working on, what's been on their mind, what tensions or unresolved threads exist.
+
+Output Markdown:
+
+# Context — <YYYY-MM-DD>
+
+## Who they are
+Identity, role, primary concerns. Short paragraph.
+
+## What they're working on
+3–7 active projects/threads with one-line status each.
+
+## What's on their mind
+Recurring topics, open questions, unresolved decisions.
+
+## What they care about
+Values, priorities revealed by where attention actually goes.
+
+## Recent shifts
+What's changed in the last 2–4 weeks — new priorities, new commitments, dropped projects.
+
+Rules: be faithful, no invented content. Synthesize at the level of "if a new assistant joined them tomorrow, this is what they'd need to know."`;
+
+const EMERGE_PROMPT = `You will be given the user's daily logs. Find conclusions that follow from premises scattered across the notes — conclusions the user has NOT drawn explicitly.
+
+An emergence IS:
+- A conclusion that follows from premises in multiple notes
+- Something the user would react to with "oh, I think that's right but I've never said it"
+- Backed by at least 3 specific data points (otherwise it's just creative inference)
+
+Anti-patterns (the Creativity Trap):
+- Don't manufacture creativity. No 3+ specific citations → drop the finding.
+- Don't restate what they explicitly said. Emergence is between the lines.
+- Don't generalize platitudes ("you value growth").
+
+Output Markdown:
+
+# Emergent ideas — <YYYY-MM-DD>
+
+For each finding (3–5 max):
+## Idea N
+**The emergence:** ...
+**Premises (cite at least 3):**
+- "<quote>" — _<filename>, <date>_
+- "<quote>" — _<filename>, <date>_
+- "<quote>" — _<filename>, <date>_
+**Why it's the next step they'd say if asked:** one sentence
+
+Be honest. 2 strong findings beats 5 weak ones.`;
+
+const CONNECT_PROMPT = `The user has given you two domains/topics in the "Topic / focus" section (e.g. "X and Y"). Find non-obvious connections between them in the daily logs.
+
+Method:
+1. Map each domain independently — what notes mention it, what themes attach to it.
+2. Find bridges — people who appear in both, themes that span them, decisions touching both, time periods where both were active.
+3. If one domain has much more depth than the other, lean into the smaller domain's mentions — it's the limiting factor for any real bridge.
+
+Output Markdown:
+
+# Connections: <X> ↔ <Y> — <YYYY-MM-DD>
+
+## Bridges found
+For each:
+- **Bridge:** what links them
+- **Evidence:** verbatim quotes from both sides
+- **What it implies:** one line
+
+## What's NOT connected
+If the vault has no real bridge between the two, say so. Don't manufacture connections.
+
+Rules: cite verbatim. Don't editorialize beyond paraphrasing the connection.`;
+
+const FOCUS_PROMPT = `You will be given the user's recent daily logs (~30 days). Run a focus diagnostic.
+
+Phase 1: Front inventory
+List every active "front" — every project, commitment, area, or thread the user is currently spending attention on. Aim for 8–15 items.
+
+Phase 2: The One Bet
+From the inventory, identify what they SHOULD be focusing on. Two signals:
+- **Stated primacy:** what they say is most important.
+- **Behavioral primacy:** what actually gets attention.
+If they diverge, NAME the divergence.
+
+Phase 3: Kill/Park ledger
+For every front that isn't the One Bet, default to KILL or PARK. Don't pile them into "things I'm also doing." Make the user defend keeping anything.
+
+Phase 4: Honest sentence
+One sentence the user would say to themselves about how their focus is actually going. Don't soften.
+
+Output Markdown:
+
+# Focus diagnostic — <YYYY-MM-DD>
+
+## Inventory
+- ...
+
+## The One Bet
+**Stated:** ...
+**Behavioral:** ...
+**Tension (if any):** ...
+
+## Kill / Park / Coast
+For each non-primary front: KILL (stop entirely), PARK (paused, defined revival condition), or COAST (low-effort maintenance). Default to KILL.
+
+## Honest sentence
+"..."
+
+Rules: forcing function. Default to KILL when in doubt. Resist letting them keep everything.`;
+
+const LEVERAGE_PROMPT = `You will be given the user's daily logs. Find the 3–7 skills, knowledge domains, or mental models where concentrated investment would unlock progress across multiple fronts.
+
+Method:
+1. Map their constraints — what's blocking progress across multiple projects?
+2. Find leverage points — where would one capability unlock 3+ areas?
+3. Look beyond the vault — if the leverage point requires a skill they don't have, name it. You're NOT limited to what they've already mentioned.
+
+A true leverage point:
+- Unlocks ≥3 areas when developed
+- Is not currently being invested in (or under-invested)
+- Has a concrete forming criterion (something measurable)
+
+Output Markdown:
+
+# Leverage points — <YYYY-MM-DD>
+
+For each (3–7 max):
+## Leverage point N
+**The capability:** what it is
+**Areas it unlocks:** at least 3, listed
+**Why under-invested:** what's keeping the user from developing it
+**Concrete first step:** one specific action they could take this week
+
+Rules: it's OK to import frameworks from outside the vault — that's what makes Leverage strategically useful. Anchor recommendations in actual constraints visible in the notes.`;
+
 const WEEKLY_REVIEW_PROMPT = `You are synthesizing a weekly review for the user.
 
 You will be given the user's daily logs for one ISO week (some days may be missing — skip them silently). Produce a clean Markdown weekly review using exactly this structure (do not invent content):
@@ -386,6 +522,53 @@ export const BUILT_IN_COMMANDS: Command[] = [
     inputs: [{ kind: "all-logs", label: "All daily logs" }],
     outputPath: "🤖 AI/Thinking/Challenge/{YYYY-MM-DD}.md",
     systemPrompt: CHALLENGE_PROMPT,
+  },
+  // Tier-A synthesizers (v0.6.1).
+  {
+    id: "think-context",
+    label: "Context",
+    tier: "A",
+    description: "Build a comprehensive picture of who you are right now — projects, priorities, threads, recent shifts.",
+    inputs: [{ kind: "all-logs", label: "All daily logs" }],
+    outputPath: "🤖 AI/Thinking/Context/{YYYY-MM-DD}.md",
+    systemPrompt: CONTEXT_PROMPT,
+  },
+  {
+    id: "think-emerge",
+    label: "Emerge",
+    tier: "A",
+    description: "Find ideas your vault implies but has never stated — conclusions hiding between premises.",
+    inputs: [{ kind: "all-logs", label: "All daily logs" }],
+    outputPath: "🤖 AI/Thinking/Emerge/{YYYY-MM-DD}.md",
+    systemPrompt: EMERGE_PROMPT,
+  },
+  {
+    id: "think-connect",
+    label: "Connect",
+    tier: "A",
+    description: "Find non-obvious connections between two domains, projects, or topics.",
+    topicPromptText: "Which two domains / topics should I connect? (e.g. 'Berimbau Pro and Capoeira System')",
+    inputs: [{ kind: "all-logs", label: "All daily logs" }],
+    outputPath: "🤖 AI/Thinking/Connect/{YYYY-MM-DD}.md",
+    systemPrompt: CONNECT_PROMPT,
+  },
+  {
+    id: "think-focus",
+    label: "Focus",
+    tier: "A",
+    description: "Forcing function: identify the one bet you're actually making, kill/park everything else.",
+    inputs: [{ kind: "month-logs", label: "This month's daily logs" }],
+    outputPath: "🤖 AI/Thinking/Focus/{YYYY-MM-DD}.md",
+    systemPrompt: FOCUS_PROMPT,
+  },
+  {
+    id: "think-leverage",
+    label: "Leverage",
+    tier: "A",
+    description: "Find 3–7 skills, domains, or models where concentrated investment unlocks progress across multiple fronts.",
+    inputs: [{ kind: "all-logs", label: "All daily logs" }],
+    outputPath: "🤖 AI/Thinking/Leverage/{YYYY-MM-DD}.md",
+    systemPrompt: LEVERAGE_PROMPT,
   },
 ];
 
