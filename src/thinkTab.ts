@@ -204,47 +204,73 @@ function renderRow(
       cls: "second-brain-row-prompt",
     });
 
+    // Edit + info inline (one row) — saves vertical space.
     if (isBuiltin) {
-      previewWrap.createEl("div", {
-        cls: "second-brain-row-meta-line",
-        text: hasOverride
-          ? "ⓘ You're working with your edited copy. Reset to revert to the shipped default."
-          : "ⓘ Editing creates a custom copy. The built-in default stays untouched and is updated by plugin releases.",
+      const editRow = previewWrap.createDiv({
+        cls: "second-brain-row-edit-row",
       });
-    }
-
-    const actions = previewWrap.createDiv({ cls: "second-brain-row-preview-actions" });
-    const editBtn = actions.createEl("button", {
-      text: hasOverride ? "Edit my copy" : "Edit (creates a copy)",
-      cls: "second-brain-row-edit",
-    });
-    editBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      new CommandEditModal(plugin.app, cmd, async (updated: Command) => {
-        const customs = plugin.settings.customCommands;
-        const idx = customs.findIndex((c) => c.id === updated.id);
-        if (idx >= 0) customs[idx] = updated;
-        else customs.push(updated);
-        await plugin.saveSettings();
-        new Notice(`Saved ${updated.label}.`);
-        cb.onCommandSaved();
-      }).open();
-    });
-
-    if (isBuiltin && hasOverride) {
-      const resetBtn = actions.createEl("button", {
-        text: "Reset to default",
+      const editBtn = editRow.createEl("button", {
+        text: "Edit",
         cls: "second-brain-row-edit",
       });
-      resetBtn.addEventListener("click", async (e) => {
+      editBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        plugin.settings.customCommands = plugin.settings.customCommands.filter(
-          (c) => c.id !== cmd.id
-        );
-        await plugin.saveSettings();
-        new Notice(`Reset ${cmd.label} to the shipped default.`);
-        cb.onCommandSaved();
+        new CommandEditModal(plugin.app, cmd, async (updated: Command) => {
+          const customs = plugin.settings.customCommands;
+          const idx = customs.findIndex((c) => c.id === updated.id);
+          if (idx >= 0) customs[idx] = updated;
+          else customs.push(updated);
+          await plugin.saveSettings();
+          new Notice(`Saved ${updated.label}.`);
+          cb.onCommandSaved();
+        }).open();
+      });
+      editRow.createEl("span", {
+        cls: "second-brain-row-edit-note",
+        text: hasOverride
+          ? "Working with your edited copy. Reset below reverts to default."
+          : "Editing creates a custom copy; the built-in default stays untouched.",
+      });
+
+      if (hasOverride) {
+        const resetBtn = previewWrap.createEl("button", {
+          text: "Reset to default",
+          cls: "second-brain-row-edit",
+        });
+        resetBtn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          plugin.settings.customCommands = plugin.settings.customCommands.filter(
+            (c) => c.id !== cmd.id
+          );
+          await plugin.saveSettings();
+          new Notice(`Reset ${cmd.label} to the shipped default.`);
+          cb.onCommandSaved();
+        });
+      }
+    } else {
+      // Custom command — just an Edit button (no built-in default to revert to).
+      const editBtn = previewWrap.createEl("button", {
+        text: "Edit",
+        cls: "second-brain-row-edit",
+      });
+      editBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        new CommandEditModal(plugin.app, cmd, async (updated: Command) => {
+          const customs = plugin.settings.customCommands;
+          const idx = customs.findIndex((c) => c.id === updated.id);
+          if (idx >= 0) customs[idx] = updated;
+          else customs.push(updated);
+          await plugin.saveSettings();
+          new Notice(`Saved ${updated.label}.`);
+          cb.onCommandSaved();
+        }).open();
       });
     }
+
+    // Scroll the newly-expanded preview into view so the last row's content
+    // doesn't end up obscured behind Obsidian Mobile's toolbar.
+    setTimeout(() => {
+      previewWrap.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }, 50);
   }
 }

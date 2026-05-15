@@ -7,7 +7,7 @@ import { Command } from "./types";
 import { renderDashboard } from "./dashboard";
 import {
   renderReview,
-  appendUserReview,
+  writeUserReview,
   defaultReviewTabState,
   ReviewTabState,
   resolveSelection,
@@ -272,16 +272,44 @@ export class SecondBrainView extends ItemView {
       return;
     }
     try {
-      await appendUserReview(this.app, resultFile, userReview);
-      await this.app.workspace.getLeaf(false).openFile(resultFile);
-      new Notice(`Saved your review to ${resultFile.path}`);
-      // Reset state so the picker is fresh next time.
+      // Derive the period anchor from the AI file path so we can stamp it
+      // on the user-review file frontmatter.
+      const anchor =
+        this.reviewState.specificDate ||
+        this.deriveAnchorFromAIPath(resultFile.path);
+      const today = (() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+          2,
+          "0"
+        )}-${String(d.getDate()).padStart(2, "0")}`;
+      })();
+      const userFile = await writeUserReview(
+        this.app,
+        resultFile,
+        userReview,
+        anchor,
+        today
+      );
+      await this.app.workspace.getLeaf(false).openFile(userFile);
+      new Notice(`Saved your review to ${userFile.path}`);
       this.reviewState = defaultReviewTabState();
       await this.render();
     } catch (err) {
       new Notice(`Finish failed: ${(err as Error).message}`);
       console.error(err);
     }
+  }
+
+  /**
+   * Pull a YYYY-MM-DD substring out of the AI review path as a best-effort
+   * anchor. Used for stamping user-review frontmatter when state.specificDate
+   * isn't set (e.g. weekly/monthly reviews where the anchor is implicit).
+   */
+  private deriveAnchorFromAIPath(p: string): string {
+    const m = p.match(/(\d{4}-\d{2}-\d{2})/);
+    if (m) return m[1];
+    return new Date().toISOString().slice(0, 10);
   }
 
   async runCommandHandler(

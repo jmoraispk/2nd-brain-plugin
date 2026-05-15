@@ -323,33 +323,62 @@ function filesIn(
 ): TFile[] {
   const folder = plugin.app.vault.getAbstractFileByPath(folderPath);
   if (!(folder instanceof TFolder)) return [];
-  return folder.children
-    .filter((c): c is TFile => c instanceof TFile && c.name.endsWith(".md"))
+  // Walk recursively — daily reviews are nested under year/quarter/week from v0.6.4.
+  const all: TFile[] = [];
+  collectMarkdownFilesRecursively(folder, all);
+  return all
     .sort((a, b) => b.stat.mtime - a.stat.mtime)
     .slice(0, limit);
 }
 
-/**
- * Append the user's review to the same file as the AI summary, under a
- * "## My review" heading. If a previous "My review" section exists, replace it.
- */
-export async function appendUserReview(
-  app: App,
-  file: TFile,
-  userReview: string
-): Promise<void> {
-  const existing = await app.vault.read(file);
-  const trimmed = userReview.trim();
-  const sectionHeading = "## My review";
-  const sectionRegex = /\n## My review\b[\s\S]*$/m;
-  let next: string;
-  const block = `\n\n${sectionHeading}\n\n${trimmed}\n`;
-  if (sectionRegex.test(existing)) {
-    next = existing.replace(sectionRegex, block);
-  } else {
-    next = existing.replace(/\s*$/, "") + block;
+function collectMarkdownFilesRecursively(folder: TFolder, out: TFile[]) {
+  for (const child of folder.children) {
+    if (child instanceof TFolder) {
+      collectMarkdownFilesRecursively(child, out);
+    } else if (child instanceof TFile && child.name.endsWith(".md")) {
+      out.push(child);
+    }
   }
-  await app.vault.modify(file, next);
+}
+
+/**
+ * Derive the user-review file path from the AI review file path. The user
+ * lives outside `🤖 AI/` so re-running the AI review never touches it.
+ *
+ * Mapping: `🤖 AI/Reviews/<rest>` → `Reviews/<rest>`. Reviews/ is a new
+ * top-level user-owned folder mirroring the AI structure.
+ */
+export function userReviewPathFor(aiPath: string): string {
+  const m = aiPath.match(/^🤖 AI\/Reviews\/(.+)$/);
+  if (m) return `Reviews/${m[1]}`;
+  // Fallback for any non-conforming AI path: keep filename, prefix Reviews/
+  return `Reviews/${aiPath.split("/").pop()}`;
+}
+
+/**
+ * Write the user's reflection to its OWN file at the user-review path. Never
+ * touches the AI review file — that one stays freely overwritable. If a
+ * previous user review exists at the target path, it's replaced (whole file).
+ */
+export async function writeUserReview(
+  app: App,
+  aiFile: TFile,
+  userReview: string,
+  anchorDate: string,
+  todayDate: string
+): Promise<TFile> {
+  const userPath = userReviewPathFor(aiFile.path);
+  const dirPath = userPath.split("/").slice(0, -1).join("/");
+  if (dirPath && !app.vault.getAbstractFileByPath(dirPath)) {
+    await app.vault.createFolder(dirPath);
+  }
+  const content = `---\nperiod-anchor: ${anchorDate}\nreviewed-on: ${todayDate}\nai-summary: "[[${aiFile.path}|AI summary]]"\n---\n\n# My Review — ${anchorDate}\n\n_Reviewed on ${todayDate}. This file is yours; the plugin won't overwrite it on re-run._\n\n${userReview.trim()}\n`;
+  const existing = app.vault.getAbstractFileByPath(userPath);
+  if (existing instanceof TFile) {
+    await app.vault.modify(existing, content);
+    return existing;
+  }
+  return await app.vault.create(userPath, content);
 }
 
 /**

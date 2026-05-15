@@ -45,7 +45,7 @@ export const DEFAULT_SETTINGS: SecondBrainSettings = {
   openaiModel: "gpt-5-mini",
   logsFolder: "Logs",
   dailyLogPathTemplate: "Logs/{ISO_YEAR}/Q{Q}/W{WW}/{YYYY-MM-DD}.md",
-  reviewsPathTemplate: "🤖 AI/Reviews/Daily/{YYYY-MM-DD}.md",
+  reviewsPathTemplate: "🤖 AI/Reviews/Daily/{ISO_YEAR}/Q{Q}/W{WW}/{YYYY-MM-DD}.md",
   customCommands: [],
 };
 

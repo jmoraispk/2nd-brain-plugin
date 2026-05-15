@@ -1,38 +1,6 @@
 import { Command } from "./types";
 import { SecondBrainSettings } from "./settings";
 
-const REVIEW_PROMPT = `You are synthesizing a daily review for the user.
-
-You will be given the user's raw captures for today. Produce a clean Markdown review using exactly this structure (do not invent content, be faithful to the captures):
-
-# Daily Review — <human-readable date>
-
-## Captures summary
-A condensed, faithful summary of what was captured. Group by theme if many items. Quote verbatim where a phrasing is striking.
-
-## Threads worth continuing
-3–8 bullets: unresolved questions, recurring topics, projects with momentum.
-
-## Lessons and observations
-What the user noticed, learned, or flagged. Direct quotes welcome.
-
-## Forward-looking items
-Items the user explicitly earmarked for a later day. Cues: "tomorrow I will…", "next week…", "remind me to…", "TODO". Format each as:
-- [target: YYYY-MM-DD] verbatim phrasing  — _from <source filename>_
-If no target date is implied, use [target: ?].
-
-## Review prompts (for the user to answer)
-3–5 pointed questions phrased in the user's voice.
-
-## Plan scaffold (for the user to fill)
-- What's unfinished?
-- What's next?
-- What to drop?
-
-Rules:
-- Be faithful. No fluff. No invented content.
-- If the captures are empty or trivial, still produce the scaffold with a "No substantial captures." note in the summary.`;
-
 const PLAN_PROMPT = `You are producing tomorrow's plan scaffold based on the user's just-edited daily review.
 
 The user has reviewed today and possibly added their own reflections to the review file. Your job: distill what they wrote into a focused, actionable plan for tomorrow. Honor what they prioritized; do not invent priorities they didn't name.
@@ -427,11 +395,50 @@ For each (3–7 max):
 
 Rules: it's OK to import frameworks from outside the vault — that's what makes Leverage strategically useful. Anchor recommendations in actual constraints visible in the notes.`;
 
+const REVIEW_PROMPT = `You are synthesizing a daily review.
+
+The user message has two date fields: "Period anchor" (the day being reviewed — the target) and "Today's date" (the day the review is being generated). Use the **anchor** for the title and any "today" framing inside the synthesis. Use **Today's date** ONLY in the "Reviewed on" footer.
+
+You will be given the user's raw captures for the anchor day. Produce a clean Markdown review using exactly this structure (do not invent content):
+
+# Daily Review — <human-readable anchor date>
+
+_Reviewed on <Today's date>. This file is owned by the command and will be overwritten on re-run; your own reflection lives in a separate file._
+
+## Captures summary
+A condensed, faithful summary of what was captured. Group by theme if many items. Quote verbatim where a phrasing is striking.
+
+## Threads worth continuing
+3–8 bullets: unresolved questions, recurring topics, projects with momentum.
+
+## Lessons and observations
+What the user noticed, learned, or flagged. Direct quotes welcome.
+
+## Forward-looking items
+Items the user explicitly earmarked for a later day (cues: "tomorrow I will…", "next week…", "remind me to…", "TODO"). For each, attempt to anchor it to a target date if the capture suggests one (interpret "tomorrow" relative to the anchor's date, not today's). Format:
+- [target: YYYY-MM-DD] verbatim phrasing — _from <source>_
+If no target date is implied, use [target: ?]. **If there are no such items, skip this section entirely.**
+
+## Backward references
+Mentions in captures that refer to earlier days. **Skip entirely if none.**
+
+## Review prompts (for the user to answer)
+3–5 pointed questions phrased in the user's voice, e.g. "What did I avoid today, and why?"
+
+Rules:
+- Be faithful. No fluff. No invented content.
+- Skip empty sections entirely (no "N/A" placeholders).
+- The user writes their own review in a separate file; don't include a "plan" or "scaffold" section.`;
+
 const WEEKLY_REVIEW_PROMPT = `You are synthesizing a weekly review for the user.
 
-You will be given the user's daily logs for one ISO week (some days may be missing — skip them silently). Produce a clean Markdown weekly review using exactly this structure (do not invent content):
+The user message includes "Period anchor" (a date within the week being reviewed) and "Today's date" (when the review is generated). Use the anchor for the title; use Today's date in the "Reviewed on" footer.
+
+You will be given the user's daily logs for one ISO week (some days may be missing — skip them silently). Produce a clean Markdown weekly review with this structure (do not invent content):
 
 # Weekly Review — Week of <human-readable Monday date>
+
+_Reviewed on <Today's date>._
 
 ## Themes of the week
 3–6 bullets identifying recurring topics, projects with momentum, unresolved threads. Reference which days each appeared.

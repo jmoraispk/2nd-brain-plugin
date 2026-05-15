@@ -68,6 +68,16 @@ export default class SecondBrainPlugin extends Plugin {
         "🤖 AI/" + this.settings.reviewsPathTemplate.slice("_AI/".length);
       changed = true;
     }
+
+    // v0.6.4: nest daily reviews under year/quarter/week to mirror the Logs
+    // structure. Flat default → nested default.
+    const FLAT_REVIEWS = "🤖 AI/Reviews/Daily/{YYYY-MM-DD}.md";
+    const NESTED_REVIEWS =
+      "🤖 AI/Reviews/Daily/{ISO_YEAR}/Q{Q}/W{WW}/{YYYY-MM-DD}.md";
+    if (this.settings.reviewsPathTemplate === FLAT_REVIEWS) {
+      this.settings.reviewsPathTemplate = NESTED_REVIEWS;
+      changed = true;
+    }
     if (Array.isArray(this.settings.customCommands)) {
       for (const c of this.settings.customCommands) {
         if (typeof c.outputPath === "string" && c.outputPath.startsWith("_AI/")) {
