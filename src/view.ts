@@ -14,7 +14,12 @@ import {
   SELECTION_OPTIONS,
   mapCommandToReviewSelection,
 } from "./reviewTab";
-import { renderThink, ThinkSubtab } from "./thinkTab";
+import {
+  renderThink,
+  ThinkSubtab,
+  ThinkTabState,
+  defaultThinkTabState,
+} from "./thinkTab";
 import { TopicInputModal } from "./topicInputModal";
 
 export const VIEW_TYPE_SECOND_BRAIN = "second-brain-view";
@@ -25,7 +30,7 @@ export class SecondBrainView extends ItemView {
   plugin: SecondBrainPlugin;
   mode: ViewMode = "dashboard";
   reviewState: ReviewTabState = defaultReviewTabState();
-  thinkSubtab: ThinkSubtab = "S";
+  thinkState: ThinkTabState = defaultThinkTabState();
   pendingReviewsCollapsed: boolean = true;
 
   constructor(leaf: WorkspaceLeaf, plugin: SecondBrainPlugin) {
@@ -90,12 +95,21 @@ export class SecondBrainView extends ItemView {
       renderThink(
         container,
         this.plugin,
-        this.thinkSubtab,
+        this.thinkState,
         {
-          setSubtab: (t) => {
-            this.thinkSubtab = t;
+          setSubtab: (t: ThinkSubtab) => {
+            this.thinkState.subtab = t;
             this.render();
           },
+          toggleExpanded: (commandId: string) => {
+            if (this.thinkState.expandedCommandIds.has(commandId)) {
+              this.thinkState.expandedCommandIds.delete(commandId);
+            } else {
+              this.thinkState.expandedCommandIds.add(commandId);
+            }
+            this.render();
+          },
+          onCommandSaved: () => this.render(),
         },
         (commandId) => this.runCommandById(commandId)
       );
@@ -273,8 +287,19 @@ export class SecondBrainView extends ItemView {
     topicInput?: string
   ) {
     const originalLabel = btn.textContent;
-    btn.setText("Working…");
     btn.setAttr("disabled", "true");
+
+    // Sticky banner so the user has feedback for the whole call duration.
+    const progress = new Notice(`${command.label} running…`, 0);
+
+    // Animate dots in the button text so it's clearly "doing something."
+    let dots = 0;
+    btn.setText("Working");
+    const interval = window.setInterval(() => {
+      dots = (dots + 1) % 4;
+      btn.setText("Working" + ".".repeat(dots));
+    }, 500);
+
     try {
       const file = await runCommand(
         this.app,
@@ -289,6 +314,8 @@ export class SecondBrainView extends ItemView {
       new Notice(`${command.label} failed: ${(err as Error).message}`);
       console.error(err);
     } finally {
+      window.clearInterval(interval);
+      progress.hide();
       if (originalLabel !== null) btn.setText(originalLabel);
       btn.removeAttribute("disabled");
     }

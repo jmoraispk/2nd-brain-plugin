@@ -1,86 +1,120 @@
+import { Notice } from "obsidian";
 import SecondBrainPlugin from "../main";
 import { BUILT_IN_COMMANDS, getEffectiveCommands } from "./commands";
 import { Command } from "./types";
+import { CommandEditModal } from "./commandEditModal";
 
-export type ThinkSubtab = "S" | "A" | "B";
+export type ThinkSubtab = "S" | "A" | "B" | "Custom";
+
+export interface ThinkTabState {
+  subtab: ThinkSubtab;
+  /** Command ids whose prompt-preview pane is currently expanded. */
+  expandedCommandIds: Set<string>;
+}
+
+export function defaultThinkTabState(): ThinkTabState {
+  return { subtab: "S", expandedCommandIds: new Set() };
+}
 
 export interface ThinkTabCallbacks {
   setSubtab: (subtab: ThinkSubtab) => void;
+  toggleExpanded: (commandId: string) => void;
+  onCommandSaved: () => void;
 }
 
 /**
- * Render the Think tab. Sub-tabs for tier S / A / B at the top; thin one-row
- * cards below for the commands in the active tier. Run button is right-aligned
- * so commands stay short vertically.
- *
- * Custom commands without an explicit tier fall into B (the default
- * "personal" bucket) until tier-picking ships in the Add-command modal.
+ * Render the Think tab. Four sub-tabs (Tier S / A / B / Custom) at the top;
+ * thin one-row commands below. Clicking a row toggles a prompt-preview pane
+ * underneath with an Edit button. Run button has its own click handler that
+ * doesn't toggle the expansion.
  */
 export function renderThink(
   parent: HTMLElement,
   plugin: SecondBrainPlugin,
-  subtab: ThinkSubtab,
+  state: ThinkTabState,
   cb: ThinkTabCallbacks,
   onRunCommand: (commandId: string) => void
 ): void {
   const body = parent.createDiv({ cls: "second-brain-tab-body" });
 
-  // Sub-tab bar.
+  // Sub-tab bar — centered, "Tier X" labels.
   const subtabs = body.createDiv({ cls: "second-brain-subtabs" });
-  for (const t of ["S", "A", "B"] as ThinkSubtab[]) {
+  const tabs: Array<{ id: ThinkSubtab; label: string; title: string }> = [
+    { id: "S", label: "Tier S", title: "Real tools of thought" },
+    { id: "A", label: "Tier A", title: "Useful synthesizers" },
+    { id: "B", label: "Tier B", title: "Workflow utilities" },
+    { id: "Custom", label: "Custom", title: "Your own commands" },
+  ];
+  for (const t of tabs) {
     const el = subtabs.createEl("button", {
-      text: t,
-      cls: `second-brain-subtab${subtab === t ? " active" : ""}`,
-      attr: { title: subtabTitle(t) },
+      text: t.label,
+      cls: `second-brain-subtab${state.subtab === t.id ? " active" : ""}`,
+      attr: { title: t.title },
     });
-    el.addEventListener("click", () => cb.setSubtab(t));
+    el.addEventListener("click", () => cb.setSubtab(t.id));
   }
 
-  // Header (small) describing the active tier.
   body.createEl("div", {
     cls: "second-brain-subtab-caption",
-    text: subtabCaption(subtab),
+    text: subtabCaption(state.subtab),
   });
 
-  // Filter commands to the active sub-tab.
   const effective = getEffectiveCommands(plugin.settings);
   const builtinIds = new Set(BUILT_IN_COMMANDS.map((c) => c.id));
-  const inTier = effective.filter((c) => {
-    if (subtab === "B") {
-      // Tier B = explicit tier=B OR untiered custom commands.
-      if (c.tier === "B") return true;
-      const isCustom = !builtinIds.has(c.id);
-      return isCustom && !c.tier;
+
+  // Filter by tab.
+  const filtered = effective.filter((c) => {
+    if (state.subtab === "Custom") {
+      // Custom = ids NOT in built-ins.
+      return !builtinIds.has(c.id);
     }
-    return c.tier === subtab;
+    return c.tier === state.subtab;
   });
 
-  if (inTier.length === 0) {
+  // Add-command button at the top of the Custom tab.
+  if (state.subtab === "Custom") {
+    const addBtn = body.createEl("button", {
+      text: "+ Add command",
+      cls: "second-brain-button second-brain-button-primary",
+    });
+    addBtn.addEventListener("click", () => {
+      const stub: Command = {
+        id: `custom-${Date.now().toString(36)}`,
+        label: "New command",
+        inputs: [{ kind: "today-log" }],
+        outputPath: "🤖 AI/Thinking/Custom/{YYYY-MM-DD}.md",
+        systemPrompt:
+          "You will be given the input below. Summarize it faithfully in 5–10 bullets.",
+      };
+      new CommandEditModal(plugin.app, stub, async (created: Command) => {
+        plugin.settings.customCommands.push(created);
+        await plugin.saveSettings();
+        cb.onCommandSaved();
+      }).open();
+    });
+  }
+
+  if (filtered.length === 0) {
     body.createEl("div", {
       cls: "second-brain-muted",
       text:
-        subtab === "S"
-          ? "No tier-S commands here yet."
-          : subtab === "A"
-          ? "No tier-A commands here yet."
-          : "No tier-B commands yet. Add a custom command in Settings → Second Brain → Commands; it'll land here.",
+        state.subtab === "Custom"
+          ? "No custom commands yet. Use + Add command above."
+          : `No commands in this tier yet.`,
     });
     return;
   }
 
-  // Tight row list — overrides the parent .second-brain-tab-body 24px gap.
   const list = body.createDiv({ cls: "second-brain-row-list" });
-  for (const cmd of inTier) renderThinRow(list, cmd, onRunCommand);
-}
-
-function subtabTitle(t: ThinkSubtab): string {
-  switch (t) {
-    case "S":
-      return "Tier S — real tools of thought";
-    case "A":
-      return "Tier A — useful synthesizers";
-    case "B":
-      return "Tier B — personal / custom";
+  for (const cmd of filtered) {
+    renderRow(
+      list,
+      plugin,
+      cmd,
+      state.expandedCommandIds.has(cmd.id),
+      cb,
+      onRunCommand
+    );
   }
 }
 
@@ -91,22 +125,33 @@ function subtabCaption(t: ThinkSubtab): string {
     case "A":
       return "Useful synthesizers. Surfacing more than revelation.";
     case "B":
-      return "Personal commands and user-added customs.";
+      return "Workflow utilities. Cheap, fast, no deep reflection.";
+    case "Custom":
+      return "Your own commands. Each one is a prompt + an input + an output path.";
   }
 }
 
-function renderThinRow(
+function renderRow(
   parent: HTMLElement,
+  plugin: SecondBrainPlugin,
   cmd: Command,
+  expanded: boolean,
+  cb: ThinkTabCallbacks,
   onRunCommand: (commandId: string) => void
 ) {
-  const row = parent.createDiv({ cls: "second-brain-row" });
+  const wrapper = parent.createDiv({
+    cls: `second-brain-row-wrapper${expanded ? " expanded" : ""}`,
+  });
+
+  const row = wrapper.createDiv({ cls: "second-brain-row second-brain-row-clickable" });
+  row.addEventListener("click", () => cb.toggleExpanded(cmd.id));
 
   const content = row.createDiv({ cls: "second-brain-row-content" });
-  const title = content.createDiv({ cls: "second-brain-row-title" });
-  title.appendText(cmd.label);
+  const titleEl = content.createDiv({ cls: "second-brain-row-title" });
+  titleEl.createSpan({ text: `${expanded ? "▼" : "▶"} `, cls: "second-brain-row-arrow" });
+  titleEl.appendText(cmd.label);
   if (cmd.topicPromptText) {
-    title.createEl("span", {
+    titleEl.createEl("span", {
       text: " · asks for topic",
       cls: "second-brain-row-hint",
     });
@@ -118,9 +163,55 @@ function renderThinRow(
     });
   }
 
-  const btn = row.createEl("button", {
+  const runBtn = row.createEl("button", {
     text: "Run",
     cls: "second-brain-row-run",
   });
-  btn.addEventListener("click", () => onRunCommand(cmd.id));
+  runBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    onRunCommand(cmd.id);
+  });
+
+  if (expanded) {
+    const previewWrap = wrapper.createDiv({ cls: "second-brain-row-preview" });
+
+    const meta = previewWrap.createDiv({ cls: "second-brain-row-meta" });
+    const inputs = cmd.inputs.map((i) => i.kind).join(", ");
+    meta.createEl("div", {
+      text: `Input: ${inputs}`,
+      cls: "second-brain-row-meta-line",
+    });
+    meta.createEl("div", {
+      text: `Output: ${cmd.outputPath}`,
+      cls: "second-brain-row-meta-line",
+    });
+
+    previewWrap.createEl("div", {
+      text: "Prompt",
+      cls: "second-brain-row-prompt-label",
+    });
+    previewWrap.createEl("pre", {
+      text: cmd.systemPrompt,
+      cls: "second-brain-row-prompt",
+    });
+
+    const actions = previewWrap.createDiv({ cls: "second-brain-row-preview-actions" });
+    const editBtn = actions.createEl("button", {
+      text: "Edit prompt",
+      cls: "second-brain-row-edit",
+    });
+    editBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      new CommandEditModal(plugin.app, cmd, async (updated: Command) => {
+        // Upsert as a custom command override.
+        const customs = plugin.settings.customCommands;
+        const idx = customs.findIndex((c) => c.id === updated.id);
+        if (idx >= 0) customs[idx] = updated;
+        else customs.push(updated);
+        await plugin.saveSettings();
+        new Notice(`Saved ${updated.label}.`);
+        cb.onCommandSaved();
+      }).open();
+    });
+  }
 }

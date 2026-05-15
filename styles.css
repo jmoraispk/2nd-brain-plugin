@@ -231,23 +231,26 @@
   margin: 8px 0;
 }
 
-/* Think tab — sub-tabs */
+/* Think tab — sub-tabs (4 tabs: Tier S / A / B / Custom, centered) */
 .second-brain-subtabs {
   display: flex;
-  gap: 4px;
+  gap: 6px;
   margin-bottom: 4px;
+  justify-content: center;
 }
 
 .second-brain-subtab {
+  flex: 1;
+  max-width: 100px;
   background: transparent;
   border: 1px solid var(--background-modifier-border);
   color: var(--text-muted);
-  padding: 4px 14px;
+  padding: 6px 8px;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
-  min-width: 40px;
+  text-align: center;
 }
 
 .second-brain-subtab.active {
@@ -266,7 +269,18 @@
 .second-brain-row-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
+}
+
+.second-brain-row-wrapper {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary);
+  overflow: hidden;
+}
+
+.second-brain-row-wrapper.expanded {
+  border-color: var(--background-modifier-border-hover);
 }
 
 /* Think tab — thin command rows */
@@ -274,10 +288,88 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 8px;
+  padding: 6px 12px;
+}
+
+.second-brain-row-clickable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.second-brain-row-clickable:hover {
+  background: var(--background-modifier-hover);
+}
+
+.second-brain-row-arrow {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-right: 2px;
+}
+
+/* Prompt preview pane (shown when a row is expanded) */
+.second-brain-row-preview {
+  border-top: 1px solid var(--background-modifier-border);
+  padding: 12px;
+  background: var(--background-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.second-brain-row-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.second-brain-row-meta-line {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+}
+
+.second-brain-row-prompt-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.second-brain-row-prompt {
+  font-family: var(--font-monospace);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-height: 240px;
+  overflow-y: auto;
   background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 10px;
+  margin: 0;
+  color: var(--text-normal);
+}
+
+.second-brain-row-preview-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.second-brain-row-edit {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  cursor: pointer;
+}
+
+.second-brain-row-edit:hover {
+  background: var(--background-modifier-hover);
 }
 
 .second-brain-row-content {

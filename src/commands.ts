@@ -260,6 +260,37 @@ Output Markdown:
 
 Be adversarial but fair. The point is to steel-man against them so they can sharpen the belief or update it.`;
 
+// ── Tier-B workflow prompts ──────────────────────────────────────────────
+
+const SNAPSHOT_PROMPT = `You will be given today's daily log. Produce a fast 3-bullet recap. No deep synthesis. Output Markdown:
+
+# Daily snapshot — <YYYY-MM-DD>
+
+- ...
+- ...
+- ...
+
+(Exactly 3 bullets. Each one sentence, factual, no editorializing. Skip if today's log is empty.)`;
+
+const TRIAGE_PROMPT = `You will be given today's daily log. For each captured item (one per [HH:MM] timestamp), suggest a likely destination folder using the PARA hybrid layout:
+- 1. 🎯 Projects (current work with a defined end)
+- 2. 🌳 Areas (ongoing zones — health, work, family, finance)
+- 3. 📚 Resources (reference material)
+- 4. 🗄️ Archives (inactive)
+- 🤖 AI (AI-generated; not usually a destination for user captures)
+- Or "keep in Logs" if it's pure stream-of-consciousness with no destination
+
+Output Markdown:
+
+# Inbox triage — <YYYY-MM-DD>
+
+For each capture:
+## [HH:MM]
+"<verbatim or near-verbatim phrasing>"
+**Suggestion:** <folder> · <one-line reason>
+
+Rules: don't move anything (just suggest). If a capture spans multiple destinations, list them.`;
+
 // ── Tier-A synthesizer prompts ───────────────────────────────────────────
 
 const CONTEXT_PROMPT = `You are building a comprehensive context document about the user. Synthesize from their daily logs a picture of who they are RIGHT NOW: what they care about, what they're working on, what's been on their mind, what tensions or unresolved threads exist.
@@ -569,6 +600,25 @@ export const BUILT_IN_COMMANDS: Command[] = [
     inputs: [{ kind: "all-logs", label: "All daily logs" }],
     outputPath: "🤖 AI/Thinking/Leverage/{YYYY-MM-DD}.md",
     systemPrompt: LEVERAGE_PROMPT,
+  },
+  // Tier-B workflow / quick-cost commands (v0.6.2).
+  {
+    id: "think-daily-snapshot",
+    label: "Daily snapshot",
+    tier: "B",
+    description: "Cheap, fast 3-bullet recap of today's log. No deep synthesis — just a quick read.",
+    inputs: [{ kind: "today-log", label: "Today's captures" }],
+    outputPath: "🤖 AI/Thinking/Snapshots/{YYYY-MM-DD}.md",
+    systemPrompt: SNAPSHOT_PROMPT,
+  },
+  {
+    id: "think-inbox-triage",
+    label: "Inbox triage",
+    tier: "B",
+    description: "Read today's captures and suggest which PARA folder each likely belongs in.",
+    inputs: [{ kind: "today-log", label: "Today's captures" }],
+    outputPath: "🤖 AI/Thinking/Triage/{YYYY-MM-DD}.md",
+    systemPrompt: TRIAGE_PROMPT,
   },
 ];
 

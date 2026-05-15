@@ -7,17 +7,20 @@ import { testConnection } from "./llm";
 
 export type LLMProvider = "anthropic" | "openai";
 
-/** Curated model lists per provider, ordered roughly quality-first. */
+/** Curated model lists per provider, ordered roughly quality-first.
+ *  Prices as of May 2026 — flagship to cheap. */
 const OPENAI_MODELS: Array<{ id: string; label: string }> = [
-  { id: "gpt-4o", label: "gpt-4o — flagship, balanced quality/cost" },
-  { id: "gpt-4o-mini", label: "gpt-4o-mini — best value, ~10× cheaper than flagship" },
-  { id: "gpt-4-turbo", label: "gpt-4-turbo — older flagship, still solid" },
+  { id: "gpt-5.5", label: "gpt-5.5 — flagship (April 2026) · $5/$30 per 1M, 1M ctx" },
+  { id: "gpt-5.4", label: "gpt-5.4 — strong, ~50% cheaper than 5.5 · $2.50/$15 per 1M" },
+  { id: "gpt-5", label: "gpt-5 — older flagship · $1.25/$10 per 1M" },
+  { id: "gpt-5-mini", label: "gpt-5-mini — best value · $0.25/$2 per 1M" },
+  { id: "gpt-4.1-nano", label: "gpt-4.1-nano — cheapest, simple tasks · $0.10/$0.40 per 1M" },
 ];
 
 const ANTHROPIC_MODELS: Array<{ id: string; label: string }> = [
-  { id: "claude-opus-4-7", label: "claude-opus-4-7 — flagship, top quality" },
-  { id: "claude-sonnet-4-6", label: "claude-sonnet-4-6 — balanced quality/cost" },
-  { id: "claude-haiku-4-5", label: "claude-haiku-4-5 — fast & cheap" },
+  { id: "claude-opus-4-7", label: "claude-opus-4-7 — flagship (April 2026) · $5/$25 per 1M, 1M ctx" },
+  { id: "claude-sonnet-4-6", label: "claude-sonnet-4-6 — balanced default · $3/$15 per 1M, 1M ctx" },
+  { id: "claude-haiku-4-5", label: "claude-haiku-4-5 — fast & cheap · $1/$5 per 1M, 200K ctx" },
 ];
 
 export interface SecondBrainSettings {
@@ -39,7 +42,7 @@ export const DEFAULT_SETTINGS: SecondBrainSettings = {
   anthropicApiKey: "",
   anthropicModel: "claude-opus-4-7",
   openaiApiKey: "",
-  openaiModel: "gpt-4o",
+  openaiModel: "gpt-5-mini",
   logsFolder: "Logs",
   dailyLogPathTemplate: "Logs/{ISO_YEAR}/Q{Q}/W{WW}/{YYYY-MM-DD}.md",
   reviewsPathTemplate: "🤖 AI/Reviews/Daily/{YYYY-MM-DD}.md",
