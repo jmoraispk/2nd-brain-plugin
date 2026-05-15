@@ -407,6 +407,62 @@
   background: #4b5563;
 }
 
+/* Settings — collapsible sections */
+.second-brain-settings-section {
+  margin: 8px 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 0 12px;
+}
+
+.second-brain-settings-summary {
+  font-size: 16px;
+  font-weight: 600;
+  padding: 10px 0;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  color: var(--text-normal);
+}
+
+.second-brain-settings-summary::-webkit-details-marker {
+  display: none;
+}
+
+.second-brain-settings-summary::before {
+  content: "▶ ";
+  display: inline-block;
+  margin-right: 4px;
+  transition: transform 0.15s ease;
+}
+
+.second-brain-settings-section[open] > .second-brain-settings-summary::before {
+  content: "▼ ";
+}
+
+.second-brain-settings-body {
+  padding-bottom: 12px;
+}
+
+.second-brain-troubleshoot-item {
+  margin: 6px 0;
+  padding: 8px 0;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.second-brain-troubleshoot-item summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 4px 0;
+}
+
+.second-brain-troubleshoot-item > div {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 /* Review tab rendered markdown */
 .second-brain-rendered-md {
   background: var(--background-primary-alt, var(--background-primary));

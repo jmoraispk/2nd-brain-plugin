@@ -1,11 +1,9 @@
 import { App, PluginSettingTab, Setting, Notice } from "obsidian";
 import SecondBrainPlugin from "../main";
 import { Command } from "./types";
-import {
-  BUILT_IN_COMMANDS,
-  getEffectiveCommands,
-} from "./commands";
+import { BUILT_IN_COMMANDS, getEffectiveCommands } from "./commands";
 import { CommandEditModal } from "./commandEditModal";
+import { testConnection } from "./llm";
 
 export type LLMProvider = "anthropic" | "openai";
 
@@ -20,7 +18,6 @@ export interface SecondBrainSettings {
   reviewsPathTemplate: string;
   /** @deprecated as of v0.2.0 — migrated into customCommands. Kept for read-time migration only. */
   reviewPromptOverride?: string;
-  /** User-edited or user-added commands. Built-in commands sharing an id are overridden by entries here. */
   customCommands: Command[];
 }
 
@@ -47,9 +44,41 @@ export class SecondBrainSettingTab extends PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
+    containerEl.addClass("second-brain-settings");
 
-    containerEl.createEl("h3", { text: "LLM provider" });
+    this.collapsible(containerEl, "LLM provider", true, (body) =>
+      this.renderProvider(body)
+    );
+    this.collapsible(containerEl, "Paths", false, (body) =>
+      this.renderPaths(body)
+    );
+    this.collapsible(containerEl, "Commands", false, (body) =>
+      this.renderCommandsSection(body)
+    );
+    this.collapsible(containerEl, "Troubleshooting", false, (body) =>
+      this.renderTroubleshooting(body)
+    );
+  }
 
+  private collapsible(
+    parent: HTMLElement,
+    title: string,
+    openByDefault: boolean,
+    contentRenderer: (body: HTMLElement) => void
+  ) {
+    const det = parent.createEl("details", {
+      cls: "second-brain-settings-section",
+    });
+    if (openByDefault) det.setAttribute("open", "");
+    det.createEl("summary", {
+      text: title,
+      cls: "second-brain-settings-summary",
+    });
+    const body = det.createDiv({ cls: "second-brain-settings-body" });
+    contentRenderer(body);
+  }
+
+  private renderProvider(containerEl: HTMLElement) {
     new Setting(containerEl)
       .setName("Provider")
       .setDesc(
@@ -83,7 +112,9 @@ export class SecondBrainSettingTab extends PluginSettingTab {
 
       new Setting(containerEl)
         .setName("OpenAI model")
-        .setDesc("Any chat-completions model id (e.g. gpt-4o, gpt-4o-mini, gpt-4-turbo).")
+        .setDesc(
+          "Any chat-completions model id (e.g. gpt-4o, gpt-4o-mini, gpt-4-turbo)."
+        )
         .addText((text) =>
           text
             .setValue(this.plugin.settings.openaiModel)
@@ -119,8 +150,28 @@ export class SecondBrainSettingTab extends PluginSettingTab {
         );
     }
 
-    containerEl.createEl("h3", { text: "Paths" });
+    new Setting(containerEl)
+      .setName("Test connection")
+      .setDesc(
+        "Makes a 5-token call to your provider to verify key, model id, and quota. Reports the provider's actual error verbatim on failure."
+      )
+      .addButton((btn) =>
+        btn
+          .setButtonText("Test")
+          .setCta()
+          .onClick(async () => {
+            btn.setButtonText("Testing…").setDisabled(true);
+            const result = await testConnection(this.plugin.settings);
+            btn.setButtonText("Test").setDisabled(false);
+            new Notice(
+              `${result.ok ? "✅" : "❌"} ${result.message}`,
+              result.ok ? 5000 : 10000
+            );
+          })
+      );
+  }
 
+  private renderPaths(containerEl: HTMLElement) {
     new Setting(containerEl)
       .setName("Logs folder")
       .setDesc(
@@ -136,7 +187,7 @@ export class SecondBrainSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Daily log path template")
       .setDesc(
-        "Used only when today's file doesn't exist yet. Placeholders: {YYYY-MM-DD}, {ISO_YEAR}, {YYYY}, {YYYY-MM}, {MM}, {DD}, {Q}, {WW} (zero-padded ISO week), {TOMORROW}, {YESTERDAY}."
+        "Where Capture writes today's file. Placeholders: {YYYY-MM-DD}, {ISO_YEAR}, {YYYY}, {YYYY-MM}, {MM}, {DD}, {Q}, {WW}, {TOMORROW}, {YESTERDAY}."
       )
       .addText((text) =>
         text
@@ -160,14 +211,12 @@ export class SecondBrainSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           })
       );
-
-    this.renderCommandsSection(containerEl);
   }
 
   private renderCommandsSection(containerEl: HTMLElement) {
-    containerEl.createEl("h3", { text: "Commands" });
     containerEl.createEl("p", {
-      text: "Buttons in the plugin view. Edit any built-in to change its prompt or output; reset reverts it. Add your own to extend the kit (provider-agnostic — works with whichever LLM you've configured).",
+      cls: "second-brain-muted",
+      text: "Buttons in the plugin view. Edit any built-in to change its prompt or output; reset reverts it. Add your own to extend the kit (provider-agnostic).",
     });
 
     const effective = getEffectiveCommands(this.plugin.settings);
@@ -222,7 +271,7 @@ export class SecondBrainSettingTab extends PluginSettingTab {
             id: `custom-${Date.now().toString(36)}`,
             label: "New command",
             inputs: [{ kind: "today-log" }],
-            outputPath: "_AI/Notes/{YYYY-MM-DD}-custom.md",
+            outputPath: "🤖 AI/Notes/{YYYY-MM-DD}-custom.md",
             systemPrompt:
               "You will be given the input below. Summarize it faithfully in 5–10 bullets.",
           };
@@ -232,6 +281,52 @@ export class SecondBrainSettingTab extends PluginSettingTab {
           }).open();
         })
     );
+  }
+
+  private renderTroubleshooting(containerEl: HTMLElement) {
+    containerEl.createEl("p", {
+      cls: "second-brain-muted",
+      text: "Common errors and what to do. Use Test Connection in the LLM provider section first — it reports the provider's actual error verbatim.",
+    });
+
+    const items: Array<{ title: string; body: string }> = [
+      {
+        title: "insufficient_quota / 'You exceeded your current quota'",
+        body: "You're out of OpenAI credits or your account has no billing set up. Add credits at platform.openai.com/account/billing. The plugin can't help past this — it's an account-level issue.",
+      },
+      {
+        title: "invalid_api_key / 'Incorrect API key provided'",
+        body: "Your key is wrong, expired, or revoked. Generate a fresh one at platform.openai.com/api-keys (or console.anthropic.com), then paste it above. Never paste keys into chat with the AI — they end up in logs.",
+      },
+      {
+        title: "model_not_found / 'The model does not exist'",
+        body: "The model id in the Model field isn't available to your account. Try 'gpt-4o' or 'gpt-4o-mini' (OpenAI) or 'claude-opus-4-7' / 'claude-sonnet-4-6' / 'claude-haiku-4-5' (Anthropic).",
+      },
+      {
+        title: "rate_limit_exceeded",
+        body: "Too many requests too fast OR a single request too large. Tier-S Think commands (Contradict, Drift, Trace, Challenge) send every daily log in your vault — that's a lot of tokens. Wait a minute and retry, or use a smaller-input command like Today's Review.",
+      },
+      {
+        title: "Capture appears at top-level Logs/ instead of in Week folder",
+        body: "Fixed in v0.5.2. The next capture you make will rename any legacy flat file into the structured path. If you still see flat files after capturing today, check Daily log path template above — it should be 'Logs/{ISO_YEAR}/Q{Q}/W{WW}/{YYYY-MM-DD}.md'.",
+      },
+      {
+        title: "Review file not appearing",
+        body: "Check Daily review path template above. Default is '🤖 AI/Reviews/Daily/{YYYY-MM-DD}.md'. If the path includes the old '_AI/' (without the robot emoji) the plugin auto-migrates on load — restart the plugin if needed.",
+      },
+      {
+        title: "Tier-S Think command times out or returns 'No daily logs found'",
+        body: "These commands need real vault depth. With fewer than ~3 months of daily logs, the signal is thin. Either capture more first, or use the period-bounded reviews (Last Week's / Last Month's) until you have more density.",
+      },
+    ];
+
+    for (const it of items) {
+      const det = containerEl.createEl("details", {
+        cls: "second-brain-troubleshoot-item",
+      });
+      det.createEl("summary", { text: it.title });
+      det.createEl("div", { text: it.body, cls: "second-brain-muted" });
+    }
   }
 
   private async upsertCustomCommand(updated: Command) {

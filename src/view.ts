@@ -11,6 +11,8 @@ import {
   defaultReviewTabState,
   ReviewTabState,
   SelectionOption,
+  SELECTION_OPTIONS,
+  mapCommandToReviewSelection,
 } from "./reviewTab";
 import { renderThink, ThinkSubtab } from "./thinkTab";
 import { TopicInputModal } from "./topicInputModal";
@@ -60,7 +62,7 @@ export class SecondBrainView extends ItemView {
         this.plugin,
         (id) => this.handleQuickAction(id),
         (commandId, anchorOverride) =>
-          this.runCommandById(commandId, anchorOverride),
+          this.forwardPendingToReview(commandId, anchorOverride),
         () => this.render(),
         this.pendingReviewsCollapsed,
         () => {
@@ -151,6 +153,31 @@ export class SecondBrainView extends ItemView {
       return;
     }
     await this.runCommandById("todays-review");
+  }
+
+  /**
+   * Dashboard banner → Review tab. Switches mode, pre-fills the picker, then
+   * auto-triggers the run so the AI summary renders inline ready for the
+   * user's textbox.
+   */
+  private async forwardPendingToReview(
+    commandId: string,
+    anchorOverride?: string
+  ) {
+    const sel = mapCommandToReviewSelection(commandId, anchorOverride);
+    if (!sel) {
+      // Not a review command (shouldn't happen for banner) — fall back.
+      return this.runCommandById(commandId, anchorOverride);
+    }
+    this.reviewState = {
+      ...defaultReviewTabState(),
+      selectionId: sel.selectionId,
+      specificDate: sel.specificDate,
+    };
+    this.mode = "review";
+    await this.render();
+    const opt = SELECTION_OPTIONS.find((o) => o.id === sel.selectionId);
+    if (opt) await this.runReviewSelection(opt, anchorOverride);
   }
 
   private async runCommandById(

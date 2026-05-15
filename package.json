@@ -1,6 +1,6 @@
 {
   "name": "obsidian-second-brain",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "Second Brain plugin for Obsidian — capture + daily review with Claude",
   "main": "main.js",
   "scripts": {

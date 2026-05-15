@@ -274,3 +274,42 @@ export async function appendUserReview(
 
 export { SELECTION_OPTIONS };
 export type { SelectionOption };
+
+/**
+ * Map a built-in command id (+ optional anchor) back to a Review-tab
+ * selectionId. Used by the Dashboard's Pending-reviews banner to forward a
+ * Run click into the Review tab pre-configured, so the user sees the AI
+ * summary inline and can write their reflection below.
+ */
+export function mapCommandToReviewSelection(
+  commandId: string,
+  anchorOverride?: string
+): { selectionId: string; specificDate?: string } | null {
+  switch (commandId) {
+    case "todays-review": {
+      if (!anchorOverride) return { selectionId: "today" };
+      const y = new Date();
+      y.setDate(y.getDate() - 1);
+      const yStr = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(
+        2,
+        "0"
+      )}-${String(y.getDate()).padStart(2, "0")}`;
+      if (anchorOverride === yStr) return { selectionId: "yesterday" };
+      return { selectionId: "specific", specificDate: anchorOverride };
+    }
+    case "plan-tomorrow":
+      return { selectionId: "plan" };
+    case "weeks-review":
+      return { selectionId: "this-week" };
+    case "review-last-week":
+      return { selectionId: "last-week" };
+    case "review-last-month":
+      return { selectionId: "last-month" };
+    case "review-last-quarter":
+      return { selectionId: "last-quarter" };
+    case "review-last-year":
+      return { selectionId: "last-year" };
+    default:
+      return null;
+  }
+}
