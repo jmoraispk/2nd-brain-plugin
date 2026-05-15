@@ -20,7 +20,11 @@ export type CommandInputKind =
   | "last-year-logs"
   | "month-logs"
   | "quarter-logs"
-  | "all-logs";
+  | "all-logs"
+  | "anchor-week-logs"
+  | "anchor-month-logs"
+  | "anchor-quarter-logs"
+  | "anchor-year-logs";
 
 export interface CommandInput {
   kind: CommandInputKind;

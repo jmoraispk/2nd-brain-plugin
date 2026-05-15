@@ -515,6 +515,37 @@ export const BUILT_IN_COMMANDS: Command[] = [
     outputPath: "🤖 AI/Reviews/Yearly/{YYYY}.md",
     systemPrompt: YEARLY_REVIEW_PROMPT,
   },
+  // Anchor-driven reviews (v0.6.3) — used by the Review tab's two-selector
+  // picker when the user chooses Specific + a date. The output path resolves
+  // against the anchor (so a specific-week review lands at the correct W{WW}).
+  {
+    id: "review-anchor-week",
+    label: "Specific Week Review",
+    inputs: [{ kind: "anchor-week-logs", label: "Specified week's daily logs" }],
+    outputPath: "🤖 AI/Reviews/Weekly/{ISO_YEAR}-W{WW}.md",
+    systemPrompt: WEEKLY_REVIEW_PROMPT,
+  },
+  {
+    id: "review-anchor-month",
+    label: "Specific Month Review",
+    inputs: [{ kind: "anchor-month-logs", label: "Specified month's daily logs" }],
+    outputPath: "🤖 AI/Reviews/Monthly/{YYYY-MM}.md",
+    systemPrompt: MONTHLY_REVIEW_PROMPT,
+  },
+  {
+    id: "review-anchor-quarter",
+    label: "Specific Quarter Review",
+    inputs: [{ kind: "anchor-quarter-logs", label: "Specified quarter's daily logs" }],
+    outputPath: "🤖 AI/Reviews/Quarterly/{YYYY}-Q{Q}.md",
+    systemPrompt: QUARTERLY_REVIEW_PROMPT,
+  },
+  {
+    id: "review-anchor-year",
+    label: "Specific Year Review",
+    inputs: [{ kind: "anchor-year-logs", label: "Specified year's daily logs" }],
+    outputPath: "🤖 AI/Reviews/Yearly/{YYYY}.md",
+    systemPrompt: YEARLY_REVIEW_PROMPT,
+  },
   // Tier-S thinking commands (v0.5.1) — vault-scanning tools of thought.
   {
     id: "think-contradict",

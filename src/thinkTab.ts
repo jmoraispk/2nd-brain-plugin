@@ -146,6 +146,9 @@ function renderRow(
   const row = wrapper.createDiv({ cls: "second-brain-row second-brain-row-clickable" });
   row.addEventListener("click", () => cb.toggleExpanded(cmd.id));
 
+  const isBuiltin = BUILT_IN_COMMANDS.some((b) => b.id === cmd.id);
+  const hasOverride = plugin.settings.customCommands.some((c) => c.id === cmd.id);
+
   const content = row.createDiv({ cls: "second-brain-row-content" });
   const titleEl = content.createDiv({ cls: "second-brain-row-title" });
   titleEl.createSpan({ text: `${expanded ? "▼" : "▶"} `, cls: "second-brain-row-arrow" });
@@ -154,6 +157,12 @@ function renderRow(
     titleEl.createEl("span", {
       text: " · asks for topic",
       cls: "second-brain-row-hint",
+    });
+  }
+  if (isBuiltin && hasOverride) {
+    titleEl.createEl("span", {
+      text: " ✏ edited",
+      cls: "second-brain-row-badge",
     });
   }
   if (cmd.description) {
@@ -195,15 +204,23 @@ function renderRow(
       cls: "second-brain-row-prompt",
     });
 
+    if (isBuiltin) {
+      previewWrap.createEl("div", {
+        cls: "second-brain-row-meta-line",
+        text: hasOverride
+          ? "ⓘ You're working with your edited copy. Reset to revert to the shipped default."
+          : "ⓘ Editing creates a custom copy. The built-in default stays untouched and is updated by plugin releases.",
+      });
+    }
+
     const actions = previewWrap.createDiv({ cls: "second-brain-row-preview-actions" });
     const editBtn = actions.createEl("button", {
-      text: "Edit prompt",
+      text: hasOverride ? "Edit my copy" : "Edit (creates a copy)",
       cls: "second-brain-row-edit",
     });
     editBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       new CommandEditModal(plugin.app, cmd, async (updated: Command) => {
-        // Upsert as a custom command override.
         const customs = plugin.settings.customCommands;
         const idx = customs.findIndex((c) => c.id === updated.id);
         if (idx >= 0) customs[idx] = updated;
@@ -213,5 +230,21 @@ function renderRow(
         cb.onCommandSaved();
       }).open();
     });
+
+    if (isBuiltin && hasOverride) {
+      const resetBtn = actions.createEl("button", {
+        text: "Reset to default",
+        cls: "second-brain-row-edit",
+      });
+      resetBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        plugin.settings.customCommands = plugin.settings.customCommands.filter(
+          (c) => c.id !== cmd.id
+        );
+        await plugin.saveSettings();
+        new Notice(`Reset ${cmd.label} to the shipped default.`);
+        cb.onCommandSaved();
+      });
+    }
   }
 }

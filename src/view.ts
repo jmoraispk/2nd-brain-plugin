@@ -10,9 +10,8 @@ import {
   appendUserReview,
   defaultReviewTabState,
   ReviewTabState,
-  SelectionOption,
-  SELECTION_OPTIONS,
-  mapCommandToReviewSelection,
+  resolveSelection,
+  mapCommandToReviewState,
 } from "./reviewTab";
 import {
   renderThink,
@@ -85,8 +84,12 @@ export class SecondBrainView extends ItemView {
             Object.assign(this.reviewState, changes);
             this.render();
           },
-          runSelection: (option, anchor) =>
-            this.runReviewSelection(option, anchor),
+          // No-render fast path: textarea writes flow here so focus stays put.
+          setUserReview: (text) => {
+            this.reviewState.userReview = text;
+          },
+          runSelection: (commandId, anchor) =>
+            this.runReviewSelectionById(commandId, anchor),
           finish: () => this.finishReview(),
         },
         this
@@ -170,28 +173,22 @@ export class SecondBrainView extends ItemView {
   }
 
   /**
-   * Dashboard banner → Review tab. Switches mode, pre-fills the picker, then
-   * auto-triggers the run so the AI summary renders inline ready for the
-   * user's textbox.
+   * Dashboard banner → Review tab. Switches mode, pre-fills the timeframe +
+   * period picker, then auto-triggers the run so the AI summary renders
+   * inline ready for the user's textbox.
    */
   private async forwardPendingToReview(
     commandId: string,
     anchorOverride?: string
   ) {
-    const sel = mapCommandToReviewSelection(commandId, anchorOverride);
-    if (!sel) {
-      // Not a review command (shouldn't happen for banner) — fall back.
+    const partial = mapCommandToReviewState(commandId, anchorOverride);
+    if (!partial) {
       return this.runCommandById(commandId, anchorOverride);
     }
-    this.reviewState = {
-      ...defaultReviewTabState(),
-      selectionId: sel.selectionId,
-      specificDate: sel.specificDate,
-    };
+    this.reviewState = { ...defaultReviewTabState(), ...partial };
     this.mode = "review";
     await this.render();
-    const opt = SELECTION_OPTIONS.find((o) => o.id === sel.selectionId);
-    if (opt) await this.runReviewSelection(opt, anchorOverride);
+    await this.runReviewSelectionById(commandId, anchorOverride);
   }
 
   private async runCommandById(
@@ -219,22 +216,28 @@ export class SecondBrainView extends ItemView {
   }
 
   /**
-   * Run a Review-tab selection and store the resulting file content in
-   * `reviewState` so the markdown can be rendered inline (and the user can
-   * write their own reflection below).
+   * Run a Review-tab selection by command id (the two-dropdown picker
+   * resolves to a commandId + optional anchorOverride). Stores the result
+   * file/content in reviewState so the inline markdown renders.
    */
-  private async runReviewSelection(
-    option: SelectionOption,
+  private async runReviewSelectionById(
+    commandId: string,
     anchorOverride?: string
   ): Promise<void> {
     const cmd =
       getEffectiveCommands(this.plugin.settings).find(
-        (c) => c.id === option.commandId
-      ) ?? getBuiltInCommand(option.commandId);
+        (c) => c.id === commandId
+      ) ?? getBuiltInCommand(commandId);
     if (!cmd) {
-      new Notice(`Command not found: ${option.commandId}`);
+      new Notice(`Command not found: ${commandId}`);
       return;
     }
+    const progress = new Notice(`${cmd.label} running…`, 0);
+    let dots = 0;
+    const interval = window.setInterval(() => {
+      dots = (dots + 1) % 4;
+      progress.setMessage(`${cmd.label} running${".".repeat(dots)}`);
+    }, 500);
     try {
       const file = await runCommand(
         this.app,
@@ -243,8 +246,6 @@ export class SecondBrainView extends ItemView {
         anchorOverride
       );
       const content = await this.app.vault.read(file);
-      // Strip an existing "## My review" section from inline display so we
-      // don't double-render the user's prior reflection above the textarea.
       const display = content.replace(/\n## My review\b[\s\S]*$/m, "").trimEnd();
       this.reviewState.resultFile = file;
       this.reviewState.resultContent = display;
@@ -254,6 +255,9 @@ export class SecondBrainView extends ItemView {
     } catch (err) {
       new Notice(`${cmd.label} failed: ${(err as Error).message}`);
       console.error(err);
+    } finally {
+      window.clearInterval(interval);
+      progress.hide();
     }
   }
 

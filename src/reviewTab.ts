@@ -8,51 +8,12 @@ import {
 } from "obsidian";
 import SecondBrainPlugin from "../main";
 
-/**
- * One entry in the period/anchor dropdown. Each maps to a built-in command
- * id, optionally with an anchor offset (today + offsetDays) or a special
- * "specific day" mode that reveals a date picker.
- */
-interface SelectionOption {
-  id: string;
-  label: string;
-  commandId: string;
-  anchorOffsetDays?: number;
-  needsSpecificDate?: boolean;
-}
-
-const SELECTION_OPTIONS: SelectionOption[] = [
-  { id: "today", label: "Today's review", commandId: "todays-review" },
-  {
-    id: "yesterday",
-    label: "Yesterday's review",
-    commandId: "todays-review",
-    anchorOffsetDays: -1,
-  },
-  {
-    id: "specific",
-    label: "Review a specific day…",
-    commandId: "todays-review",
-    needsSpecificDate: true,
-  },
-  { id: "plan", label: "Plan tomorrow", commandId: "plan-tomorrow" },
-  { id: "this-week", label: "This week's review", commandId: "weeks-review" },
-  { id: "last-week", label: "Last week's review", commandId: "review-last-week" },
-  {
-    id: "last-month",
-    label: "Last month's review",
-    commandId: "review-last-month",
-  },
-  {
-    id: "last-quarter",
-    label: "Last quarter's review",
-    commandId: "review-last-quarter",
-  },
-  { id: "last-year", label: "Last year's review", commandId: "review-last-year" },
-];
+export type Timeframe = "day" | "week" | "month" | "quarter" | "year";
+export type PeriodMode = "current" | "last" | "specific" | "plan";
 
 export interface ReviewTabState {
-  selectionId: string;
+  timeframe: Timeframe;
+  period: PeriodMode;
   specificDate?: string;
   resultFile?: TFile;
   resultContent?: string;
@@ -60,12 +21,105 @@ export interface ReviewTabState {
 }
 
 export function defaultReviewTabState(): ReviewTabState {
-  return { selectionId: "today", userReview: "" };
+  return {
+    timeframe: "day",
+    period: "current",
+    userReview: "",
+  };
+}
+
+/** Period modes available for each timeframe. */
+const PERIOD_MODES: Record<Timeframe, PeriodMode[]> = {
+  day: ["current", "last", "specific", "plan"],
+  week: ["current", "last", "specific"],
+  month: ["last", "specific"],
+  quarter: ["last", "specific"],
+  year: ["last", "specific"],
+};
+
+function periodModeLabel(timeframe: Timeframe, mode: PeriodMode): string {
+  if (mode === "specific") return "Specific date…";
+  if (mode === "plan") return "Plan tomorrow";
+  if (mode === "current") {
+    return timeframe === "day" ? "Today" : "This week";
+  }
+  if (mode === "last") {
+    return timeframe === "day"
+      ? "Yesterday"
+      : timeframe === "week"
+      ? "Last week"
+      : timeframe === "month"
+      ? "Last month"
+      : timeframe === "quarter"
+      ? "Last quarter"
+      : "Last year";
+  }
+  return mode;
+}
+
+/**
+ * Translate (timeframe, period, specificDate) into the built-in command id
+ * + optional anchor override that runs it. Returns null for invalid combos.
+ */
+export function resolveSelection(
+  state: Pick<ReviewTabState, "timeframe" | "period" | "specificDate">
+): { commandId: string; anchorOverride?: string } | null {
+  const { timeframe, period, specificDate } = state;
+  const todayISO = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  })();
+  const yesterdayISO = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  })();
+
+  if (timeframe === "day") {
+    if (period === "current") return { commandId: "todays-review" };
+    if (period === "last")
+      return { commandId: "todays-review", anchorOverride: yesterdayISO };
+    if (period === "plan") return { commandId: "plan-tomorrow" };
+    if (period === "specific" && specificDate)
+      return { commandId: "todays-review", anchorOverride: specificDate };
+    return null;
+  }
+  if (timeframe === "week") {
+    if (period === "current") return { commandId: "weeks-review" };
+    if (period === "last") return { commandId: "review-last-week" };
+    if (period === "specific" && specificDate)
+      return { commandId: "review-anchor-week", anchorOverride: specificDate };
+    return null;
+  }
+  if (timeframe === "month") {
+    if (period === "last") return { commandId: "review-last-month" };
+    if (period === "specific" && specificDate)
+      return { commandId: "review-anchor-month", anchorOverride: specificDate };
+    return null;
+  }
+  if (timeframe === "quarter") {
+    if (period === "last") return { commandId: "review-last-quarter" };
+    if (period === "specific" && specificDate)
+      return {
+        commandId: "review-anchor-quarter",
+        anchorOverride: specificDate,
+      };
+    return null;
+  }
+  if (timeframe === "year") {
+    if (period === "last") return { commandId: "review-last-year" };
+    if (period === "specific" && specificDate)
+      return { commandId: "review-anchor-year", anchorOverride: specificDate };
+    return null;
+  }
+  return null;
 }
 
 export interface ReviewTabCallbacks {
   setState: (changes: Partial<ReviewTabState>) => void;
-  runSelection: (option: SelectionOption, anchorOverride?: string) => Promise<void>;
+  /** Updates state.userReview WITHOUT triggering a re-render — preserves focus on typing. */
+  setUserReview: (text: string) => void;
+  runSelection: (commandId: string, anchorOverride?: string) => Promise<void>;
   finish: () => Promise<void>;
 }
 
@@ -93,21 +147,58 @@ function renderPicker(
   const sec = body.createDiv({ cls: "second-brain-section" });
   sec.createEl("h3", { text: "What to review" });
 
-  const select = sec.createEl("select", { cls: "second-brain-select" });
-  for (const opt of SELECTION_OPTIONS) {
-    const o = select.createEl("option", { text: opt.label });
-    o.value = opt.id;
-    if (opt.id === state.selectionId) o.selected = true;
+  // Timeframe dropdown.
+  const tfRow = sec.createDiv({ cls: "second-brain-picker-row" });
+  tfRow.createEl("label", {
+    text: "Timeframe",
+    cls: "second-brain-picker-label",
+  });
+  const tfSelect = tfRow.createEl("select", { cls: "second-brain-select" });
+  for (const tf of ["day", "week", "month", "quarter", "year"] as Timeframe[]) {
+    const o = tfSelect.createEl("option", { text: tf[0].toUpperCase() + tf.slice(1) });
+    o.value = tf;
+    if (tf === state.timeframe) o.selected = true;
   }
-  select.addEventListener("change", () => {
-    cb.setState({ selectionId: select.value, resultFile: undefined, resultContent: undefined, userReview: "" });
+  tfSelect.addEventListener("change", () => {
+    const next = tfSelect.value as Timeframe;
+    const validModes = PERIOD_MODES[next];
+    const nextPeriod = validModes.includes(state.period)
+      ? state.period
+      : validModes[0];
+    cb.setState({
+      timeframe: next,
+      period: nextPeriod,
+      resultFile: undefined,
+      resultContent: undefined,
+      userReview: "",
+    });
   });
 
-  const current = SELECTION_OPTIONS.find((o) => o.id === state.selectionId)!;
+  // Period dropdown — varies by timeframe.
+  const pRow = sec.createDiv({ cls: "second-brain-picker-row" });
+  pRow.createEl("label", {
+    text: "Period",
+    cls: "second-brain-picker-label",
+  });
+  const pSelect = pRow.createEl("select", { cls: "second-brain-select" });
+  for (const mode of PERIOD_MODES[state.timeframe]) {
+    const o = pSelect.createEl("option", {
+      text: periodModeLabel(state.timeframe, mode),
+    });
+    o.value = mode;
+    if (mode === state.period) o.selected = true;
+  }
+  pSelect.addEventListener("change", () => {
+    cb.setState({
+      period: pSelect.value as PeriodMode,
+      resultFile: undefined,
+      resultContent: undefined,
+      userReview: "",
+    });
+  });
 
-  // Date picker for "specific day"
-  let pickedDate: string | undefined = state.specificDate;
-  if (current.needsSpecificDate) {
+  // Date picker — visible only for "specific".
+  if (state.period === "specific") {
     const dateInput = sec.createEl("input", {
       type: "date",
       cls: "second-brain-date-input",
@@ -117,9 +208,8 @@ function renderPicker(
     } else {
       const y = new Date();
       y.setDate(y.getDate() - 1);
-      const v = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, "0")}-${String(y.getDate()).padStart(2, "0")}`;
-      dateInput.value = v;
-      pickedDate = v;
+      dateInput.value = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, "0")}-${String(y.getDate()).padStart(2, "0")}`;
+      cb.setState({ specificDate: dateInput.value });
     }
     dateInput.addEventListener("change", () => {
       cb.setState({ specificDate: dateInput.value });
@@ -131,19 +221,12 @@ function renderPicker(
     cls: "second-brain-button second-brain-button-primary",
   });
   runBtn.addEventListener("click", async () => {
-    let anchor: string | undefined;
-    if (current.needsSpecificDate) {
-      anchor = pickedDate ?? state.specificDate;
-      if (!anchor) {
-        new Notice("Pick a date first.");
-        return;
-      }
-    } else if (current.anchorOffsetDays !== undefined) {
-      const d = new Date();
-      d.setDate(d.getDate() + current.anchorOffsetDays);
-      anchor = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const resolved = resolveSelection(state);
+    if (!resolved) {
+      new Notice("Pick a date for 'Specific' first.");
+      return;
     }
-    await cb.runSelection(current, anchor);
+    await cb.runSelection(resolved.commandId, resolved.anchorOverride);
   });
 }
 
@@ -158,7 +241,6 @@ function renderInlineResult(
   sec.createEl("h3", { text: "AI summary" });
 
   const md = sec.createDiv({ cls: "second-brain-rendered-md" });
-  // Cast to keep types happy across MarkdownRenderer API variants.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const renderer = (MarkdownRenderer as any).render
     ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -180,13 +262,12 @@ function renderInlineResult(
     text: "Read the summary above and write your own reflection. Click Finish to append it to the review file under '## My review'.",
   });
   const ta = reviewSec.createEl("textarea", {
-    cls: "second-brain-modal-textarea",
-    attr: { placeholder: "Your reflection on this period…" },
+    cls: "second-brain-review-textarea",
+    attr: { placeholder: "Your reflection on this period…", rows: "6" },
   });
   ta.value = state.userReview;
-  ta.addEventListener("input", () => {
-    cb.setState({ userReview: ta.value });
-  });
+  // No-render write to avoid focus loss on every keystroke (Enter included).
+  ta.addEventListener("input", () => cb.setUserReview(ta.value));
 
   const finishBtn = reviewSec.createEl("button", {
     text: "Finish & save",
@@ -250,8 +331,7 @@ function filesIn(
 
 /**
  * Append the user's review to the same file as the AI summary, under a
- * "## My review" heading. If a previous "My review" section exists, replace
- * it. Returns the file path so the caller can open it.
+ * "## My review" heading. If a previous "My review" section exists, replace it.
  */
 export async function appendUserReview(
   app: App,
@@ -272,43 +352,41 @@ export async function appendUserReview(
   await app.vault.modify(file, next);
 }
 
-export { SELECTION_OPTIONS };
-export type { SelectionOption };
-
 /**
- * Map a built-in command id (+ optional anchor) back to a Review-tab
- * selectionId. Used by the Dashboard's Pending-reviews banner to forward a
- * Run click into the Review tab pre-configured, so the user sees the AI
- * summary inline and can write their reflection below.
+ * Map a built-in command id + optional anchor → Review-tab state, so the
+ * Dashboard's pending-reviews banner can forward into the Review tab
+ * pre-configured.
  */
-export function mapCommandToReviewSelection(
+export function mapCommandToReviewState(
   commandId: string,
   anchorOverride?: string
-): { selectionId: string; specificDate?: string } | null {
+): Partial<ReviewTabState> | null {
+  const yISO = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  })();
   switch (commandId) {
-    case "todays-review": {
-      if (!anchorOverride) return { selectionId: "today" };
-      const y = new Date();
-      y.setDate(y.getDate() - 1);
-      const yStr = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(
-        2,
-        "0"
-      )}-${String(y.getDate()).padStart(2, "0")}`;
-      if (anchorOverride === yStr) return { selectionId: "yesterday" };
-      return { selectionId: "specific", specificDate: anchorOverride };
-    }
+    case "todays-review":
+      if (!anchorOverride) return { timeframe: "day", period: "current" };
+      if (anchorOverride === yISO) return { timeframe: "day", period: "last" };
+      return {
+        timeframe: "day",
+        period: "specific",
+        specificDate: anchorOverride,
+      };
     case "plan-tomorrow":
-      return { selectionId: "plan" };
+      return { timeframe: "day", period: "plan" };
     case "weeks-review":
-      return { selectionId: "this-week" };
+      return { timeframe: "week", period: "current" };
     case "review-last-week":
-      return { selectionId: "last-week" };
+      return { timeframe: "week", period: "last" };
     case "review-last-month":
-      return { selectionId: "last-month" };
+      return { timeframe: "month", period: "last" };
     case "review-last-quarter":
-      return { selectionId: "last-quarter" };
+      return { timeframe: "quarter", period: "last" };
     case "review-last-year":
-      return { selectionId: "last-year" };
+      return { timeframe: "year", period: "last" };
     default:
       return null;
   }

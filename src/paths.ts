@@ -79,6 +79,52 @@ export function thisMonthDatesThroughToday(): string[] {
   return datesInRange(first, today);
 }
 
+/** Full ISO week (Mon–Sun) containing the anchor date. */
+export function anchorWeekDates(anchor: string): string[] {
+  const d = new Date(anchor + "T00:00:00");
+  const dayNr = (d.getDay() + 6) % 7;
+  const mon = new Date(d.valueOf());
+  mon.setDate(mon.getDate() - dayNr);
+  return Array.from({ length: 7 }, (_, i) => {
+    const dd = new Date(mon.valueOf());
+    dd.setDate(dd.getDate() + i);
+    return toISO(dd);
+  });
+}
+
+/** Full calendar month containing the anchor date. */
+export function anchorMonthDates(anchor: string): string[] {
+  const d = new Date(anchor + "T00:00:00");
+  const first = new Date(d.getFullYear(), d.getMonth(), 1);
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  return datesInRangeUtil(first, last);
+}
+
+/** Full calendar quarter containing the anchor date. */
+export function anchorQuarterDates(anchor: string): string[] {
+  const d = new Date(anchor + "T00:00:00");
+  const qStartMonth = Math.floor(d.getMonth() / 3) * 3;
+  const first = new Date(d.getFullYear(), qStartMonth, 1);
+  const last = new Date(d.getFullYear(), qStartMonth + 3, 0);
+  return datesInRangeUtil(first, last);
+}
+
+/** Full calendar year containing the anchor date. */
+export function anchorYearDates(anchor: string): string[] {
+  const y = new Date(anchor + "T00:00:00").getFullYear();
+  return datesInRangeUtil(new Date(y, 0, 1), new Date(y, 11, 31));
+}
+
+function datesInRangeUtil(from: Date, to: Date): string[] {
+  const out: string[] = [];
+  const d = new Date(from.valueOf());
+  while (d <= to) {
+    out.push(toISO(d));
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
+}
+
 /** Calendar days of the CURRENT quarter through today. */
 export function thisQuarterDatesThroughToday(): string[] {
   const today = new Date();
@@ -121,6 +167,13 @@ export function anchorForInputKind(kind: string): string {
       return lastQuarterDates()[0];
     case "last-year-logs":
       return lastYearDates()[0];
+    case "anchor-week-logs":
+    case "anchor-month-logs":
+    case "anchor-quarter-logs":
+    case "anchor-year-logs":
+      // No anchor override → default to today. The runner is expected to pass
+      // an anchorOverride explicitly when invoking these (Review tab does).
+      return toISO(today);
     default:
       return toISO(today);
   }

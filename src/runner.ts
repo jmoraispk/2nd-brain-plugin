@@ -14,6 +14,10 @@ import {
   lastYearDates,
   thisMonthDatesThroughToday,
   thisQuarterDatesThroughToday,
+  anchorWeekDates,
+  anchorMonthDates,
+  anchorQuarterDates,
+  anchorYearDates,
   anchorForInputKind,
 } from "./paths";
 import { TFolder } from "obsidian";
@@ -94,6 +98,10 @@ async function readInput(
     "month-logs": "This month's daily logs (through today)",
     "quarter-logs": "This quarter's daily logs (through today)",
     "all-logs": "All daily logs in the vault",
+    "anchor-week-logs": "Daily logs for the specified week (Mon–Sun)",
+    "anchor-month-logs": "Daily logs for the specified month",
+    "anchor-quarter-logs": "Daily logs for the specified quarter",
+    "anchor-year-logs": "Daily logs for the specified year",
   };
   const label = input.label ?? labelDefaults[input.kind];
 
@@ -123,6 +131,18 @@ async function readInput(
       break;
     case "all-logs":
       multiDayDates = await collectAllDailyDates(app, settings);
+      break;
+    case "anchor-week-logs":
+      multiDayDates = anchorWeekDates(anchor);
+      break;
+    case "anchor-month-logs":
+      multiDayDates = anchorMonthDates(anchor);
+      break;
+    case "anchor-quarter-logs":
+      multiDayDates = anchorQuarterDates(anchor);
+      break;
+    case "anchor-year-logs":
+      multiDayDates = anchorYearDates(anchor);
       break;
   }
 

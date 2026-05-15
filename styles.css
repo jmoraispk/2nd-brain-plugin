@@ -228,7 +228,42 @@
   border: 1px solid var(--background-modifier-border);
   background: var(--background-primary);
   color: var(--text-normal);
-  margin: 8px 0;
+  margin: 4px 0;
+}
+
+.second-brain-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0;
+}
+
+.second-brain-picker-label {
+  flex-shrink: 0;
+  min-width: 80px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.second-brain-picker-row .second-brain-select {
+  margin: 0;
+  flex: 1;
+}
+
+/* Review textarea — kept moderate so it doesn't dominate the screen on phone. */
+.second-brain-review-textarea {
+  width: 100%;
+  min-height: 140px;
+  max-height: 30vh;
+  font-size: 16px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  resize: vertical;
+  font-family: var(--font-text);
 }
 
 /* Think tab — sub-tabs (4 tabs: Tier S / A / B / Custom, centered) */
@@ -555,15 +590,28 @@
   line-height: 1.5;
 }
 
-/* Review tab rendered markdown */
+/* Review tab rendered markdown — narrower + ~30% shorter than before */
 .second-brain-rendered-md {
   background: var(--background-primary-alt, var(--background-primary));
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
-  padding: 12px 16px;
+  padding: 10px 14px;
   margin-top: 8px;
-  max-height: 50vh;
+  margin-left: 4px;
+  margin-right: 4px;
+  max-height: 35vh;
   overflow-y: auto;
+}
+
+.second-brain-row-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 4px;
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
 }
 
 .second-brain-rendered-md h1,
