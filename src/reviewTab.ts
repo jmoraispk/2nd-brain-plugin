@@ -233,7 +233,7 @@ function renderPicker(
     if (targetPath && cb.fileExists(targetPath)) {
       const warn = sec.createDiv({ cls: "second-brain-warning" });
       warn.setText(
-        "⚠ A review already exists for this period. Running again OVERWRITES the AI summary (your own reflection in Reviews/ is APPENDED to, never overwritten)."
+        "⚠ Review already exists. Rerunning overwrites the AI summary and appends to your reflection."
       );
     }
   }
@@ -373,9 +373,9 @@ function collectMarkdownFilesRecursively(folder: TFolder, out: TFile[]) {
  */
 export function userReviewPathFor(aiPath: string): string {
   const m = aiPath.match(/^🤖 AI\/Reviews\/(.+)$/);
-  if (m) return `Reviews/${m[1]}`;
-  // Fallback for any non-conforming AI path: keep filename, prefix Reviews/
-  return `Reviews/${aiPath.split("/").pop()}`;
+  if (m) return `0. 🧑 Me/Reviews/${m[1]}`;
+  // Fallback for any non-conforming AI path: keep filename, prefix Me/Reviews/
+  return `0. 🧑 Me/Reviews/${aiPath.split("/").pop()}`;
 }
 
 /**

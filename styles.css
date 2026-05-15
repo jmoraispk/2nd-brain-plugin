@@ -394,12 +394,49 @@
   flex-wrap: wrap;
 }
 
-/* Anchor the Capture modal near the top of the screen so the on-screen
-   keyboard on mobile doesn't cover it. */
+/* Capture modal: anchored near the top so the on-screen keyboard doesn't
+   cover it, with a slightly tighter corner radius and inline title row
+   (X next to "Capture" instead of stacked above). */
 .modal.second-brain-capture-modal {
-  margin-top: 24px;
+  margin-top: 48px;
   margin-bottom: auto;
   align-self: flex-start;
+  border-radius: 6px;
+}
+
+/* Hide Obsidian's standalone close button — we render our own inline. */
+.modal.second-brain-capture-modal .modal-close-button {
+  display: none !important;
+}
+
+.second-brain-capture-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.second-brain-capture-title {
+  margin: 0;
+  font-size: 18px;
+}
+
+.second-brain-capture-close {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+  color: var(--text-muted);
+  box-shadow: none;
+}
+
+.second-brain-capture-close:hover {
+  color: var(--text-normal);
+  background: transparent;
+  box-shadow: none;
 }
 
 /* Warning banner shown above Run Review when the target file already exists. */

@@ -43,8 +43,8 @@ export const DEFAULT_SETTINGS: SecondBrainSettings = {
   anthropicModel: "claude-opus-4-7",
   openaiApiKey: "",
   openaiModel: "gpt-5-mini",
-  logsFolder: "Logs",
-  dailyLogPathTemplate: "Logs/{ISO_YEAR}/Q{Q}/W{WW}/{YYYY-MM-DD}.md",
+  logsFolder: "0. 🧑 Me/Logs",
+  dailyLogPathTemplate: "0. 🧑 Me/Logs/{ISO_YEAR}/Q{Q}/W{WW}/{YYYY-MM-DD}.md",
   reviewsPathTemplate: "🤖 AI/Reviews/Daily/{ISO_YEAR}/Q{Q}/W{WW}/{YYYY-MM-DD}.md",
   customCommands: [],
 };

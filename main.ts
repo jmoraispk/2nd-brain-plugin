@@ -78,6 +78,21 @@ export default class SecondBrainPlugin extends Plugin {
       this.settings.reviewsPathTemplate = NESTED_REVIEWS;
       changed = true;
     }
+
+    // v0.6.6: human stream (Logs + Reviews) grouped under `0. 🧑 Me/`.
+    // Migrate any plugin paths that still point at top-level `Logs/`.
+    const OLD_LOGS_PREFIX = "Logs/";
+    const NEW_LOGS_PREFIX = "0. 🧑 Me/Logs/";
+    if (this.settings.logsFolder === "Logs") {
+      this.settings.logsFolder = "0. 🧑 Me/Logs";
+      changed = true;
+    }
+    if (this.settings.dailyLogPathTemplate.startsWith(OLD_LOGS_PREFIX)) {
+      this.settings.dailyLogPathTemplate =
+        NEW_LOGS_PREFIX +
+        this.settings.dailyLogPathTemplate.slice(OLD_LOGS_PREFIX.length);
+      changed = true;
+    }
     if (Array.isArray(this.settings.customCommands)) {
       for (const c of this.settings.customCommands) {
         if (typeof c.outputPath === "string" && c.outputPath.startsWith("_AI/")) {

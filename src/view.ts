@@ -396,7 +396,20 @@ class CaptureModal extends Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h2", { text: "Capture" });
+
+    // Title + close button on the same row. Hide Obsidian's default
+    // standalone close button (handled via CSS).
+    const header = contentEl.createDiv({ cls: "second-brain-capture-header" });
+    header.createEl("h2", {
+      text: "Capture",
+      cls: "second-brain-capture-title",
+    });
+    const closeBtn = header.createEl("button", {
+      text: "✕",
+      cls: "second-brain-capture-close",
+      attr: { title: "Close" },
+    });
+    closeBtn.addEventListener("click", () => this.close());
 
     this.textarea = contentEl.createEl("textarea", {
       cls: "second-brain-modal-textarea",
