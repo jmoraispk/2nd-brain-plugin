@@ -119,6 +119,7 @@ This means the plugin adapts to whatever folder structure already exists (`Logs/
 - v0.6.6 ✅ 🧑 Me/ vault zone (initial cut with `0. ` prefix); capture modal redesign; review warning trimmed
 - v0.6.7 ✅ Me/ folder simplified to `🧑 Me/`; capture modal empty band removed; corner radius softened
 - v0.7.0 ✅ **Qs tab** with Kepano's 40 yearly + 40 decade questions, deterministic weekly/monthly rotation, append-only per-question files at `🧑 Me/Reviews/Qs-Year/<NN>-<slug>.md` and `Qs-Decade/<NN>-<slug>.md`, auto-updating index files with the full status table (🆕 / 🟡 / 🟢 / 🔴), weekly + monthly review prompts include the current question
+- v0.7.1 ✅ Capture modal X aligned with title on desktop (CSS selector fix — class was on a different element than the selector assumed)
 - v0.8.0 — **Tracking + heat maps.** Tracker tags in daily logs, heatmap-plugin integration, reviews aggregate metrics, missed-day reminders.
 - v0.9.0 — Project context command (tap project → AI synthesizes state → `🤖 AI/Project-Context/`)
 - v0.10.0 — **Lightweight TODOs.** Surface unchecked `- [ ]` tasks across project files; propagation from previous days/weeks; postpone / modify; per-project visibility. No new TODO-management UI — the markdown checkbox is the data model.

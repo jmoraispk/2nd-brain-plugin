@@ -396,8 +396,10 @@
 
 /* Capture modal: anchored near the top so the on-screen keyboard doesn't
    cover it, with rounded corners and an inline title row (X next to
-   "Capture" instead of stacked above). */
-.modal.second-brain-capture-modal {
+   "Capture" instead of stacked above). Bare class selector for the same
+   reason as below — the class may land on .modal or .modal-container
+   depending on Obsidian version / platform. */
+.second-brain-capture-modal {
   margin-top: 48px;
   margin-bottom: auto;
   align-self: flex-start;
@@ -405,15 +407,18 @@
 }
 
 /* Hide Obsidian's default close button AND the empty modal-header above
-   our content — the header was leaving a big empty band at the top. */
-.modal.second-brain-capture-modal .modal-close-button,
-.modal.second-brain-capture-modal .modal-header {
+   our content — the header was leaving a big empty band at the top.
+   Note: bare class selector (no `.modal.` prefix) so it matches whether
+   Obsidian puts the class on `.modal` or `.modal-container` — desktop
+   and mobile differ. */
+.second-brain-capture-modal .modal-close-button,
+.second-brain-capture-modal .modal-header {
   display: none !important;
 }
 
 /* Tighten the content-area top padding so the title sits close to the
    top of the box. */
-.modal.second-brain-capture-modal .modal-content {
+.second-brain-capture-modal .modal-content {
   padding-top: 14px;
 }
 
