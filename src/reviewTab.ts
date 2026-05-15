@@ -373,9 +373,9 @@ function collectMarkdownFilesRecursively(folder: TFolder, out: TFile[]) {
  */
 export function userReviewPathFor(aiPath: string): string {
   const m = aiPath.match(/^🤖 AI\/Reviews\/(.+)$/);
-  if (m) return `0. 🧑 Me/Reviews/${m[1]}`;
+  if (m) return `🧑 Me/Reviews/${m[1]}`;
   // Fallback for any non-conforming AI path: keep filename, prefix Me/Reviews/
-  return `0. 🧑 Me/Reviews/${aiPath.split("/").pop()}`;
+  return `🧑 Me/Reviews/${aiPath.split("/").pop()}`;
 }
 
 /**

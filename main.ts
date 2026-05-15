@@ -79,19 +79,27 @@ export default class SecondBrainPlugin extends Plugin {
       changed = true;
     }
 
-    // v0.6.6: human stream (Logs + Reviews) grouped under `0. 🧑 Me/`.
-    // Migrate any plugin paths that still point at top-level `Logs/`.
-    const OLD_LOGS_PREFIX = "Logs/";
-    const NEW_LOGS_PREFIX = "0. 🧑 Me/Logs/";
-    if (this.settings.logsFolder === "Logs") {
-      this.settings.logsFolder = "0. 🧑 Me/Logs";
-      changed = true;
-    }
-    if (this.settings.dailyLogPathTemplate.startsWith(OLD_LOGS_PREFIX)) {
-      this.settings.dailyLogPathTemplate =
-        NEW_LOGS_PREFIX +
-        this.settings.dailyLogPathTemplate.slice(OLD_LOGS_PREFIX.length);
-      changed = true;
+    // v0.6.6 / v0.6.7: human stream (Logs + Reviews) grouped under `🧑 Me/`.
+    // (v0.6.6 used `0. 🧑 Me/`; v0.6.7 dropped the `0. ` prefix.) Migrate any
+    // plugin paths that still point at the older locations.
+    const ME_NEW = "🧑 Me/Logs";
+    const candidates: Array<{ from: string; to: string }> = [
+      { from: "Logs", to: ME_NEW },
+      { from: "0. 🧑 Me/Logs", to: ME_NEW },
+    ];
+    for (const c of candidates) {
+      if (this.settings.logsFolder === c.from) {
+        this.settings.logsFolder = c.to;
+        changed = true;
+      }
+      const prefixOld = `${c.from}/`;
+      const prefixNew = `${c.to}/`;
+      if (this.settings.dailyLogPathTemplate.startsWith(prefixOld)) {
+        this.settings.dailyLogPathTemplate =
+          prefixNew +
+          this.settings.dailyLogPathTemplate.slice(prefixOld.length);
+        changed = true;
+      }
     }
     if (Array.isArray(this.settings.customCommands)) {
       for (const c of this.settings.customCommands) {

@@ -116,7 +116,8 @@ This means the plugin adapts to whatever folder structure already exists (`Logs/
 - v0.6.3 ✅ Review picker restructured to two dropdowns; "Specific" support for week/month/quarter/year; textarea-focus bug fixed; sizing tweaks; edited-built-in clarity
 - v0.6.4 ✅ User reviews separated into their own file at `Reviews/Daily/{ISO_YEAR}/Q{Q}/W{WW}/<anchor>.md`; daily AI reviews nested under year/Q/W; prompt clarifies anchor vs today; Plan-scaffold dropped; Edit/info inline
 - v0.6.5 ✅ Edit/Copy split in Think tab; user reviews APPEND with dated sections; "already reviewed" warning above Run; capture modal anchored to top on mobile; pending-reviews recursive check
-- v0.6.6 ✅ 🧑 Me/ vault zone introduced (`0. 🧑 Me/Logs/` + `0. 🧑 Me/Reviews/`) — auto-migrated; capture modal: title + ✕ inline, ~48px top margin, tighter corner radius; review warning trimmed to a single line
+- v0.6.6 ✅ 🧑 Me/ vault zone (initial cut with `0. ` prefix); capture modal redesign; review warning trimmed
+- v0.6.7 ✅ Me/ folder simplified to `🧑 Me/` (no `0. ` prefix) — migrated; capture modal: empty header band removed (was leaving a huge blank above the title), corner radius bumped 6 → 10px
 - v0.7.0 — **Questions tab.** Kepano's 40 yearly + 40 decade questions. Qs tab with sub-tabs (This week's Q / This month's Q / Browse). Weekly review prompts include one yearly Q, monthly reviews include one decade Q. User answers preserved per question per year. (Promoted from v0.7→ shipped first ahead of tracking per user feedback.)
 - v0.8.0 — **Tracking + heat maps.** Tracker tags in daily logs, heatmap-plugin integration, reviews aggregate metrics, missed-day reminders.
 - v0.9.0 — Project context command (tap project → AI synthesizes state → `🤖 AI/Project-Context/`)
