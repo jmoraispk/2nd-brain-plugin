@@ -493,6 +493,7 @@ export const BUILT_IN_COMMANDS: Command[] = [
     inputs: [{ kind: "this-week-logs", label: "This week's daily logs" }],
     outputPath: "🤖 AI/Reviews/Weekly/{ISO_YEAR}-W{WW}.md",
     systemPrompt: WEEKLY_REVIEW_PROMPT,
+    kepanoQuestion: "year",
   },
   {
     id: "review-last-week",
@@ -500,6 +501,7 @@ export const BUILT_IN_COMMANDS: Command[] = [
     inputs: [{ kind: "last-week-logs", label: "Last week's daily logs" }],
     outputPath: "🤖 AI/Reviews/Weekly/{ISO_YEAR}-W{WW}.md",
     systemPrompt: WEEKLY_REVIEW_PROMPT,
+    kepanoQuestion: "year",
   },
   {
     id: "review-last-month",
@@ -507,6 +509,7 @@ export const BUILT_IN_COMMANDS: Command[] = [
     inputs: [{ kind: "last-month-logs", label: "Last month's daily logs" }],
     outputPath: "🤖 AI/Reviews/Monthly/{YYYY-MM}.md",
     systemPrompt: MONTHLY_REVIEW_PROMPT,
+    kepanoQuestion: "decade",
   },
   {
     id: "review-last-quarter",
@@ -531,6 +534,7 @@ export const BUILT_IN_COMMANDS: Command[] = [
     inputs: [{ kind: "anchor-week-logs", label: "Specified week's daily logs" }],
     outputPath: "🤖 AI/Reviews/Weekly/{ISO_YEAR}-W{WW}.md",
     systemPrompt: WEEKLY_REVIEW_PROMPT,
+    kepanoQuestion: "year",
   },
   {
     id: "review-anchor-month",
@@ -538,6 +542,7 @@ export const BUILT_IN_COMMANDS: Command[] = [
     inputs: [{ kind: "anchor-month-logs", label: "Specified month's daily logs" }],
     outputPath: "🤖 AI/Reviews/Monthly/{YYYY-MM}.md",
     systemPrompt: MONTHLY_REVIEW_PROMPT,
+    kepanoQuestion: "decade",
   },
   {
     id: "review-anchor-quarter",

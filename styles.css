@@ -459,6 +459,18 @@
   margin: 8px 0;
 }
 
+.second-brain-qs-question {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text-normal);
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin: 4px 0 8px 0;
+}
+
 .second-brain-row-preview-actions {
   display: flex;
   gap: 8px;

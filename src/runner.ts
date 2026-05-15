@@ -21,6 +21,7 @@ import {
   anchorForInputKind,
 } from "./paths";
 import { TFolder } from "obsidian";
+import { questionOfWeek, questionOfMonth } from "./questions";
 
 interface InputContent {
   label: string;
@@ -56,6 +57,21 @@ export async function runCommand(
   ];
   if (topicInput && topicInput.trim()) {
     userMsgParts.push("", `## Topic / focus\n\n${topicInput.trim()}`);
+  }
+  // Kepano reflection question for weekly + monthly reviews.
+  if (command.kepanoQuestion) {
+    const q =
+      command.kepanoQuestion === "year"
+        ? questionOfWeek()
+        : questionOfMonth();
+    const label =
+      command.kepanoQuestion === "year"
+        ? "This week's Kepano yearly question (for reflection)"
+        : "This month's Kepano decade question (for reflection)";
+    userMsgParts.push(
+      "",
+      `## ${label}\n\nQ${q.n} — ${q.question}\n\nWeave this question into the synthesis where the captures touch on it. If they don't, briefly note the question at the end as a prompt the user can consider.`
+    );
   }
   userMsgParts.push(
     "",

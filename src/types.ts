@@ -59,4 +59,11 @@ export interface Command {
    * belief / idea / project). Use this as the question shown in the modal.
    */
   topicPromptText?: string;
+  /**
+   * If set, the runner inserts the current period's Kepano question into the
+   * user message before the inputs. "year" pulls this week's yearly question;
+   * "decade" pulls this month's decade question. Used by weekly + monthly
+   * review commands to thread the Kepano reflection into the synthesis.
+   */
+  kepanoQuestion?: "year" | "decade";
 }

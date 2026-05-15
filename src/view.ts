@@ -24,17 +24,24 @@ import {
   ThinkTabState,
   defaultThinkTabState,
 } from "./thinkTab";
+import {
+  renderQs,
+  QsTabState,
+  defaultQsTabState,
+  QsKind,
+} from "./qsTab";
 import { TopicInputModal } from "./topicInputModal";
 
 export const VIEW_TYPE_SECOND_BRAIN = "second-brain-view";
 
-type ViewMode = "dashboard" | "review" | "think";
+type ViewMode = "dashboard" | "review" | "qs" | "think";
 
 export class SecondBrainView extends ItemView {
   plugin: SecondBrainPlugin;
   mode: ViewMode = "dashboard";
   reviewState: ReviewTabState = defaultReviewTabState();
   thinkState: ThinkTabState = defaultThinkTabState();
+  qsState: QsTabState = defaultQsTabState();
   pendingReviewsCollapsed: boolean = true;
 
   constructor(leaf: WorkspaceLeaf, plugin: SecondBrainPlugin) {
@@ -79,6 +86,19 @@ export class SecondBrainView extends ItemView {
           this.render();
         }
       );
+    } else if (this.mode === "qs") {
+      await renderQs(container, this.plugin, this.qsState, {
+        setKind: (k: QsKind) => {
+          this.qsState.kind = k;
+          this.qsState.draftAnswer = "";
+          this.render();
+        },
+        // No-render write so the textarea keeps focus while typing.
+        setDraftAnswer: (text: string) => {
+          this.qsState.draftAnswer = text;
+        },
+        onAnswerSaved: () => this.render(),
+      });
     } else if (this.mode === "review") {
       renderReview(
         container,
@@ -152,6 +172,7 @@ export class SecondBrainView extends ItemView {
     for (const tab of [
       { mode: "dashboard" as ViewMode, label: "Dashboard" },
       { mode: "review" as ViewMode, label: "Review" },
+      { mode: "qs" as ViewMode, label: "Qs" },
       { mode: "think" as ViewMode, label: "Think" },
     ]) {
       const el = tabs.createEl("button", {
