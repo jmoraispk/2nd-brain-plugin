@@ -6,7 +6,6 @@ import {
   resolveDailyLogPath,
   applyDatePlaceholders,
   todayISO,
-  yesterdayISO,
   thisWeekDatesThroughAnchor,
   lastWeekDates,
   lastMonthDates,
@@ -22,20 +21,36 @@ import {
 } from "./paths";
 import { TFolder } from "obsidian";
 import { questionOfWeek, questionOfMonth } from "./questions";
+import {
+  InputFingerprint,
+  ReviewMetadata,
+  buildFrontmatter,
+  describeDrift,
+  metadataMatches,
+  parseReviewMetadata,
+  sha1Hex,
+} from "./reviewMeta";
 
 interface InputContent {
   label: string;
   sourcePath: string;
   content: string;
+  /** Per-file fingerprints. For multi-file inputs, one entry per file read. */
+  files: InputFingerprint[];
 }
+
+export type RunResult =
+  | { kind: "fresh"; file: TFile; drift?: string[] }
+  | { kind: "cache-hit"; file: TFile };
 
 export async function runCommand(
   app: App,
   settings: SecondBrainSettings,
   command: Command,
+  pluginVersion: string,
   anchorOverride?: string,
   topicInput?: string
-): Promise<TFile> {
+): Promise<RunResult> {
   const today = todayISO();
   // Output path anchors on the first input's canonical date so e.g. a
   // "last-week-logs" command writes to last week's Weekly file, not this week's.
@@ -51,6 +66,36 @@ export async function runCommand(
   for (const spec of command.inputs) {
     inputs.push(await readInput(app, settings, spec, anchor));
   }
+
+  const outputPath = resolveOutputPath(command.outputPath, settings, anchor);
+
+  // Cache check: if the target file already exists with matching fingerprint,
+  // skip the LLM call entirely.
+  const inputFingerprints = inputs.flatMap((i) => i.files);
+  const currentFingerprint = {
+    sbVersion: pluginVersion,
+    command: command.id,
+    provider: settings.provider,
+    model:
+      settings.provider === "anthropic"
+        ? settings.anthropicModel
+        : settings.openaiModel,
+    inputs: inputFingerprints,
+  };
+
+  const existing = app.vault.getAbstractFileByPath(outputPath);
+  let driftReasons: string[] | undefined;
+  if (existing instanceof TFile) {
+    const existingContent = await app.vault.read(existing);
+    const existingMeta = parseReviewMetadata(existingContent);
+    if (existingMeta && metadataMatches(existingMeta, currentFingerprint)) {
+      return { kind: "cache-hit", file: existing };
+    }
+    if (existingMeta) {
+      driftReasons = describeDrift(existingMeta, currentFingerprint);
+    }
+  }
+
   const userMsgParts = [
     `Today's date: ${today}`,
     `Period anchor: ${anchor}`,
@@ -81,17 +126,22 @@ export async function runCommand(
   );
   const userMsg = userMsgParts.join("\n\n");
 
-  const result = await callLLM(settings, command.systemPrompt, userMsg);
+  const body = await callLLM(settings, command.systemPrompt, userMsg);
 
-  const outputPath = resolveOutputPath(command.outputPath, settings, anchor);
+  const meta: ReviewMetadata = {
+    ...currentFingerprint,
+    generatedAt: new Date().toISOString(),
+  };
+  const result = buildFrontmatter(meta) + "\n\n" + body;
+
   await ensureFolderExists(app, outputPath);
 
-  const existing = app.vault.getAbstractFileByPath(outputPath);
   if (existing instanceof TFile) {
     await app.vault.modify(existing, result);
-    return existing;
+    return { kind: "fresh", file: existing, drift: driftReasons };
   } else {
-    return await app.vault.create(outputPath, result);
+    const file = await app.vault.create(outputPath, result);
+    return { kind: "fresh", file };
   }
 }
 
@@ -165,6 +215,7 @@ async function readInput(
   if (multiDayDates) {
     const sections: string[] = [];
     const paths: string[] = [];
+    const files: InputFingerprint[] = [];
     for (const date of multiDayDates) {
       const p = await resolveDailyLogPath(app, settings, date);
       const f = app.vault.getAbstractFileByPath(p);
@@ -173,6 +224,11 @@ async function readInput(
         if (c.trim()) {
           sections.push(`### ${date}\n\n${c}`);
           paths.push(p);
+          files.push({
+            path: p,
+            size: new TextEncoder().encode(c).length,
+            sha1: await sha1Hex(c),
+          });
         }
       }
     }
@@ -183,6 +239,7 @@ async function readInput(
       label,
       sourcePath: `${paths.length} daily file(s)`,
       content: sections.join("\n\n---\n\n"),
+      files,
     };
   }
 
@@ -229,7 +286,18 @@ async function readInput(
     throw new Error(`Input is empty: ${path}`);
   }
 
-  return { label, sourcePath: path, content };
+  return {
+    label,
+    sourcePath: path,
+    content,
+    files: [
+      {
+        path,
+        size: new TextEncoder().encode(content).length,
+        sha1: await sha1Hex(content),
+      },
+    ],
+  };
 }
 
 function resolveOutputPath(

@@ -1,8 +1,9 @@
 import { ItemView, WorkspaceLeaf, Notice, Modal, App, TFile } from "obsidian";
 import SecondBrainPlugin from "../main";
 import { appendCapture } from "./capture";
-import { runCommand } from "./runner";
+import { runCommand, RunResult } from "./runner";
 import { getEffectiveCommands, getBuiltInCommand } from "./commands";
+import { stripSBFrontmatter } from "./reviewMeta";
 import {
   anchorForInputKind as anchorForInputKindLocal,
   applyDatePlaceholders as applyDatePlaceholdersLocal,
@@ -286,19 +287,22 @@ export class SecondBrainView extends ItemView {
       progress.setMessage(`${cmd.label} running${".".repeat(dots)}`);
     }, 500);
     try {
-      const file = await runCommand(
+      const result = await runCommand(
         this.app,
         this.plugin.settings,
         cmd,
+        this.plugin.manifest.version,
         anchorOverride
       );
-      const content = await this.app.vault.read(file);
-      const display = content.replace(/\n## My review\b[\s\S]*$/m, "").trimEnd();
-      this.reviewState.resultFile = file;
+      const content = await this.app.vault.read(result.file);
+      const display = stripSBFrontmatter(content)
+        .replace(/\n## My review\b[\s\S]*$/m, "")
+        .trimEnd();
+      this.reviewState.resultFile = result.file;
       this.reviewState.resultContent = display;
       this.reviewState.userReview = "";
       await this.render();
-      new Notice(`${cmd.label}: wrote ${file.path}`);
+      this.notifyRunResult(cmd.label, result);
     } catch (err) {
       new Notice(`${cmd.label} failed: ${(err as Error).message}`);
       console.error(err);
@@ -359,6 +363,33 @@ export class SecondBrainView extends ItemView {
     return new Date().toISOString().slice(0, 10);
   }
 
+  /**
+   * Shape the user-facing Notice based on whether the runner short-circuited
+   * (cache-hit: inputs + model unchanged since last run) or actually called the
+   * LLM. Drift reasons (when re-running an existing file) are shown so the
+   * user understands *why* the cache missed.
+   */
+  private notifyRunResult(label: string, result: RunResult) {
+    if (result.kind === "cache-hit") {
+      new Notice(
+        `${label}: ✅ inputs unchanged since last run — opened existing review`,
+        5000
+      );
+      return;
+    }
+    if (result.drift && result.drift.length > 0) {
+      const reason = result.drift.slice(0, 3).join(", ");
+      const more =
+        result.drift.length > 3 ? ` (+${result.drift.length - 3} more)` : "";
+      new Notice(
+        `${label}: 🔄 regenerated — ${reason}${more}`,
+        7000
+      );
+      return;
+    }
+    new Notice(`${label}: wrote ${result.file.path}`);
+  }
+
   async runCommandHandler(
     btn: HTMLButtonElement,
     command: Command,
@@ -380,15 +411,16 @@ export class SecondBrainView extends ItemView {
     }, 500);
 
     try {
-      const file = await runCommand(
+      const result = await runCommand(
         this.app,
         this.plugin.settings,
         command,
+        this.plugin.manifest.version,
         anchorOverride,
         topicInput
       );
-      new Notice(`${command.label}: wrote ${file.path}`);
-      await this.app.workspace.getLeaf(false).openFile(file);
+      this.notifyRunResult(command.label, result);
+      await this.app.workspace.getLeaf(false).openFile(result.file);
     } catch (err) {
       new Notice(`${command.label} failed: ${(err as Error).message}`);
       console.error(err);
