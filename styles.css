@@ -977,12 +977,6 @@
 
 /* ── v0.8.3: error log UI ─────────────────────────────────────────── */
 
-.second-brain-iconbtn-alert {
-  background: var(--text-error, #e08080);
-  color: var(--background-primary);
-  font-weight: 600;
-}
-
 .second-brain-logs-list {
   margin: 12px 0;
   max-height: 50vh;

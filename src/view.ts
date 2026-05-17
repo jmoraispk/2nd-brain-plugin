@@ -27,7 +27,6 @@ import {
 } from "./thinkTab";
 import { renderGoals, GoalsTabState, defaultGoalsTabState } from "./goalsTab";
 import { TopicInputModal } from "./topicInputModal";
-import { LogsModal } from "./errorLog";
 import { todayISO } from "./paths";
 
 export const VIEW_TYPE_SECOND_BRAIN = "second-brain-view";
@@ -207,19 +206,6 @@ export class SecondBrainView extends ItemView {
     });
     refreshBtn.addEventListener("click", () => this.render());
 
-    // 🐛 button surfaces the in-plugin error log so users can copy the
-    // actual error message when something fails (instead of seeing a
-    // disappearing Notice). Badge shows count when > 0.
-    const logCount = this.plugin.errorLog.count();
-    const logsBtn = right.createEl("button", {
-      text: logCount > 0 ? `🐛 ${logCount}` : "🐛",
-      cls: `second-brain-iconbtn${logCount > 0 ? " second-brain-iconbtn-alert" : ""}`,
-      attr: { title: "View error log" },
-    });
-    logsBtn.addEventListener("click", () =>
-      new LogsModal(this.app, this.plugin.errorLog).open()
-    );
-
     const settingsBtn = right.createEl("button", {
       text: "⚙",
       cls: "second-brain-iconbtn",
@@ -344,7 +330,7 @@ export class SecondBrainView extends ItemView {
     } catch (err) {
       this.plugin.errorLog.push(`run:${cmd.id}`, err);
       new Notice(
-        `${cmd.label} failed: ${(err as Error).message}\nOpen 🐛 in the topbar for details.`,
+        `${cmd.label} failed: ${(err as Error).message}\nSee Settings → Logs for details.`,
         8000
       );
     } finally {
@@ -390,7 +376,7 @@ export class SecondBrainView extends ItemView {
     } catch (err) {
       this.plugin.errorLog.push("finishReview", err);
       new Notice(
-        `Finish failed: ${(err as Error).message}\nOpen 🐛 in the topbar for details.`,
+        `Finish failed: ${(err as Error).message}\nSee Settings → Logs for details.`,
         8000
       );
     }
@@ -468,7 +454,7 @@ export class SecondBrainView extends ItemView {
     } catch (err) {
       this.plugin.errorLog.push(`run:${command.id}`, err);
       new Notice(
-        `${command.label} failed: ${(err as Error).message}\nOpen 🐛 in the topbar for details.`,
+        `${command.label} failed: ${(err as Error).message}\nSee Settings → Logs for details.`,
         8000
       );
     } finally {
@@ -571,7 +557,7 @@ class CaptureModal extends Modal {
     } catch (err) {
       this.plugin.errorLog.push("capture", err);
       new Notice(
-        `Capture failed: ${(err as Error).message}\nOpen 🐛 in the topbar for details.`,
+        `Capture failed: ${(err as Error).message}\nSee Settings → Logs for details.`,
         8000
       );
     }

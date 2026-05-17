@@ -4,6 +4,7 @@ import { Command } from "./types";
 import { BUILT_IN_COMMANDS, getEffectiveCommands } from "./commands";
 import { CommandEditModal } from "./commandEditModal";
 import { testConnection } from "./llm";
+import { LogsModal } from "./errorLog";
 
 export type LLMProvider = "anthropic" | "openai";
 
@@ -74,6 +75,33 @@ export class SecondBrainSettingTab extends PluginSettingTab {
     this.collapsible(containerEl, "Troubleshooting", false, (body) =>
       this.renderTroubleshooting(body)
     );
+    this.collapsible(containerEl, "Logs", false, (body) =>
+      this.renderLogs(body)
+    );
+  }
+
+  /**
+   * Logs section — rarely needed. Lives at the bottom of Settings rather than
+   * occupying a topbar slot. Surfaces the in-memory error log (cleared on
+   * plugin reload) via a single button that opens the LogsModal.
+   */
+  private renderLogs(containerEl: HTMLElement) {
+    const count = this.plugin.errorLog.count();
+    containerEl.createEl("p", {
+      cls: "second-brain-muted",
+      text:
+        count === 0
+          ? "No errors logged this session. Errors that happen during command runs (review failed, capture failed, etc.) accumulate here so you can copy the actual message if you need to report a bug."
+          : `${count} error${count === 1 ? "" : "s"} logged this session.`,
+    });
+    new Setting(containerEl)
+      .setName("View error log")
+      .setDesc("Opens a modal with the recent errors, expandable stacks, and Copy / Clear actions.")
+      .addButton((btn) =>
+        btn
+          .setButtonText(count > 0 ? `Open (${count})` : "Open")
+          .onClick(() => new LogsModal(this.app, this.plugin.errorLog).open())
+      );
   }
 
   private collapsible(
