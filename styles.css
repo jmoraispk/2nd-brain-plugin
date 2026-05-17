@@ -1053,3 +1053,80 @@
   text-align: right;
   font-weight: 600;
 }
+
+/* ── v0.8.7: Stats period toggle + week-grid (Loop Habit-inspired) ───── */
+
+.second-brain-stats-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.second-brain-stats-title {
+  margin: 0;
+  flex: 1;
+}
+
+.second-brain-stats-header .second-brain-select {
+  margin: 0;
+  width: auto;
+  min-width: 90px;
+}
+
+.second-brain-stats-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.second-brain-stats-period-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  min-width: 90px;
+  text-align: center;
+}
+
+.second-brain-stats-today-badge {
+  display: inline-block;
+  padding: 6px 12px;
+  background: var(--background-secondary);
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 4px 0 8px;
+}
+
+.second-brain-week-grid-wrap {
+  margin: 14px 0;
+}
+
+.second-brain-week-grid-title {
+  margin-bottom: 4px;
+  flex: none;
+  width: auto;
+}
+
+.second-brain-week-grid {
+  display: grid;
+  grid-template-columns: 36px repeat(12, 1fr);
+  gap: 2px;
+  align-items: center;
+}
+
+.second-brain-week-dow-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: right;
+  padding-right: 4px;
+}
+
+.second-brain-week-cell-empty {
+  aspect-ratio: 1;
+}
+
+.second-brain-habit-cell-future {
+  background: transparent;
+  border: 1px dashed var(--background-modifier-border);
+  opacity: 0.4;
+}

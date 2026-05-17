@@ -98,6 +98,15 @@ export class SecondBrainView extends ItemView {
         },
         onChanged: () => this.render(),
         runCommand: (id) => this.runCommandById(id),
+        setStatsPeriod: (p) => {
+          this.lifeState.statsPeriod = p;
+          this.lifeState.statsOffset = 0;
+          this.render();
+        },
+        setStatsOffset: (n) => {
+          this.lifeState.statsOffset = Math.max(0, n);
+          this.render();
+        },
       });
     } else if (this.mode === "review") {
       renderReview(

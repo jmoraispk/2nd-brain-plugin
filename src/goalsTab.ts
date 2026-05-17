@@ -18,19 +18,26 @@ import { ProjectCreateModal } from "./projectCreateModal";
 import { applyDatePlaceholders, todayISO, toISO } from "./paths";
 
 export type GoalsSubtab = "habits" | "projects" | "areas" | "stats";
+export type StatsPeriod = "week" | "month";
 
 export interface GoalsTabState {
   subtab: GoalsSubtab;
+  /** Stats sub-tab — period granularity. Year deferred to v0.8.8+. */
+  statsPeriod: StatsPeriod;
+  /** Stats sub-tab — how many periods back from now (0 = current). */
+  statsOffset: number;
 }
 
 export function defaultGoalsTabState(): GoalsTabState {
-  return { subtab: "habits" };
+  return { subtab: "habits", statsPeriod: "month", statsOffset: 0 };
 }
 
 export interface GoalsTabCallbacks {
   setSubtab: (t: GoalsSubtab) => void;
   onChanged: () => void;
   runCommand: (commandId: string) => void;
+  setStatsPeriod: (p: StatsPeriod) => void;
+  setStatsOffset: (n: number) => void;
 }
 
 export async function renderGoals(
@@ -73,7 +80,7 @@ export async function renderGoals(
   } else {
     // "stats" (default fallback) — shows heatmap + streak per habit.
     const habits = await loadHabits(plugin.app);
-    await renderStats(body, plugin, habits);
+    await renderStats(body, plugin, habits, state, cb);
   }
 }
 
@@ -359,15 +366,55 @@ function arcPath(
   return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`;
 }
 
-// ── Stats: native 30-day heatmap per habit ──────────────────────────────
+// ── Stats: period-driven heatmap per habit ──────────────────────────────
 
 async function renderStats(
   body: HTMLElement,
   plugin: SecondBrainPlugin,
-  habits: Habit[]
+  habits: Habit[],
+  state: GoalsTabState,
+  cb: GoalsTabCallbacks
 ) {
   const sec = body.createDiv({ cls: "second-brain-section" });
-  sec.createEl("h3", { text: "Stats — last 30 days" });
+
+  // Header row: title, period selector, back/forward arrows.
+  const headerRow = sec.createDiv({ cls: "second-brain-stats-header" });
+  headerRow.createEl("h3", { text: "Stats", cls: "second-brain-stats-title" });
+
+  const select = headerRow.createEl("select", { cls: "second-brain-select" });
+  for (const p of ["week", "month"] as StatsPeriod[]) {
+    const opt = select.createEl("option", { text: p[0].toUpperCase() + p.slice(1) });
+    opt.value = p;
+    if (p === state.statsPeriod) opt.selected = true;
+  }
+  select.addEventListener("change", () => {
+    cb.setStatsPeriod(select.value as StatsPeriod);
+  });
+
+  const nav = headerRow.createDiv({ cls: "second-brain-stats-nav" });
+  const back = nav.createEl("button", {
+    text: "◀",
+    cls: "second-brain-iconbtn",
+    attr: { title: `Previous ${state.statsPeriod}` },
+  });
+  back.addEventListener("click", () => cb.setStatsOffset(state.statsOffset + 1));
+
+  const periodLabelEl = nav.createEl("span", {
+    cls: "second-brain-stats-period-label",
+    text: periodLabel(state.statsPeriod, state.statsOffset),
+  });
+  void periodLabelEl;
+
+  const fwd = nav.createEl("button", {
+    text: "▶",
+    cls: "second-brain-iconbtn",
+    attr: { title: `Next ${state.statsPeriod}` },
+  });
+  if (state.statsOffset <= 0) {
+    fwd.setAttribute("disabled", "true");
+  } else {
+    fwd.addEventListener("click", () => cb.setStatsOffset(state.statsOffset - 1));
+  }
 
   const active = habits.filter((h) => h.status === "active");
   if (active.length === 0) {
@@ -378,29 +425,67 @@ async function renderStats(
     return;
   }
 
-  const today = todayISO();
+  // Today's progress badge (Loop Habit-inspired emoji counter) — counts habits
+  // with pass status in today's review.
+  if (state.statsOffset === 0) {
+    const todayStatus = await readTodayHabitStatus(
+      plugin.app,
+      plugin.settings.reviewsPathTemplate
+    );
+    let passed = 0;
+    for (const h of active) {
+      if (todayStatus.get(h.id) === "pass") passed++;
+    }
+    sec.createEl("div", {
+      cls: "second-brain-stats-today-badge",
+      text: `🎯 ${passed}/${active.length} habits today`,
+      attr: { title: "Habits with explicit pass status in today's review" },
+    });
+  }
+
+  if (state.statsPeriod === "week") {
+    await renderStatsWeek(sec, plugin, active, state.statsOffset);
+  } else {
+    await renderStatsMonth(sec, plugin, active, state.statsOffset);
+  }
+
+  sec.createEl("p", {
+    cls: "second-brain-muted",
+    text: "Want yearly heatmaps inside any markdown note? Embed the data files at 🤖 AI/Habit-Data/<id>.md with the Heatmap Calendar plugin.",
+  });
+}
+
+/**
+ * Month view (default) — N-day linear strip ending at the period's last day.
+ * Offset 0 = ending today; offset 1 = ending 30 days ago; etc.
+ */
+async function renderStatsMonth(
+  sec: HTMLElement,
+  plugin: SecondBrainPlugin,
+  active: Habit[],
+  offset: number
+) {
   const days = 30;
+  const endIso = (() => {
+    const d = new Date(todayISO() + "T00:00:00");
+    d.setDate(d.getDate() - offset * days);
+    return toISO(d);
+  })();
   for (const h of active) {
-    const cells = await collectHabitStrip(plugin, h.id, today, days);
-    const streak = await computeStreak(plugin, h.id, today, 365);
+    const cells = await collectHabitStrip(plugin, h.id, endIso, days);
+    const streak = await computeStreak(plugin, h.id, todayISO(), 365);
     const row = sec.createDiv({ cls: "second-brain-habit-strip-row" });
     row.createEl("div", { text: h.name, cls: "second-brain-habit-strip-label" });
     const grid = row.createDiv({ cls: "second-brain-habit-strip" });
     for (const cell of cells) {
-      const sq = grid.createDiv({
+      grid.createDiv({
         cls: `second-brain-habit-cell ${cellClass(cell.status)}`,
-        attr: {
-          title: `${cell.date} — ${cell.status}${
-            cell.evidence ? `: ${cell.evidence}` : ""
-          }`,
-        },
+        attr: { title: `${cell.date} — ${cell.status}` },
       });
-      sq.setText("");
     }
-    // Streak badge — current run of pass/uncertain days. 0 renders as muted "—".
-    const badge = row.createEl("div", {
+    row.createEl("div", {
       cls: "second-brain-habit-streak-badge",
-      text: streak.current === 0 ? "—" : `🔥 ${streak.current}`,
+      text: offset === 0 && streak.current > 0 ? `🔥 ${streak.current}` : "",
       attr: {
         title:
           streak.current === 0
@@ -408,13 +493,92 @@ async function renderStats(
             : `Current streak: ${streak.current} day${streak.current === 1 ? "" : "s"}`,
       },
     });
-    void badge;
   }
+}
 
-  sec.createEl("p", {
-    cls: "second-brain-muted",
-    text: "Want yearly heatmaps inside any markdown note? Embed the data files at 🤖 AI/Habit-Data/<id>.md with the Heatmap Calendar plugin.",
-  });
+/**
+ * Week view — Loop Habit-style calendar grid. Rows are days of the week
+ * (Sun → Sat), columns are weeks. 12 weeks per offset window. Each habit
+ * gets its own grid. Patterns ("I never run on Mondays") jump out visually.
+ */
+async function renderStatsWeek(
+  sec: HTMLElement,
+  plugin: SecondBrainPlugin,
+  active: Habit[],
+  offset: number
+) {
+  const weeksPerWindow = 12;
+  // Anchor: most-recent Saturday on the right edge, offset back by `offset`
+  // windows.
+  const today = new Date(todayISO() + "T00:00:00");
+  const todayDow = today.getDay(); // 0 = Sun .. 6 = Sat
+  const daysToSat = (6 - todayDow + 7) % 7;
+  const rightmostSat = new Date(today.valueOf());
+  rightmostSat.setDate(today.getDate() + daysToSat - offset * weeksPerWindow * 7);
+  const leftmostSun = new Date(rightmostSat.valueOf());
+  leftmostSun.setDate(rightmostSat.getDate() - (weeksPerWindow * 7 - 1));
+
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  for (const h of active) {
+    const wrap = sec.createDiv({ cls: "second-brain-week-grid-wrap" });
+    wrap.createEl("div", {
+      text: h.name,
+      cls: "second-brain-habit-strip-label second-brain-week-grid-title",
+    });
+
+    const grid = wrap.createDiv({ cls: "second-brain-week-grid" });
+
+    // Header row of weekday labels.
+    grid.createEl("div", { cls: "second-brain-week-cell-empty" });
+    for (let w = 0; w < weeksPerWindow; w++) {
+      grid.createEl("div", { cls: "second-brain-week-cell-empty" });
+    }
+    // 7 rows: one per day-of-week.
+    for (let dow = 0; dow < 7; dow++) {
+      grid.createEl("div", {
+        cls: "second-brain-week-dow-label",
+        text: dayNames[dow],
+      });
+      for (let w = 0; w < weeksPerWindow; w++) {
+        const cellDate = new Date(leftmostSun.valueOf());
+        cellDate.setDate(cellDate.getDate() + w * 7 + dow);
+        const iso = toISO(cellDate);
+        if (cellDate > today) {
+          grid.createEl("div", { cls: "second-brain-habit-cell second-brain-habit-cell-future" });
+          continue;
+        }
+        const status = await statusForHabitOnDate(plugin, h.id, iso);
+        grid.createEl("div", {
+          cls: `second-brain-habit-cell ${cellClass(status)}`,
+          attr: { title: `${iso} — ${status}` },
+        });
+      }
+    }
+  }
+}
+
+async function statusForHabitOnDate(
+  plugin: SecondBrainPlugin,
+  habitId: string,
+  iso: string
+): Promise<"pass" | "uncertain" | "fail" | "missing"> {
+  const path = applyDatePlaceholders(
+    plugin.settings.reviewsPathTemplate,
+    iso
+  );
+  const file = plugin.app.vault.getAbstractFileByPath(path);
+  if (!(file instanceof TFile)) return "missing";
+  const content = await plugin.app.vault.read(file);
+  return parseHabitStatusFromReview(content, habitId) ?? "missing";
+}
+
+function periodLabel(period: StatsPeriod, offset: number): string {
+  if (offset === 0) return period === "week" ? "Last 12 weeks" : "Last 30 days";
+  const back = offset;
+  return period === "week"
+    ? `${back * 12} weeks ago`
+    : `${back * 30} days ago`;
 }
 
 interface HabitDayCell {
