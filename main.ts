@@ -13,6 +13,7 @@ export default class SecondBrainPlugin extends Plugin {
   async onload() {
     await this.loadSettings();
     await this.migrateSettings();
+    await this.bootstrapVaultFolders();
 
     this.registerView(
       VIEW_TYPE_SECOND_BRAIN,
@@ -136,6 +137,48 @@ export default class SecondBrainPlugin extends Plugin {
     }
 
     if (changed) await this.saveSettings();
+  }
+
+  /**
+   * Idempotent bootstrap of the canonical vault structure (v0.8+).
+   *
+   * Wheel of Life — Health / Body·Mind·Soul, Relationships / Romance·Family·Friends,
+   * Work / Mission·Money·Growth — created if missing. Each leaf gets a tiny
+   * README so Obsidian shows it as a real folder. We never touch existing
+   * files; we never delete; we only fill in the empty slots.
+   *
+   * Also creates the Habits and Goals folders (v0.8) and the People folder
+   * under 🧑 Me/ (entities, not areas).
+   */
+  private async bootstrapVaultFolders() {
+    const wheel: Record<string, string[]> = {
+      "Health": ["Body", "Mind", "Soul"],
+      "Relationships": ["Romance", "Family", "Friends"],
+      "Work": ["Mission", "Money", "Growth"],
+    };
+    const areasRoot = "2. 🌳 Areas";
+
+    for (const [macro, subs] of Object.entries(wheel)) {
+      const macroPath = `${areasRoot}/${macro}`;
+      await this.ensureFolder(macroPath);
+      for (const sub of subs) {
+        await this.ensureFolder(`${macroPath}/${sub}`);
+      }
+    }
+
+    await this.ensureFolder("🧑 Me/Habits");
+    await this.ensureFolder("🧑 Me/Goals");
+    await this.ensureFolder("🧑 Me/People");
+  }
+
+  private async ensureFolder(path: string) {
+    const existing = this.app.vault.getAbstractFileByPath(path);
+    if (existing) return;
+    try {
+      await this.app.vault.createFolder(path);
+    } catch {
+      // Race with Obsidian's vault scan; harmless.
+    }
   }
 
   async activateView() {

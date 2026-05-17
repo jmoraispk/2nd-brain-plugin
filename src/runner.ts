@@ -30,6 +30,7 @@ import {
   parseReviewMetadata,
   sha1Hex,
 } from "./reviewMeta";
+import { buildHabitContextBlock, loadActiveHabits } from "./habits";
 
 interface InputContent {
   label: string;
@@ -103,6 +104,14 @@ export async function runCommand(
   if (topicInput && topicInput.trim()) {
     userMsgParts.push("", `## Topic / focus\n\n${topicInput.trim()}`);
   }
+  // Active habits — injected for the daily review only, so the LLM can decide
+  // pass / uncertain / fail per habit from the day's captures.
+  if (command.id === "todays-review") {
+    const habits = await loadActiveHabits(app);
+    const block = buildHabitContextBlock(habits);
+    if (block) userMsgParts.push("", block);
+  }
+
   // Kepano reflection question for weekly + monthly reviews.
   if (command.kepanoQuestion) {
     const q =

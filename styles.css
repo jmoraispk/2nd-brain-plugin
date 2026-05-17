@@ -786,3 +786,81 @@
   background: var(--background-secondary);
   color: var(--text-normal);
 }
+
+/* ── v0.8: Dashboard date arrows + Habits table + Goals sub-tabs ─────── */
+
+.second-brain-day-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.second-brain-day-arrow {
+  font-size: 16px;
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.second-brain-day-arrow:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.second-brain-day-title {
+  margin: 0;
+  flex: 1;
+  text-align: center;
+}
+
+.second-brain-habits-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+.second-brain-habits-table th,
+.second-brain-habits-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.second-brain-habits-table th {
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.second-brain-danger {
+  color: var(--text-error, #e08080);
+  font-weight: 600;
+}
+
+.second-brain-subtabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.second-brain-subtab {
+  background: transparent;
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.second-brain-subtab.active {
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  border-color: var(--background-modifier-border-hover);
+}

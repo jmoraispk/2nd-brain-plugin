@@ -169,20 +169,22 @@ export async function skipReview(
  * Render the dashboard sections into `parent`. Heuristic-only, no LLM
  * calls — all data comes from local vault reads. Re-rendering is cheap.
  *
- * Order: Today first (so the live action surface is always at the top), then
- * pending reviews, then context (threads, projects, recent reviews).
+ * Order: displayed-day section first (with ◀ ▶ navigation, capped at
+ * yesterday → today), then pending reviews, then context.
  */
 export async function renderDashboard(
   parent: HTMLElement,
   plugin: SecondBrainPlugin,
-  onAction: (id: "capture" | "todays-review") => void,
+  displayedDate: string,
+  onAction: (id: "capture" | "this-review") => void,
+  onChangeDate: (newDate: string) => void,
   onRunCommand: (commandId: string, anchorOverride?: string) => void,
   onRefresh: () => void,
   pendingCollapsed: boolean,
   togglePendingCollapsed: () => void
 ): Promise<void> {
   const body = parent.createDiv({ cls: "second-brain-dashboard" });
-  await renderTodaySection(body, plugin, onAction);
+  await renderDayHeader(body, plugin, displayedDate, onAction, onChangeDate);
   await renderPendingReviewsBanner(
     body,
     plugin,
@@ -193,7 +195,6 @@ export async function renderDashboard(
   );
   await renderThreadsSection(body, plugin);
   renderProjectsSection(body, plugin);
-  // Recent reviews moved to the Review tab as of v0.5.0.
 }
 
 async function renderPendingReviewsBanner(
@@ -251,24 +252,81 @@ async function renderPendingReviewsBanner(
   }
 }
 
-// ── Today section ────────────────────────────────────────────────────────
+// ── Day header ────────────────────────────────────────────────────────────
+// Dashboard surfaces the captures + review for the *displayed* day. Arrows
+// step one day at a time and are capped at yesterday ↔ today — we don't
+// support multi-day backfilling by design. Capture writes to the displayed
+// day; "This Review" runs the daily review for the displayed day.
 
-async function renderTodaySection(
+async function renderDayHeader(
   parent: HTMLElement,
   plugin: SecondBrainPlugin,
-  onAction: (id: "capture" | "todays-review") => void
+  displayedDate: string,
+  onAction: (id: "capture" | "this-review") => void,
+  onChangeDate: (newDate: string) => void
 ) {
   const sec = parent.createDiv({ cls: "second-brain-section" });
 
   const today = todayISO();
-  const d = new Date(today + "T00:00:00");
+  const yesterday = (() => {
+    const d = new Date(today + "T00:00:00");
+    d.setDate(d.getDate() - 1);
+    return toISO(d);
+  })();
+
+  const headerRow = sec.createDiv({ cls: "second-brain-day-header" });
+
+  const left = headerRow.createEl("button", {
+    text: "◀",
+    cls: "second-brain-iconbtn second-brain-day-arrow",
+    attr: { title: "Previous day" },
+  });
+  // Cap: cannot navigate to a day older than yesterday.
+  if (displayedDate <= yesterday) {
+    left.setAttribute("disabled", "true");
+  } else {
+    left.addEventListener("click", () => {
+      const d = new Date(displayedDate + "T00:00:00");
+      d.setDate(d.getDate() - 1);
+      onChangeDate(toISO(d));
+    });
+  }
+
+  const d = new Date(displayedDate + "T00:00:00");
   const wkday = d.toLocaleDateString("en-US", { weekday: "short" });
   const month = d.toLocaleDateString("en-US", { month: "short" });
-  sec.createEl("h3", {
-    text: `Today — ${wkday} ${month} ${d.getDate()}, W${pad2(isoWeek(d))}`,
+  const relLabel =
+    displayedDate === today
+      ? "Today"
+      : displayedDate === yesterday
+      ? "Yesterday"
+      : `${wkday} ${month} ${d.getDate()}`;
+  headerRow.createEl("h3", {
+    text: `${relLabel} — ${wkday} ${month} ${d.getDate()}, W${pad2(isoWeek(d))}`,
+    cls: "second-brain-day-title",
   });
 
-  const logPath = await resolveDailyLogPath(plugin.app, plugin.settings, today);
+  const right = headerRow.createEl("button", {
+    text: "▶",
+    cls: "second-brain-iconbtn second-brain-day-arrow",
+    attr: { title: "Next day" },
+  });
+  // Cap: cannot navigate past today.
+  if (displayedDate >= today) {
+    right.setAttribute("disabled", "true");
+  } else {
+    right.addEventListener("click", () => {
+      const d = new Date(displayedDate + "T00:00:00");
+      d.setDate(d.getDate() + 1);
+      onChangeDate(toISO(d));
+    });
+  }
+
+  const logPath = await resolveDailyLogPath(
+    plugin.app,
+    plugin.settings,
+    displayedDate
+  );
   const logFile = plugin.app.vault.getAbstractFileByPath(logPath);
   if (logFile instanceof TFile) {
     const content = await plugin.app.vault.read(logFile);
@@ -281,23 +339,23 @@ async function renderTodaySection(
       }`,
     });
   } else {
-    sec.createEl("div", { text: "📥 No captures yet today" });
+    sec.createEl("div", { text: "📥 No captures yet" });
   }
 
   const reviewPath = applyDatePlaceholders(
     plugin.settings.reviewsPathTemplate,
-    today
+    displayedDate
   );
   const reviewFile = plugin.app.vault.getAbstractFileByPath(reviewPath);
   if (reviewFile instanceof TFile) {
     const row = sec.createEl("div");
-    row.appendText("🤖 Today's review ready — ");
+    row.appendText("🤖 Review ready — ");
     const link = row.createEl("a", { text: "open", cls: "second-brain-link" });
     link.addEventListener("click", () =>
       plugin.app.workspace.getLeaf(false).openFile(reviewFile)
     );
   } else {
-    sec.createEl("div", { text: "🤖 No review yet today" });
+    sec.createEl("div", { text: "🤖 No review yet" });
   }
 
   const actions = sec.createDiv({ cls: "second-brain-quickactions" });
@@ -308,10 +366,10 @@ async function renderTodaySection(
   captureBtn.addEventListener("click", () => onAction("capture"));
 
   const reviewBtn = actions.createEl("button", {
-    text: "Today's Review",
+    text: "This Review",
     cls: "second-brain-button",
   });
-  reviewBtn.addEventListener("click", () => onAction("todays-review"));
+  reviewBtn.addEventListener("click", () => onAction("this-review"));
 }
 
 // ── Threads in motion ────────────────────────────────────────────────────

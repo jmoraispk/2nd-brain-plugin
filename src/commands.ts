@@ -230,6 +230,43 @@ Be adversarial but fair. The point is to steel-man against them so they can shar
 
 // ── Tier-B workflow prompts ──────────────────────────────────────────────
 
+const DRAFT_HABIT_PROMPT = `You are drafting a habit definition for the user, LogLife-style.
+
+Given the user's recent daily logs (and optionally a focus topic in the "Topic / focus" section), either propose a new habit they appear to be forming OR strengthen a habit they've named. Output a single Markdown habit definition file using exactly this structure:
+
+\`\`\`yaml
+---
+linked-goal:                       # leave blank if unclear; user can fill later
+area: "<Wheel area, e.g. [[2. 🌳 Areas/Health/Body]]>"
+periodicity: daily                 # daily | weekdays | weekly | monthly
+binary-criterion: "<unambiguous pass/fail definition>"
+why: "<the user's specific reason; quote them where possible>"
+plan:
+  when: "<anchor to an existing routine>"
+  where: "<concrete place>"
+  how: "<concrete first action>"
+environment: "<one concrete environment tweak that lowers friction>"
+recovery: "<smaller re-entry action if missed>"
+status: active
+---
+\`\`\`
+
+# <habit name>
+
+## Why this habit
+1–2 sentences. Use the user's own words where they have them.
+
+## Boost notes
+Brief commentary on each boost dimension and why this configuration is likely to fire. Cite specific log entries that motivated the suggestions.
+
+## Open questions for the user
+2–3 questions that, if answered, would crisp up the definition further (e.g. "What time of day are you actually most likely to do this?").
+
+Rules:
+- Be ruthlessly concrete. "Exercise" is not a habit — "≥5 minutes of intentional movement after morning coffee" is.
+- The binary criterion must pass the 3-second test: someone reading the log can decide pass/fail in under 3 seconds.
+- If the captures don't yet show enough to draft a habit, say so plainly: "No clear pattern yet — log this for another week."`;
+
 const SNAPSHOT_PROMPT = `You will be given today's daily log. Produce a fast 3-bullet recap. No deep synthesis. Output Markdown:
 
 # Daily snapshot — <YYYY-MM-DD>
@@ -399,7 +436,7 @@ const REVIEW_PROMPT = `You are synthesizing a daily review.
 
 The user message has two date fields: "Period anchor" (the day being reviewed — the target) and "Today's date" (the day the review is being generated). Use the **anchor** for the title and any "today" framing inside the synthesis. Use **Today's date** ONLY in the "Reviewed on" footer.
 
-You will be given the user's raw captures for the anchor day. Produce a clean Markdown review using exactly this structure (do not invent content):
+You will be given the user's raw captures for the anchor day. If the user message also contains an "## Active habits to evaluate" section, you MUST include a "Today's habits status" section near the top of your output (immediately after Captures summary). Produce a clean Markdown review using exactly this structure (do not invent content):
 
 # Daily Review — <human-readable anchor date>
 
@@ -407,6 +444,19 @@ _Reviewed on <Today's date>. This file is owned by the command and will be overw
 
 ## Captures summary
 A condensed, faithful summary of what was captured. Group by theme if many items. Quote verbatim where a phrasing is striking.
+
+## Today's habits status
+ONLY include this section if the user message contains active habits. For each habit listed there, output one line:
+- ✅ <habit-id> — <verbatim evidence from the captures> (and the quantitative value if applicable, e.g. "40 minutes")
+- ⚠️ <habit-id> — no evidence in today's log; track if it happened
+- ❌ <habit-id> — explicitly missed: <verbatim quote from the log showing the miss>
+
+Rules for habit evaluation:
+- ✅ pass — the captures contain explicit evidence (action verb + reference to the habit OR a #tag like #gym:40).
+- ⚠️ uncertain — no capture either way. This is the OPTIMISTIC default. Issue exactly ONE warning (no double-nag).
+- ❌ fail — the captures explicitly say it was missed ("skipped gym", "no run today").
+- Do NOT invent evidence. If you're not sure, mark uncertain.
+- Quantitative habits: extract the numeric value from the capture (e.g. "gym 40min" → 40).
 
 ## Threads worth continuing
 3–8 bullets: unresolved questions, recurring topics, projects with momentum.
@@ -643,6 +693,19 @@ export const BUILT_IN_COMMANDS: Command[] = [
     inputs: [{ kind: "all-logs", label: "All daily logs" }],
     outputPath: "🤖 AI/Thinking/Leverage/{YYYY-MM-DD}.md",
     systemPrompt: LEVERAGE_PROMPT,
+  },
+  // Habit drafting (v0.8).
+  {
+    id: "draft-habit",
+    label: "Draft Habit",
+    tier: "A",
+    description:
+      "Propose a new habit (or strengthen an existing one) using the LogLife boost framework: Define / Why / Plan / Environment / Recover.",
+    topicPromptText:
+      "Which habit should I draft? Leave empty to let me propose one from your recent captures.",
+    inputs: [{ kind: "all-logs", label: "All daily logs" }],
+    outputPath: "🤖 AI/Habit-Drafts/{YYYY-MM-DD}.md",
+    systemPrompt: DRAFT_HABIT_PROMPT,
   },
   // Tier-B workflow / quick-cost commands (v0.6.2).
   {

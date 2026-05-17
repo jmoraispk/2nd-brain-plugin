@@ -106,8 +106,40 @@ Reload Obsidian (Cmd/Ctrl-R) after each rebuild.
 - Daily-log content is sent to the configured provider when you press a review command. That's it.
 - All vault writes happen client-side via Obsidian's normal API.
 
+## Required Obsidian plugins (v0.8+)
+
+The plugin auto-creates the vault structure on first launch. For habit
+heatmaps you also need two community plugins:
+
+| Plugin | Why |
+| --- | --- |
+| **BRAT** | installs and auto-updates this plugin from GitHub releases |
+| **Second Brain** (via BRAT) | this plugin |
+| **Heatmap Calendar** | renders per-habit yearly heatmaps in any markdown note |
+| **Dataview** | data-source plumbing the Heatmap Calendar plugin reads |
+
+Settings → Community plugins → Browse → install each of the above. Then
+enable them under Installed.
+
+## Wheel of Life areas
+
+First launch creates the canonical areas layout (Ali Abdaal's Wheel of
+Life — 3 macro × 3 sub):
+
+```
+2. 🌳 Areas/
+  Health/       Body · Mind · Soul
+  Relationships/ Romance · Family · Friends
+  Work/         Mission · Money · Growth
+```
+
+These are fixed by design — see the [structure-is-the-flexible-part](https://github.com/jmoraispk/2nd-brain/blob/main/blog/2026-05-17-structure-is-the-flexible-part.md)
+blog post for the philosophy. Habits link to areas via the `area`
+frontmatter field.
+
 ## Release log
 
+- v0.8.0 — **Habits + Dashboard navigation + Wheel of Life.** Habit files at `🧑 Me/Habits/<id>.md` with LogLife boost schema (Define / Why / Plan / Environment / Recover). Daily review now infers per-habit status (✅ pass · ⚠️ uncertain · ❌ fail) from the captures — no `#tags` required. New **Goals** tab (Goals · Stats · Streaks) lists active habits with today's status. Dashboard gets `◀ ▶` arrows to navigate today ↔ yesterday; Capture and This Review act on the displayed day. Plan Tomorrow drops off the Dashboard but stays as a runnable command. `/draft-habit` command boosts a habit (or proposes a new one) using LogLife framing. Wheel-of-Life areas auto-created on first load. Hook simplification (legacy `_AI` zone dropped).
 - v0.7.2 — Review metadata frontmatter (cache-busting): re-runs skip the LLM call when inputs + model + plugin version match the last run; otherwise the Notice names what drifted. README rewrite around the Me ↔ AI mirror.
 - v0.7.1 — Capture modal X-alignment fix on desktop.
 - v0.7.0 — Qs tab: Kepano 40 yearly + 40 decade questions, deterministic weekly/monthly rotation, append-only per-question files, auto-updating status index, Kepano question threaded into weekly + monthly review prompts.

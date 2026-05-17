@@ -22,9 +22,10 @@ import {
 export async function appendCapture(
   app: App,
   settings: SecondBrainSettings,
-  content: string
+  content: string,
+  targetDate?: string
 ): Promise<string> {
-  const date = todayISO();
+  const date = targetDate ?? todayISO();
   const templatePath = applyDatePlaceholders(
     settings.dailyLogPathTemplate,
     date

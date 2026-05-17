@@ -31,11 +31,13 @@ import {
   defaultQsTabState,
   QsKind,
 } from "./qsTab";
+import { renderGoals, GoalsTabState, defaultGoalsTabState } from "./goalsTab";
 import { TopicInputModal } from "./topicInputModal";
+import { todayISO } from "./paths";
 
 export const VIEW_TYPE_SECOND_BRAIN = "second-brain-view";
 
-type ViewMode = "dashboard" | "review" | "qs" | "think";
+type ViewMode = "dashboard" | "review" | "qs" | "goals" | "think";
 
 export class SecondBrainView extends ItemView {
   plugin: SecondBrainPlugin;
@@ -43,7 +45,10 @@ export class SecondBrainView extends ItemView {
   reviewState: ReviewTabState = defaultReviewTabState();
   thinkState: ThinkTabState = defaultThinkTabState();
   qsState: QsTabState = defaultQsTabState();
+  goalsState: GoalsTabState = defaultGoalsTabState();
   pendingReviewsCollapsed: boolean = true;
+  /** Date the Dashboard's day-header is showing (capped at yesterday ↔ today). */
+  displayedDate: string = todayISO();
 
   constructor(leaf: WorkspaceLeaf, plugin: SecondBrainPlugin) {
     super(leaf);
@@ -77,7 +82,12 @@ export class SecondBrainView extends ItemView {
       await renderDashboard(
         container,
         this.plugin,
+        this.displayedDate,
         (id) => this.handleQuickAction(id),
+        (newDate) => {
+          this.displayedDate = newDate;
+          this.render();
+        },
         (commandId, anchorOverride) =>
           this.forwardPendingToReview(commandId, anchorOverride),
         () => this.render(),
@@ -99,6 +109,14 @@ export class SecondBrainView extends ItemView {
           this.qsState.draftAnswer = text;
         },
         onAnswerSaved: () => this.render(),
+      });
+    } else if (this.mode === "goals") {
+      await renderGoals(container, this.plugin, this.goalsState, {
+        setSubtab: (t) => {
+          this.goalsState.subtab = t;
+          this.render();
+        },
+        onChanged: () => this.render(),
       });
     } else if (this.mode === "review") {
       renderReview(
@@ -174,6 +192,7 @@ export class SecondBrainView extends ItemView {
       { mode: "dashboard" as ViewMode, label: "Dashboard" },
       { mode: "review" as ViewMode, label: "Review" },
       { mode: "qs" as ViewMode, label: "Qs" },
+      { mode: "goals" as ViewMode, label: "Goals" },
       { mode: "think" as ViewMode, label: "Think" },
     ]) {
       const el = tabs.createEl("button", {
@@ -212,12 +231,20 @@ export class SecondBrainView extends ItemView {
     });
   }
 
-  private async handleQuickAction(id: "capture" | "todays-review") {
+  /**
+   * Dashboard quick actions. Both target the *displayed* date so that capture
+   * and review work for yesterday when the user clicked the back arrow.
+   */
+  private async handleQuickAction(id: "capture" | "this-review") {
     if (id === "capture") {
-      new CaptureModal(this.app, this.plugin).open();
+      new CaptureModal(this.app, this.plugin, this.displayedDate).open();
       return;
     }
-    await this.runCommandById("todays-review");
+    const today = todayISO();
+    // Today → no anchor override (canonical "today" path); else override.
+    const anchor =
+      this.displayedDate === today ? undefined : this.displayedDate;
+    await this.runCommandById("todays-review", anchor);
   }
 
   /**
@@ -435,11 +462,13 @@ export class SecondBrainView extends ItemView {
 
 class CaptureModal extends Modal {
   plugin: SecondBrainPlugin;
+  targetDate?: string;
   textarea!: HTMLTextAreaElement;
 
-  constructor(app: App, plugin: SecondBrainPlugin) {
+  constructor(app: App, plugin: SecondBrainPlugin, targetDate?: string) {
     super(app);
     this.plugin = plugin;
+    this.targetDate = targetDate;
     // Class hook so CSS can anchor this modal near the top of the screen
     // (default Obsidian modals are vertically centered, which lands behind
     // the on-screen keyboard on phone).
@@ -453,8 +482,13 @@ class CaptureModal extends Modal {
     // Title + close button on the same row. Hide Obsidian's default
     // standalone close button (handled via CSS).
     const header = contentEl.createDiv({ cls: "second-brain-capture-header" });
+    const today = todayISO();
+    const titleText =
+      !this.targetDate || this.targetDate === today
+        ? "Capture"
+        : `Capture — ${this.targetDate}`;
     header.createEl("h2", {
-      text: "Capture",
+      text: titleText,
       cls: "second-brain-capture-title",
     });
     const closeBtn = header.createEl("button", {
@@ -499,7 +533,12 @@ class CaptureModal extends Modal {
       return;
     }
     try {
-      const path = await appendCapture(this.app, this.plugin.settings, content);
+      const path = await appendCapture(
+        this.app,
+        this.plugin.settings,
+        content,
+        this.targetDate
+      );
       new Notice(`Captured → ${path}`);
     } catch (err) {
       new Notice(`Capture failed: ${(err as Error).message}`);
