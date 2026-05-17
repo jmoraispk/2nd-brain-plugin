@@ -864,3 +864,53 @@
   color: var(--text-normal);
   border-color: var(--background-modifier-border-hover);
 }
+
+/* ── v0.8.1: native habit heatmap strip ────────────────────────────── */
+
+.second-brain-habit-strip-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 6px 0;
+}
+
+.second-brain-habit-strip-label {
+  flex: 0 0 140px;
+  font-size: 13px;
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.second-brain-habit-strip {
+  display: grid;
+  grid-template-columns: repeat(30, 1fr);
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.second-brain-habit-cell {
+  aspect-ratio: 1;
+  border-radius: 2px;
+  background: var(--background-modifier-border);
+}
+
+.second-brain-habit-cell-pass {
+  background: var(--color-green, #4caf50);
+}
+
+.second-brain-habit-cell-uncertain {
+  background: var(--text-warning, #e0a800);
+  opacity: 0.7;
+}
+
+.second-brain-habit-cell-fail {
+  background: var(--text-error, #e08080);
+}
+
+.second-brain-habit-cell-missing {
+  background: var(--background-modifier-border);
+  opacity: 0.3;
+}

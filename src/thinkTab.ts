@@ -3,23 +3,36 @@ import SecondBrainPlugin from "../main";
 import { BUILT_IN_COMMANDS, getEffectiveCommands } from "./commands";
 import { Command } from "./types";
 import { CommandEditModal } from "./commandEditModal";
+import {
+  renderQs,
+  QsTabState,
+  QsKind,
+} from "./qsTab";
 
-export type ThinkSubtab = "S" | "A" | "B" | "Custom";
+export type ThinkSubtab = "S" | "A" | "B" | "Custom" | "Qs";
 
 export interface ThinkTabState {
   subtab: ThinkSubtab;
   /** Command ids whose prompt-preview pane is currently expanded. */
   expandedCommandIds: Set<string>;
+  qs: QsTabState;
 }
 
 export function defaultThinkTabState(): ThinkTabState {
-  return { subtab: "S", expandedCommandIds: new Set() };
+  return {
+    subtab: "S",
+    expandedCommandIds: new Set(),
+    qs: { kind: "year", draftAnswer: "" },
+  };
 }
 
 export interface ThinkTabCallbacks {
   setSubtab: (subtab: ThinkSubtab) => void;
   toggleExpanded: (commandId: string) => void;
   onCommandSaved: () => void;
+  setQsKind: (k: QsKind) => void;
+  setQsDraftAnswer: (text: string) => void;
+  onQsAnswerSaved: () => void;
 }
 
 /**
@@ -28,22 +41,23 @@ export interface ThinkTabCallbacks {
  * underneath with an Edit button. Run button has its own click handler that
  * doesn't toggle the expansion.
  */
-export function renderThink(
+export async function renderThink(
   parent: HTMLElement,
   plugin: SecondBrainPlugin,
   state: ThinkTabState,
   cb: ThinkTabCallbacks,
   onRunCommand: (commandId: string) => void
-): void {
+): Promise<void> {
   const body = parent.createDiv({ cls: "second-brain-tab-body" });
 
-  // Sub-tab bar — centered, "Tier X" labels.
+  // Sub-tab bar — Tier S/A/B + Custom + Qs (moved from top-level in v0.8.1).
   const subtabs = body.createDiv({ cls: "second-brain-subtabs" });
   const tabs: Array<{ id: ThinkSubtab; label: string; title: string }> = [
     { id: "S", label: "Tier S", title: "Real tools of thought" },
     { id: "A", label: "Tier A", title: "Useful synthesizers" },
     { id: "B", label: "Tier B", title: "Workflow utilities" },
     { id: "Custom", label: "Custom", title: "Your own commands" },
+    { id: "Qs", label: "Qs", title: "Kepano questions (year / decade)" },
   ];
   for (const t of tabs) {
     const el = subtabs.createEl("button", {
@@ -58,6 +72,16 @@ export function renderThink(
     cls: "second-brain-subtab-caption",
     text: subtabCaption(state.subtab),
   });
+
+  // Qs sub-tab: defer to the existing Qs renderer.
+  if (state.subtab === "Qs") {
+    await renderQs(body, plugin, state.qs, {
+      setKind: cb.setQsKind,
+      setDraftAnswer: cb.setQsDraftAnswer,
+      onAnswerSaved: cb.onQsAnswerSaved,
+    });
+    return;
+  }
 
   const effective = getEffectiveCommands(plugin.settings);
   const builtinIds = new Set(BUILT_IN_COMMANDS.map((c) => c.id));
@@ -128,6 +152,8 @@ function subtabCaption(t: ThinkSubtab): string {
       return "Workflow utilities. Cheap, fast, no deep reflection.";
     case "Custom":
       return "Your own commands. Each one is a prompt + an input + an output path.";
+    case "Qs":
+      return "Kepano's 40 + 40 questions. Year rotates weekly; Decade rotates monthly.";
   }
 }
 

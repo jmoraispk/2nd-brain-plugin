@@ -28,6 +28,7 @@ export function defaultGoalsTabState(): GoalsTabState {
 export interface GoalsTabCallbacks {
   setSubtab: (t: GoalsSubtab) => void;
   onChanged: () => void;
+  runCommand: (commandId: string) => void;
 }
 
 export async function renderGoals(
@@ -52,17 +53,17 @@ export async function renderGoals(
   const todayStatus = await readTodayHabitStatus(plugin.app, plugin.settings.reviewsPathTemplate);
 
   if (state.subtab === "goals") {
-    await renderGoalsList(body, plugin, habits, todayStatus, cb);
+    await renderHabitsList(body, plugin, habits, todayStatus, cb);
   } else if (state.subtab === "stats") {
-    renderStatsPlaceholder(body, habits);
+    await renderStats(body, plugin, habits);
   } else {
     await renderStreaks(body, plugin, habits);
   }
 }
 
-// ── Goals list ──────────────────────────────────────────────────────────
+// ── Habits list ─────────────────────────────────────────────────────────
 
-async function renderGoalsList(
+async function renderHabitsList(
   body: HTMLElement,
   plugin: SecondBrainPlugin,
   habits: Habit[],
@@ -70,19 +71,27 @@ async function renderGoalsList(
   cb: GoalsTabCallbacks
 ) {
   const sec = body.createDiv({ cls: "second-brain-section" });
-  sec.createEl("h3", { text: "Habits" });
+
+  // Header row: heading on the left, Draft Habit button on the right.
+  const headerRow = sec.createDiv({ cls: "second-brain-row" });
+  headerRow.createEl("h3", { text: "Habits", cls: "second-brain-row-content" });
+  const draftBtn = headerRow.createEl("button", {
+    text: "✨ Draft Habit",
+    cls: "second-brain-button second-brain-button-primary",
+    attr: {
+      title:
+        "AI drafts a new habit (or boosts an existing one) using the LogLife framework: Define / Why / Plan / Environment / Recover.",
+    },
+  });
+  draftBtn.addEventListener("click", () => cb.runCommand("draft-habit"));
 
   const active = habits.filter((h) => h.status === "active");
 
   if (active.length === 0) {
     const empty = sec.createDiv({ cls: "second-brain-muted" });
-    empty.appendText("No habits yet. Create one at ");
+    empty.appendText("No habits yet. Click ✨ Draft Habit above, or create one manually at ");
     empty.createEl("code", { text: `${HABITS_FOLDER}/<id>.md` });
-    empty.appendText(" with frontmatter: ");
-    empty.createEl("code", { text: "periodicity, binary-criterion" });
-    empty.appendText(" (required); ");
-    empty.createEl("code", { text: "why, plan, environment, recovery" });
-    empty.appendText(" (boost, optional).");
+    empty.appendText(".");
     return;
   }
 
@@ -117,32 +126,100 @@ async function renderGoalsList(
     } else statusCell.setText("—");
     tr.createEl("td", { text: h.binaryCriterion });
   }
-
-  // Draft helper / link to /draft-habit
-  const helper = body.createDiv({ cls: "second-brain-section" });
-  helper.createEl("h3", { text: "Add a habit" });
-  helper.createEl("p", {
-    cls: "second-brain-muted",
-    text: 'Two ways: (a) create the file manually in 🧑 Me/Habits/, or (b) ask the AI to draft one with boost fields filled in — Settings → Commands → "Draft Habit".',
-  });
 }
 
-// ── Stats (placeholder for v0.8.0) ──────────────────────────────────────
+// ── Stats: native 30-day heatmap per habit ──────────────────────────────
 
-function renderStatsPlaceholder(body: HTMLElement, habits: Habit[]) {
+async function renderStats(
+  body: HTMLElement,
+  plugin: SecondBrainPlugin,
+  habits: Habit[]
+) {
   const sec = body.createDiv({ cls: "second-brain-section" });
-  sec.createEl("h3", { text: "Stats" });
-  if (habits.length === 0) {
+  sec.createEl("h3", { text: "Stats — last 30 days" });
+
+  const active = habits.filter((h) => h.status === "active");
+  if (active.length === 0) {
     sec.createEl("div", {
       cls: "second-brain-muted",
       text: "No habits to chart yet.",
     });
     return;
   }
+
+  const today = todayISO();
+  const days = 30;
+  for (const h of active) {
+    const cells = await collectHabitStrip(plugin, h.id, today, days);
+    const row = sec.createDiv({ cls: "second-brain-habit-strip-row" });
+    row.createEl("div", { text: h.name, cls: "second-brain-habit-strip-label" });
+    const grid = row.createDiv({ cls: "second-brain-habit-strip" });
+    for (const cell of cells) {
+      const sq = grid.createDiv({
+        cls: `second-brain-habit-cell ${cellClass(cell.status)}`,
+        attr: {
+          title: `${cell.date} — ${cell.status}${
+            cell.evidence ? `: ${cell.evidence}` : ""
+          }`,
+        },
+      });
+      sq.setText("");
+    }
+  }
+
   sec.createEl("p", {
     cls: "second-brain-muted",
-    text: "Per-habit charts (daily / weekly / monthly / yearly) — coming in v0.8.1. For now, drop a Heatmap Calendar codeblock into any note to render yearly heatmaps from 🤖 AI/Habit-Data/.",
+    text: "Want yearly heatmaps inside any markdown note? Embed the data files at 🤖 AI/Habit-Data/<id>.md with the Heatmap Calendar plugin.",
   });
+}
+
+interface HabitDayCell {
+  date: string;
+  status: "pass" | "uncertain" | "fail" | "missing";
+  evidence?: string;
+}
+
+async function collectHabitStrip(
+  plugin: SecondBrainPlugin,
+  habitId: string,
+  today: string,
+  days: number
+): Promise<HabitDayCell[]> {
+  const out: HabitDayCell[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(today + "T00:00:00");
+    d.setDate(d.getDate() - i);
+    const dateStr = toISO(d);
+    const path = applyDatePlaceholders(
+      plugin.settings.reviewsPathTemplate,
+      dateStr
+    );
+    const file = plugin.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile)) {
+      out.push({ date: dateStr, status: "missing" });
+      continue;
+    }
+    const content = await plugin.app.vault.read(file);
+    const status = parseHabitStatusFromReview(content, habitId);
+    out.push({
+      date: dateStr,
+      status: status ?? "missing",
+    });
+  }
+  return out;
+}
+
+function cellClass(s: HabitDayCell["status"]): string {
+  switch (s) {
+    case "pass":
+      return "second-brain-habit-cell-pass";
+    case "uncertain":
+      return "second-brain-habit-cell-uncertain";
+    case "fail":
+      return "second-brain-habit-cell-fail";
+    default:
+      return "second-brain-habit-cell-missing";
+  }
 }
 
 // ── Streaks ─────────────────────────────────────────────────────────────

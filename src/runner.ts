@@ -31,6 +31,7 @@ import {
   sha1Hex,
 } from "./reviewMeta";
 import { buildHabitContextBlock, loadActiveHabits } from "./habits";
+import { writeHabitDataFiles } from "./habitData";
 
 interface InputContent {
   label: string;
@@ -145,13 +146,28 @@ export async function runCommand(
 
   await ensureFolderExists(app, outputPath);
 
+  let outFile: TFile;
   if (existing instanceof TFile) {
     await app.vault.modify(existing, result);
-    return { kind: "fresh", file: existing, drift: driftReasons };
+    outFile = existing;
   } else {
-    const file = await app.vault.create(outputPath, result);
-    return { kind: "fresh", file };
+    outFile = await app.vault.create(outputPath, result);
   }
+
+  // For the daily review, refresh per-habit heatmap data files so the Heatmap
+  // Calendar plugin can render up-to-date yearly views.
+  if (command.id === "todays-review") {
+    try {
+      const habits = await loadActiveHabits(app);
+      await writeHabitDataFiles(app, settings.reviewsPathTemplate, habits);
+    } catch (err) {
+      console.error("habit-data write failed (non-fatal):", err);
+    }
+  }
+
+  return existing instanceof TFile
+    ? { kind: "fresh", file: outFile, drift: driftReasons }
+    : { kind: "fresh", file: outFile };
 }
 
 async function readInput(

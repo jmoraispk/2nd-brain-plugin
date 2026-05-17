@@ -25,27 +25,20 @@ import {
   ThinkTabState,
   defaultThinkTabState,
 } from "./thinkTab";
-import {
-  renderQs,
-  QsTabState,
-  defaultQsTabState,
-  QsKind,
-} from "./qsTab";
 import { renderGoals, GoalsTabState, defaultGoalsTabState } from "./goalsTab";
 import { TopicInputModal } from "./topicInputModal";
 import { todayISO } from "./paths";
 
 export const VIEW_TYPE_SECOND_BRAIN = "second-brain-view";
 
-type ViewMode = "dashboard" | "review" | "qs" | "goals" | "think";
+type ViewMode = "dashboard" | "review" | "habits" | "think";
 
 export class SecondBrainView extends ItemView {
   plugin: SecondBrainPlugin;
   mode: ViewMode = "dashboard";
   reviewState: ReviewTabState = defaultReviewTabState();
   thinkState: ThinkTabState = defaultThinkTabState();
-  qsState: QsTabState = defaultQsTabState();
-  goalsState: GoalsTabState = defaultGoalsTabState();
+  habitsState: GoalsTabState = defaultGoalsTabState();
   pendingReviewsCollapsed: boolean = true;
   /** Date the Dashboard's day-header is showing (capped at yesterday ↔ today). */
   displayedDate: string = todayISO();
@@ -97,26 +90,14 @@ export class SecondBrainView extends ItemView {
           this.render();
         }
       );
-    } else if (this.mode === "qs") {
-      await renderQs(container, this.plugin, this.qsState, {
-        setKind: (k: QsKind) => {
-          this.qsState.kind = k;
-          this.qsState.draftAnswer = "";
-          this.render();
-        },
-        // No-render write so the textarea keeps focus while typing.
-        setDraftAnswer: (text: string) => {
-          this.qsState.draftAnswer = text;
-        },
-        onAnswerSaved: () => this.render(),
-      });
-    } else if (this.mode === "goals") {
-      await renderGoals(container, this.plugin, this.goalsState, {
+    } else if (this.mode === "habits") {
+      await renderGoals(container, this.plugin, this.habitsState, {
         setSubtab: (t) => {
-          this.goalsState.subtab = t;
+          this.habitsState.subtab = t;
           this.render();
         },
         onChanged: () => this.render(),
+        runCommand: (id) => this.runCommandById(id),
       });
     } else if (this.mode === "review") {
       renderReview(
@@ -160,7 +141,7 @@ export class SecondBrainView extends ItemView {
         this
       );
     } else {
-      renderThink(
+      await renderThink(
         container,
         this.plugin,
         this.thinkState,
@@ -178,6 +159,16 @@ export class SecondBrainView extends ItemView {
             this.render();
           },
           onCommandSaved: () => this.render(),
+          setQsKind: (k) => {
+            this.thinkState.qs.kind = k;
+            this.thinkState.qs.draftAnswer = "";
+            this.render();
+          },
+          // No-render write so the textarea keeps focus while typing.
+          setQsDraftAnswer: (text) => {
+            this.thinkState.qs.draftAnswer = text;
+          },
+          onQsAnswerSaved: () => this.render(),
         },
         (commandId) => this.runCommandById(commandId)
       );
@@ -191,8 +182,7 @@ export class SecondBrainView extends ItemView {
     for (const tab of [
       { mode: "dashboard" as ViewMode, label: "Dashboard" },
       { mode: "review" as ViewMode, label: "Review" },
-      { mode: "qs" as ViewMode, label: "Qs" },
-      { mode: "goals" as ViewMode, label: "Goals" },
+      { mode: "habits" as ViewMode, label: "Habits" },
       { mode: "think" as ViewMode, label: "Think" },
     ]) {
       const el = tabs.createEl("button", {
@@ -237,7 +227,12 @@ export class SecondBrainView extends ItemView {
    */
   private async handleQuickAction(id: "capture" | "this-review") {
     if (id === "capture") {
-      new CaptureModal(this.app, this.plugin, this.displayedDate).open();
+      new CaptureModal(
+        this.app,
+        this.plugin,
+        this.displayedDate,
+        () => this.render()
+      ).open();
       return;
     }
     const today = todayISO();
@@ -463,12 +458,19 @@ export class SecondBrainView extends ItemView {
 class CaptureModal extends Modal {
   plugin: SecondBrainPlugin;
   targetDate?: string;
+  onSaved?: () => void;
   textarea!: HTMLTextAreaElement;
 
-  constructor(app: App, plugin: SecondBrainPlugin, targetDate?: string) {
+  constructor(
+    app: App,
+    plugin: SecondBrainPlugin,
+    targetDate?: string,
+    onSaved?: () => void
+  ) {
     super(app);
     this.plugin = plugin;
     this.targetDate = targetDate;
+    this.onSaved = onSaved;
     // Class hook so CSS can anchor this modal near the top of the screen
     // (default Obsidian modals are vertically centered, which lands behind
     // the on-screen keyboard on phone).
@@ -540,6 +542,7 @@ class CaptureModal extends Modal {
         this.targetDate
       );
       new Notice(`Captured → ${path}`);
+      this.onSaved?.();
     } catch (err) {
       new Notice(`Capture failed: ${(err as Error).message}`);
       console.error(err);
