@@ -13,9 +13,11 @@
 import { App, TFile, TFolder } from "obsidian";
 import SecondBrainPlugin from "../main";
 import { Habit, loadHabits, HABITS_FOLDER } from "./habits";
+import { Project, loadProjects, PROJECTS_FOLDER } from "./projects";
+import { ProjectCreateModal } from "./projectCreateModal";
 import { applyDatePlaceholders, todayISO, toISO } from "./paths";
 
-export type GoalsSubtab = "habits" | "areas" | "stats" | "streaks";
+export type GoalsSubtab = "habits" | "projects" | "areas" | "stats" | "streaks";
 
 export interface GoalsTabState {
   subtab: GoalsSubtab;
@@ -43,6 +45,7 @@ export async function renderGoals(
   const bar = body.createDiv({ cls: "second-brain-subtabs" });
   const subtabs: Array<{ id: GoalsSubtab; label: string }> = [
     { id: "habits", label: "Habits" },
+    { id: "projects", label: "Projects" },
     { id: "areas", label: "Areas" },
     { id: "stats", label: "Stats" },
     { id: "streaks", label: "Streaks" },
@@ -55,16 +58,23 @@ export async function renderGoals(
     btn.addEventListener("click", () => cb.setSubtab(t.id));
   }
 
-  const habits = await loadHabits(plugin.app);
-  const todayStatus = await readTodayHabitStatus(plugin.app, plugin.settings.reviewsPathTemplate);
-
   if (state.subtab === "habits") {
+    const habits = await loadHabits(plugin.app);
+    const todayStatus = await readTodayHabitStatus(
+      plugin.app,
+      plugin.settings.reviewsPathTemplate
+    );
     await renderHabitsList(body, plugin, habits, todayStatus, cb);
+  } else if (state.subtab === "projects") {
+    const projects = await loadProjects(plugin.app);
+    renderProjectsList(body, plugin, projects, cb);
   } else if (state.subtab === "areas") {
     renderAreas(body, plugin);
   } else if (state.subtab === "stats") {
+    const habits = await loadHabits(plugin.app);
     await renderStats(body, plugin, habits);
   } else {
+    const habits = await loadHabits(plugin.app);
     await renderStreaks(body, plugin, habits);
   }
 }
@@ -145,6 +155,88 @@ async function renderHabitsList(
     },
   });
   backfillBtn.addEventListener("click", () => cb.runCommand("backfill-habits"));
+}
+
+// ── Projects list ──────────────────────────────────────────────────────
+
+function renderProjectsList(
+  body: HTMLElement,
+  plugin: SecondBrainPlugin,
+  projects: Project[],
+  cb: GoalsTabCallbacks
+) {
+  const sec = body.createDiv({ cls: "second-brain-section" });
+  sec.createEl("h3", { text: "Projects" });
+
+  const active = projects.filter((p) => p.status === "active");
+
+  if (active.length === 0) {
+    const empty = sec.createDiv({ cls: "second-brain-muted" });
+    empty.appendText("No active projects yet. Create one with the button below, or drop a file into ");
+    empty.createEl("code", { text: PROJECTS_FOLDER });
+    empty.appendText(".");
+  } else {
+    const table = sec.createEl("table", { cls: "second-brain-habits-table" });
+    const head = table.createEl("thead").createEl("tr");
+    for (const col of ["Project", "Area", "Status", "Created", "Target"]) {
+      head.createEl("th", { text: col });
+    }
+    const tbody = table.createEl("tbody");
+    for (const p of active.sort((a, b) => a.name.localeCompare(b.name))) {
+      const tr = tbody.createEl("tr");
+      const nameCell = tr.createEl("td");
+      const link = nameCell.createEl("a", {
+        text: p.name,
+        cls: "second-brain-link",
+      });
+      link.addEventListener("click", () =>
+        plugin.app.workspace.getLeaf(false).openFile(p.file)
+      );
+      tr.createEl("td", { text: p.area ?? "—" });
+      tr.createEl("td", { text: p.status });
+      tr.createEl("td", { text: p.created ?? "—" });
+      tr.createEl("td", { text: p.targetDate ?? "—" });
+    }
+  }
+
+  // Secondary action row mirrors the Habits tab pattern.
+  const actions = sec.createDiv({ cls: "second-brain-secondary-actions" });
+  const newBtn = actions.createEl("button", {
+    text: "+ New Project",
+    cls: "second-brain-button second-brain-button-primary",
+    attr: {
+      title:
+        "Create a project file under 1. 🎯 Projects/ with an area link and SMART scaffold (Why · Done criteria · Status · Next steps).",
+    },
+  });
+  newBtn.addEventListener("click", () => {
+    new ProjectCreateModal(plugin.app, (file) => {
+      cb.onChanged();
+      plugin.app.workspace.getLeaf(false).openFile(file);
+    }).open();
+  });
+
+  // Optional: surface paused/done/archived projects collapsibly so they're
+  // discoverable without cluttering the active list.
+  const inactive = projects.filter((p) => p.status !== "active");
+  if (inactive.length > 0) {
+    const det = sec.createEl("details");
+    det.createEl("summary", {
+      text: `Other projects (${inactive.length})`,
+      cls: "second-brain-muted",
+    });
+    const list = det.createEl("ul", { cls: "second-brain-list" });
+    for (const p of inactive) {
+      const li = list.createEl("li");
+      const link = li.createEl("a", {
+        text: `${p.name} — ${p.status}`,
+        cls: "second-brain-link",
+      });
+      link.addEventListener("click", () =>
+        plugin.app.workspace.getLeaf(false).openFile(p.file)
+      );
+    }
+  }
 }
 
 // ── Areas: the Wheel of Life (Ali Abdaal layout) ────────────────────────
