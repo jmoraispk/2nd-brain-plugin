@@ -17,7 +17,7 @@ import { Project, loadProjects, PROJECTS_FOLDER } from "./projects";
 import { ProjectCreateModal } from "./projectCreateModal";
 import { applyDatePlaceholders, todayISO, toISO } from "./paths";
 
-export type GoalsSubtab = "habits" | "projects" | "areas" | "stats" | "streaks";
+export type GoalsSubtab = "habits" | "projects" | "areas" | "stats";
 
 export interface GoalsTabState {
   subtab: GoalsSubtab;
@@ -41,14 +41,14 @@ export async function renderGoals(
 ): Promise<void> {
   const body = parent.createDiv({ cls: "second-brain-tab-body" });
 
-  // Sub-tab bar
+  // Sub-tab bar. Streaks folded into Stats in v0.8.6 — current-streak count
+  // now renders next to each habit's heatmap strip.
   const bar = body.createDiv({ cls: "second-brain-subtabs" });
   const subtabs: Array<{ id: GoalsSubtab; label: string }> = [
     { id: "habits", label: "Habits" },
     { id: "projects", label: "Projects" },
     { id: "areas", label: "Areas" },
     { id: "stats", label: "Stats" },
-    { id: "streaks", label: "Streaks" },
   ];
   for (const t of subtabs) {
     const btn = bar.createEl("button", {
@@ -70,12 +70,10 @@ export async function renderGoals(
     renderProjectsList(body, plugin, projects, cb);
   } else if (state.subtab === "areas") {
     renderAreas(body, plugin);
-  } else if (state.subtab === "stats") {
+  } else {
+    // "stats" (default fallback) — shows heatmap + streak per habit.
     const habits = await loadHabits(plugin.app);
     await renderStats(body, plugin, habits);
-  } else {
-    const habits = await loadHabits(plugin.app);
-    await renderStreaks(body, plugin, habits);
   }
 }
 
@@ -384,6 +382,7 @@ async function renderStats(
   const days = 30;
   for (const h of active) {
     const cells = await collectHabitStrip(plugin, h.id, today, days);
+    const streak = await computeStreak(plugin, h.id, today, 365);
     const row = sec.createDiv({ cls: "second-brain-habit-strip-row" });
     row.createEl("div", { text: h.name, cls: "second-brain-habit-strip-label" });
     const grid = row.createDiv({ cls: "second-brain-habit-strip" });
@@ -398,6 +397,18 @@ async function renderStats(
       });
       sq.setText("");
     }
+    // Streak badge — current run of pass/uncertain days. 0 renders as muted "—".
+    const badge = row.createEl("div", {
+      cls: "second-brain-habit-streak-badge",
+      text: streak.current === 0 ? "—" : `🔥 ${streak.current}`,
+      attr: {
+        title:
+          streak.current === 0
+            ? "No active streak"
+            : `Current streak: ${streak.current} day${streak.current === 1 ? "" : "s"}`,
+      },
+    });
+    void badge;
   }
 
   sec.createEl("p", {
@@ -452,46 +463,6 @@ function cellClass(s: HabitDayCell["status"]): string {
       return "second-brain-habit-cell-fail";
     default:
       return "second-brain-habit-cell-missing";
-  }
-}
-
-// ── Streaks ─────────────────────────────────────────────────────────────
-
-async function renderStreaks(
-  body: HTMLElement,
-  plugin: SecondBrainPlugin,
-  habits: Habit[]
-) {
-  const sec = body.createDiv({ cls: "second-brain-section" });
-  sec.createEl("h3", { text: "Streaks" });
-
-  const active = habits.filter((h) => h.status === "active");
-  if (active.length === 0) {
-    sec.createEl("div", {
-      cls: "second-brain-muted",
-      text: "No habits yet.",
-    });
-    return;
-  }
-
-  const today = todayISO();
-  const table = sec.createEl("table", { cls: "second-brain-habits-table" });
-  const head = table.createEl("thead").createEl("tr");
-  for (const col of ["Habit", "Current streak", "Last evidence"]) {
-    head.createEl("th", { text: col });
-  }
-  const tbody = table.createEl("tbody");
-  for (const h of active) {
-    const { current, lastEvidence } = await computeStreak(
-      plugin,
-      h.id,
-      today,
-      30
-    );
-    const tr = tbody.createEl("tr");
-    tr.createEl("td", { text: h.name });
-    tr.createEl("td", { text: current === 0 ? "—" : `${current} day${current === 1 ? "" : "s"}` });
-    tr.createEl("td", { text: lastEvidence ?? "—" });
   }
 }
 

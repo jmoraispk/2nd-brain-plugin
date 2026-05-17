@@ -1043,3 +1043,13 @@
   color: var(--text-normal);
   font-size: 14px;
 }
+
+/* ── v0.8.6: streak badge in Stats sub-tab ──────────────────────────── */
+
+.second-brain-habit-streak-badge {
+  flex: 0 0 60px;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: right;
+  font-weight: 600;
+}
