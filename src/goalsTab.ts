@@ -15,14 +15,14 @@ import SecondBrainPlugin from "../main";
 import { Habit, loadHabits, HABITS_FOLDER } from "./habits";
 import { applyDatePlaceholders, todayISO, toISO } from "./paths";
 
-export type GoalsSubtab = "goals" | "stats" | "streaks";
+export type GoalsSubtab = "habits" | "areas" | "stats" | "streaks";
 
 export interface GoalsTabState {
   subtab: GoalsSubtab;
 }
 
 export function defaultGoalsTabState(): GoalsTabState {
-  return { subtab: "goals" };
+  return { subtab: "habits" };
 }
 
 export interface GoalsTabCallbacks {
@@ -41,19 +41,27 @@ export async function renderGoals(
 
   // Sub-tab bar
   const bar = body.createDiv({ cls: "second-brain-subtabs" });
-  for (const t of ["goals", "stats", "streaks"] as GoalsSubtab[]) {
+  const subtabs: Array<{ id: GoalsSubtab; label: string }> = [
+    { id: "habits", label: "Habits" },
+    { id: "areas", label: "Areas" },
+    { id: "stats", label: "Stats" },
+    { id: "streaks", label: "Streaks" },
+  ];
+  for (const t of subtabs) {
     const btn = bar.createEl("button", {
-      text: t[0].toUpperCase() + t.slice(1),
-      cls: `second-brain-subtab${state.subtab === t ? " active" : ""}`,
+      text: t.label,
+      cls: `second-brain-subtab${state.subtab === t.id ? " active" : ""}`,
     });
-    btn.addEventListener("click", () => cb.setSubtab(t));
+    btn.addEventListener("click", () => cb.setSubtab(t.id));
   }
 
   const habits = await loadHabits(plugin.app);
   const todayStatus = await readTodayHabitStatus(plugin.app, plugin.settings.reviewsPathTemplate);
 
-  if (state.subtab === "goals") {
+  if (state.subtab === "habits") {
     await renderHabitsList(body, plugin, habits, todayStatus, cb);
+  } else if (state.subtab === "areas") {
+    renderAreas(body, plugin);
   } else if (state.subtab === "stats") {
     await renderStats(body, plugin, habits);
   } else {
@@ -71,61 +79,208 @@ async function renderHabitsList(
   cb: GoalsTabCallbacks
 ) {
   const sec = body.createDiv({ cls: "second-brain-section" });
-
-  // Header row: heading on the left, Draft Habit button on the right.
-  const headerRow = sec.createDiv({ cls: "second-brain-row" });
-  headerRow.createEl("h3", { text: "Habits", cls: "second-brain-row-content" });
-  const draftBtn = headerRow.createEl("button", {
-    text: "✨ Draft Habit",
-    cls: "second-brain-button second-brain-button-primary",
-    attr: {
-      title:
-        "AI drafts a new habit (or boosts an existing one) using the LogLife framework: Define / Why / Plan / Environment / Recover.",
-    },
-  });
-  draftBtn.addEventListener("click", () => cb.runCommand("draft-habit"));
+  sec.createEl("h3", { text: "Habits" });
 
   const active = habits.filter((h) => h.status === "active");
 
   if (active.length === 0) {
     const empty = sec.createDiv({ cls: "second-brain-muted" });
-    empty.appendText("No habits yet. Click ✨ Draft Habit above, or create one manually at ");
+    empty.appendText("No habits yet. Create one manually at ");
     empty.createEl("code", { text: `${HABITS_FOLDER}/<id>.md` });
-    empty.appendText(".");
-    return;
+    empty.appendText(" — or run Draft Habit below to have the AI write one for you.");
+  } else {
+    const table = sec.createEl("table", { cls: "second-brain-habits-table" });
+    const head = table.createEl("thead").createEl("tr");
+    for (const col of ["Habit", "Area", "Periodicity", "Today", "Evidence"]) {
+      head.createEl("th", { text: col });
+    }
+    const tbody = table.createEl("tbody");
+    for (const h of active) {
+      const tr = tbody.createEl("tr");
+      const nameCell = tr.createEl("td");
+      const link = nameCell.createEl("a", {
+        text: h.name,
+        cls: "second-brain-link",
+      });
+      link.addEventListener("click", () =>
+        plugin.app.workspace.getLeaf(false).openFile(h.file)
+      );
+      tr.createEl("td", { text: h.area ?? "—" });
+      tr.createEl("td", { text: h.periodicity });
+      const statusCell = tr.createEl("td");
+      const s = todayStatus.get(h.id);
+      if (s === "pass") statusCell.setText("✅");
+      else if (s === "fail") statusCell.setText("❌");
+      else if (s === "uncertain") {
+        statusCell.createSpan({
+          text: "⚠️",
+          cls: "second-brain-danger",
+          attr: { title: "Uncertain — no evidence in today's log" },
+        });
+      } else statusCell.setText("—");
+      tr.createEl("td", { text: h.binaryCriterion });
+    }
   }
 
-  const table = sec.createEl("table", { cls: "second-brain-habits-table" });
-  const head = table.createEl("thead").createEl("tr");
-  for (const col of ["Habit", "Area", "Periodicity", "Today", "Evidence"]) {
-    head.createEl("th", { text: col });
-  }
-  const tbody = table.createEl("tbody");
-  for (const h of active) {
-    const tr = tbody.createEl("tr");
-    const nameCell = tr.createEl("td");
-    const link = nameCell.createEl("a", {
-      text: h.name,
-      cls: "second-brain-link",
+  // Secondary actions row, below the table — less visually loud than the
+  // previous header-bar placement.
+  const actions = sec.createDiv({ cls: "second-brain-secondary-actions" });
+
+  const draftBtn = actions.createEl("button", {
+    text: "✨ Draft Habit",
+    cls: "second-brain-button",
+    attr: {
+      title:
+        "AI drafts a new habit (or boosts an existing one) — Define / Why / Plan / Environment / Recover.",
+    },
+  });
+  draftBtn.addEventListener("click", () => cb.runCommand("draft-habit"));
+
+  const backfillBtn = actions.createEl("button", {
+    text: "📜 Backfill history",
+    cls: "second-brain-button",
+    attr: {
+      title:
+        "Scan past daily logs and evaluate each habit retroactively. Updates 🤖 AI/Habit-Data/ so streaks + heatmaps reflect real history. Costs one LLM call.",
+    },
+  });
+  backfillBtn.addEventListener("click", () => cb.runCommand("backfill-habits"));
+}
+
+// ── Areas: the Wheel of Life (Ali Abdaal layout) ────────────────────────
+
+interface WheelSlice {
+  macro: string;
+  sub: string;
+  folder: string;
+  hue: number; // base hue for the macro group
+  lightness: number; // shade within the macro group
+}
+
+const WHEEL: WheelSlice[] = [
+  // Health — greens, top of wheel
+  { macro: "Health", sub: "Body",   folder: "2. 🌳 Areas/Health/Body",   hue: 135, lightness: 30 },
+  { macro: "Health", sub: "Mind",   folder: "2. 🌳 Areas/Health/Mind",   hue: 135, lightness: 38 },
+  { macro: "Health", sub: "Soul",   folder: "2. 🌳 Areas/Health/Soul",   hue: 135, lightness: 46 },
+  // Relationships — warm pinks/oranges
+  { macro: "Relationships", sub: "Romance", folder: "2. 🌳 Areas/Relationships/Romance", hue: 350, lightness: 38 },
+  { macro: "Relationships", sub: "Family",  folder: "2. 🌳 Areas/Relationships/Family",  hue: 20,  lightness: 40 },
+  { macro: "Relationships", sub: "Friends", folder: "2. 🌳 Areas/Relationships/Friends", hue: 40,  lightness: 42 },
+  // Work — cool blues
+  { macro: "Work", sub: "Mission", folder: "2. 🌳 Areas/Work/Mission", hue: 220, lightness: 34 },
+  { macro: "Work", sub: "Money",   folder: "2. 🌳 Areas/Work/Money",   hue: 220, lightness: 42 },
+  { macro: "Work", sub: "Growth",  folder: "2. 🌳 Areas/Work/Growth",  hue: 220, lightness: 50 },
+];
+
+function renderAreas(body: HTMLElement, plugin: SecondBrainPlugin) {
+  const sec = body.createDiv({ cls: "second-brain-section" });
+  sec.createEl("h3", { text: "Wheel of Life" });
+  sec.createEl("p", {
+    cls: "second-brain-muted",
+    text: "Three macro areas, three sub-areas each (Ali Abdaal's layout). Click a slice to open the folder. Empty slices are by design — not every area needs to be active.",
+  });
+
+  const wheel = sec.createDiv({ cls: "second-brain-wheel" });
+  const svgNS = "http://www.w3.org/2000/svg";
+  const size = 340;
+  const cx = size / 2;
+  const cy = size / 2;
+  const r = size / 2 - 8;
+  const labelR = r * 0.65;
+
+  const svg = document.createElementNS(svgNS, "svg");
+  svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("class", "second-brain-wheel-svg");
+
+  // 9 slices × 40° each, starting at the top.
+  const sliceDeg = 360 / WHEEL.length;
+  for (let i = 0; i < WHEEL.length; i++) {
+    const start = i * sliceDeg - 90;
+    const end = (i + 1) * sliceDeg - 90;
+    const slice = WHEEL[i];
+
+    const path = document.createElementNS(svgNS, "path");
+    path.setAttribute("d", arcPath(cx, cy, r, start, end));
+    path.setAttribute("fill", `hsl(${slice.hue}, 55%, ${slice.lightness}%)`);
+    path.setAttribute("stroke", "var(--background-primary, #fff)");
+    path.setAttribute("stroke-width", "1.5");
+    path.setAttribute("class", "second-brain-wheel-slice");
+    path.setAttribute("data-folder", slice.folder);
+    path.addEventListener("click", () => {
+      plugin.app.workspace.openLinkText(slice.folder, "", false);
     });
-    link.addEventListener("click", () =>
-      plugin.app.workspace.getLeaf(false).openFile(h.file)
-    );
-    tr.createEl("td", { text: h.area ?? "—" });
-    tr.createEl("td", { text: h.periodicity });
-    const statusCell = tr.createEl("td");
-    const s = todayStatus.get(h.id);
-    if (s === "pass") statusCell.setText("✅");
-    else if (s === "fail") statusCell.setText("❌");
-    else if (s === "uncertain") {
-      statusCell.createSpan({
-        text: "⚠️",
-        cls: "second-brain-danger",
-        attr: { title: "Uncertain — no evidence in today's log" },
-      });
-    } else statusCell.setText("—");
-    tr.createEl("td", { text: h.binaryCriterion });
+    const titleEl = document.createElementNS(svgNS, "title");
+    titleEl.textContent = `${slice.macro} · ${slice.sub} → ${slice.folder}`;
+    path.appendChild(titleEl);
+    svg.appendChild(path);
+
+    // Label at the slice midpoint.
+    const midDeg = (start + end) / 2;
+    const lx = cx + labelR * Math.cos((midDeg * Math.PI) / 180);
+    const ly = cy + labelR * Math.sin((midDeg * Math.PI) / 180);
+    const text = document.createElementNS(svgNS, "text");
+    text.setAttribute("x", String(lx));
+    text.setAttribute("y", String(ly));
+    text.setAttribute("text-anchor", "middle");
+    text.setAttribute("dominant-baseline", "central");
+    text.setAttribute("fill", "white");
+    text.setAttribute("font-size", "13");
+    text.setAttribute("font-weight", "600");
+    text.setAttribute("pointer-events", "none");
+    text.textContent = slice.sub;
+    svg.appendChild(text);
   }
+
+  // Central macro labels (Health, Relationships, Work) as a ring above
+  // their three slices. Each macro group spans 3 × 40° = 120°.
+  const macros = ["Health", "Relationships", "Work"];
+  for (let i = 0; i < macros.length; i++) {
+    const startDeg = i * 120 - 90;
+    const midDeg = startDeg + 60;
+    const macroR = r + 14;
+    const lx = cx + macroR * Math.cos((midDeg * Math.PI) / 180);
+    const ly = cy + macroR * Math.sin((midDeg * Math.PI) / 180);
+    // Most readers find macro labels above the wheel awkward — instead
+    // surface them as a legend below.
+    void lx; void ly; void macros[i];
+  }
+
+  wheel.appendChild(svg);
+
+  // Legend
+  const legend = sec.createDiv({ cls: "second-brain-wheel-legend" });
+  const macroGroups: Record<string, WheelSlice[]> = {};
+  for (const s of WHEEL) {
+    if (!macroGroups[s.macro]) macroGroups[s.macro] = [];
+    macroGroups[s.macro].push(s);
+  }
+  for (const [macro, slices] of Object.entries(macroGroups)) {
+    const row = legend.createDiv({ cls: "second-brain-wheel-legend-row" });
+    const swatch = row.createSpan({ cls: "second-brain-wheel-legend-swatch" });
+    swatch.style.backgroundColor = `hsl(${slices[0].hue}, 55%, ${slices[1].lightness}%)`;
+    row.createSpan({
+      text: ` ${macro} — ${slices.map((s) => s.sub).join(" · ")}`,
+    });
+  }
+}
+
+/** SVG arc path from (cx,cy) center, radius r, start to end degrees. */
+function arcPath(
+  cx: number,
+  cy: number,
+  r: number,
+  startDeg: number,
+  endDeg: number
+): string {
+  const start = (startDeg * Math.PI) / 180;
+  const end = (endDeg * Math.PI) / 180;
+  const x1 = cx + r * Math.cos(start);
+  const y1 = cy + r * Math.sin(start);
+  const x2 = cx + r * Math.cos(end);
+  const y2 = cy + r * Math.sin(end);
+  const largeArc = endDeg - startDeg > 180 ? 1 : 0;
+  return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`;
 }
 
 // ── Stats: native 30-day heatmap per habit ──────────────────────────────

@@ -158,3 +158,100 @@ async function ensureFolder(app: App, folderPath: string) {
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+/**
+ * Parse the YAML block produced by `/backfill-habits` and merge those
+ * historical (date, habit, status) triples into the per-habit data files.
+ *
+ * Expected block shape:
+ * ```yaml
+ * backfill:
+ *   2026-04-15:
+ *     gym: pass
+ *     meditate: fail
+ *   2026-04-16:
+ *     gym: pass
+ * ```
+ *
+ * Returns the number of (date, habit) pairs merged.
+ */
+export async function mergeBackfillIntoData(
+  app: App,
+  habits: Habit[],
+  backfillBody: string,
+  year: string
+): Promise<number> {
+  const parsed = parseBackfillYaml(backfillBody);
+  if (parsed.size === 0) return 0;
+
+  await ensureFolder(app, HABIT_DATA_FOLDER);
+
+  let merged = 0;
+  for (const h of habits) {
+    const entries: DayEntry[] = [];
+    for (const [date, perHabit] of parsed) {
+      const status = perHabit.get(h.id);
+      if (status) {
+        entries.push({ date, status });
+        merged++;
+      }
+    }
+    if (entries.length === 0) continue;
+    entries.sort((a, b) => a.date.localeCompare(b.date));
+    const outPath = `${HABIT_DATA_FOLDER}/${h.id}.md`;
+    const body = buildDataFile(h, entries, year);
+    const existing = app.vault.getAbstractFileByPath(outPath);
+    if (existing instanceof TFile) {
+      await app.vault.modify(existing, body);
+    } else {
+      await app.vault.create(outPath, body);
+    }
+  }
+  return merged;
+}
+
+function parseBackfillYaml(
+  raw: string
+): Map<string, Map<string, "pass" | "uncertain" | "fail">> {
+  const out = new Map<string, Map<string, "pass" | "uncertain" | "fail">>();
+
+  // Find the ```yaml…``` block(s) and look for one starting with `backfill:`.
+  const blocks = raw.matchAll(/```ya?ml\s*\n([\s\S]*?)```/g);
+  for (const m of blocks) {
+    const block = m[1];
+    if (!/^\s*backfill:/m.test(block)) continue;
+
+    // Walk indented children of `backfill:`. Date keys are 2-space-indented;
+    // habit-status pairs are 4-space-indented underneath.
+    const lines = block.split(/\r?\n/);
+    let inBackfill = false;
+    let currentDate: string | null = null;
+    for (const line of lines) {
+      if (/^backfill:\s*$/.test(line)) {
+        inBackfill = true;
+        continue;
+      }
+      if (!inBackfill) continue;
+      const dateMatch = line.match(/^\s{2}(\d{4}-\d{2}-\d{2}):\s*$/);
+      if (dateMatch) {
+        currentDate = dateMatch[1];
+        if (!out.has(currentDate)) out.set(currentDate, new Map());
+        continue;
+      }
+      const statusMatch = line.match(
+        /^\s{4}([\w-]+):\s*(pass|fail|uncertain)\s*$/
+      );
+      if (statusMatch && currentDate) {
+        out
+          .get(currentDate)!
+          .set(statusMatch[1], statusMatch[2] as "pass" | "uncertain" | "fail");
+      }
+      // Blank line or non-indented line ends the section.
+      if (line.trim() === "" || (!/^\s/.test(line) && line.trim() !== "")) {
+        inBackfill = /^backfill:/.test(line);
+      }
+    }
+    break; // first matching block wins
+  }
+  return out;
+}

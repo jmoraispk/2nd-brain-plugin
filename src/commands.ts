@@ -694,6 +694,44 @@ export const BUILT_IN_COMMANDS: Command[] = [
     outputPath: "🤖 AI/Thinking/Leverage/{YYYY-MM-DD}.md",
     systemPrompt: LEVERAGE_PROMPT,
   },
+  // Habit backfill (v0.8.2). One-shot: scan past logs, evaluate each habit
+  // retroactively, and write a YAML report the plugin then merges into the
+  // per-habit data files so streaks + heatmaps reflect real history.
+  {
+    id: "backfill-habits",
+    label: "Backfill Habits",
+    tier: "B",
+    description:
+      "Evaluate each active habit retroactively across all past daily logs, so streaks and heatmaps reflect real history. Costs one larger LLM call.",
+    inputs: [{ kind: "all-logs", label: "All daily logs" }],
+    outputPath: "🤖 AI/Habit-Backfill/{YYYY-MM-DD}.md",
+    systemPrompt: `You are doing a one-shot RETROACTIVE evaluation of habits.
+
+You will be given:
+1. The user's complete daily logs (one section per day, dated).
+2. An "Active habits to evaluate" block listing the user's currently-active habits with their binary criteria.
+
+For EVERY day that has a log, evaluate every habit and output a single fenced YAML block of the form:
+
+\`\`\`yaml
+backfill:
+  2026-04-15:
+    gym: pass
+    meditate: fail
+  2026-04-16:
+    gym: pass
+    meditate: pass
+\`\`\`
+
+Rules:
+- pass = captures contain explicit evidence (action verb + reference to the habit, OR a #tag like #gym).
+- fail = captures explicitly say the habit was missed ("skipped gym", "no run today").
+- uncertain = no capture either way. Use uncertain (NOT pass and NOT fail).
+- Do NOT invent evidence. When unsure, mark uncertain.
+- Include EVERY date that has a log entry. Omit dates without a log.
+- Habit ids must match exactly what was listed in the "Active habits" block.
+- The YAML block is the primary output. After the block, write a 2–3 sentence summary of patterns observed (which habits show consistent streaks, which are spotty). Don't editorialize beyond what the data shows.`,
+  },
   // Habit drafting (v0.8).
   {
     id: "draft-habit",

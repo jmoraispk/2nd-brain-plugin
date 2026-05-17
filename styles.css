@@ -914,3 +914,51 @@
   background: var(--background-modifier-border);
   opacity: 0.3;
 }
+
+/* ── v0.8.2: Wheel of Life + Life-tab polish ─────────────────────────── */
+
+.second-brain-secondary-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.second-brain-wheel {
+  display: flex;
+  justify-content: center;
+  margin: 16px 0;
+}
+
+.second-brain-wheel-svg {
+  max-width: 340px;
+  height: auto;
+}
+
+.second-brain-wheel-slice {
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+
+.second-brain-wheel-slice:hover {
+  filter: brightness(1.15);
+}
+
+.second-brain-wheel-legend {
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.second-brain-wheel-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.second-brain-wheel-legend-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}

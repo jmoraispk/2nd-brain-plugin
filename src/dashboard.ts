@@ -276,21 +276,20 @@ async function renderDayHeader(
 
   const headerRow = sec.createDiv({ cls: "second-brain-day-header" });
 
+  // Left arrow goes back arbitrarily far. Right arrow caps at today (no
+  // future). User originally wanted "today or day before" only; loosened in
+  // v0.8.2 after they hit the wall trying to backfill captures from a few
+  // days ago.
   const left = headerRow.createEl("button", {
     text: "◀",
     cls: "second-brain-iconbtn second-brain-day-arrow",
     attr: { title: "Previous day" },
   });
-  // Cap: cannot navigate to a day older than yesterday.
-  if (displayedDate <= yesterday) {
-    left.setAttribute("disabled", "true");
-  } else {
-    left.addEventListener("click", () => {
-      const d = new Date(displayedDate + "T00:00:00");
-      d.setDate(d.getDate() - 1);
-      onChangeDate(toISO(d));
-    });
-  }
+  left.addEventListener("click", () => {
+    const d = new Date(displayedDate + "T00:00:00");
+    d.setDate(d.getDate() - 1);
+    onChangeDate(toISO(d));
+  });
 
   const d = new Date(displayedDate + "T00:00:00");
   const wkday = d.toLocaleDateString("en-US", { weekday: "short" });

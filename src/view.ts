@@ -31,14 +31,14 @@ import { todayISO } from "./paths";
 
 export const VIEW_TYPE_SECOND_BRAIN = "second-brain-view";
 
-type ViewMode = "dashboard" | "review" | "habits" | "think";
+type ViewMode = "dashboard" | "review" | "life" | "think";
 
 export class SecondBrainView extends ItemView {
   plugin: SecondBrainPlugin;
   mode: ViewMode = "dashboard";
   reviewState: ReviewTabState = defaultReviewTabState();
   thinkState: ThinkTabState = defaultThinkTabState();
-  habitsState: GoalsTabState = defaultGoalsTabState();
+  lifeState: GoalsTabState = defaultGoalsTabState();
   pendingReviewsCollapsed: boolean = true;
   /** Date the Dashboard's day-header is showing (capped at yesterday ↔ today). */
   displayedDate: string = todayISO();
@@ -90,10 +90,10 @@ export class SecondBrainView extends ItemView {
           this.render();
         }
       );
-    } else if (this.mode === "habits") {
-      await renderGoals(container, this.plugin, this.habitsState, {
+    } else if (this.mode === "life") {
+      await renderGoals(container, this.plugin, this.lifeState, {
         setSubtab: (t) => {
-          this.habitsState.subtab = t;
+          this.lifeState.subtab = t;
           this.render();
         },
         onChanged: () => this.render(),
@@ -182,7 +182,7 @@ export class SecondBrainView extends ItemView {
     for (const tab of [
       { mode: "dashboard" as ViewMode, label: "Dashboard" },
       { mode: "review" as ViewMode, label: "Review" },
-      { mode: "habits" as ViewMode, label: "Habits" },
+      { mode: "life" as ViewMode, label: "Life" },
       { mode: "think" as ViewMode, label: "Think" },
     ]) {
       const el = tabs.createEl("button", {

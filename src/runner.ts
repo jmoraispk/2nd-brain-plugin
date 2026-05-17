@@ -31,7 +31,7 @@ import {
   sha1Hex,
 } from "./reviewMeta";
 import { buildHabitContextBlock, loadActiveHabits } from "./habits";
-import { writeHabitDataFiles } from "./habitData";
+import { writeHabitDataFiles, mergeBackfillIntoData } from "./habitData";
 
 interface InputContent {
   label: string;
@@ -105,9 +105,10 @@ export async function runCommand(
   if (topicInput && topicInput.trim()) {
     userMsgParts.push("", `## Topic / focus\n\n${topicInput.trim()}`);
   }
-  // Active habits — injected for the daily review only, so the LLM can decide
-  // pass / uncertain / fail per habit from the day's captures.
-  if (command.id === "todays-review") {
+  // Active habits — injected for the daily review (per-day inference) and
+  // for the backfill command (one-shot retroactive evaluation across all
+  // historical logs).
+  if (command.id === "todays-review" || command.id === "backfill-habits") {
     const habits = await loadActiveHabits(app);
     const block = buildHabitContextBlock(habits);
     if (block) userMsgParts.push("", block);
@@ -154,14 +155,22 @@ export async function runCommand(
     outFile = await app.vault.create(outputPath, result);
   }
 
-  // For the daily review, refresh per-habit heatmap data files so the Heatmap
-  // Calendar plugin can render up-to-date yearly views.
+  // Daily review → refresh per-habit heatmap data from today's review.
+  // Backfill → parse the LLM's YAML block and merge across historical dates.
   if (command.id === "todays-review") {
     try {
       const habits = await loadActiveHabits(app);
       await writeHabitDataFiles(app, settings.reviewsPathTemplate, habits);
     } catch (err) {
       console.error("habit-data write failed (non-fatal):", err);
+    }
+  } else if (command.id === "backfill-habits") {
+    try {
+      const habits = await loadActiveHabits(app);
+      const year = today.slice(0, 4);
+      await mergeBackfillIntoData(app, habits, body, year);
+    } catch (err) {
+      console.error("habit-backfill merge failed (non-fatal):", err);
     }
   }
 
