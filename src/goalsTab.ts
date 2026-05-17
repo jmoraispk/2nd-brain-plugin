@@ -158,27 +158,43 @@ interface WheelSlice {
 }
 
 const WHEEL: WheelSlice[] = [
-  // Health — greens, top of wheel
-  { macro: "Health", sub: "Body",   folder: "2. 🌳 Areas/Health/Body",   hue: 135, lightness: 30 },
-  { macro: "Health", sub: "Mind",   folder: "2. 🌳 Areas/Health/Mind",   hue: 135, lightness: 38 },
-  { macro: "Health", sub: "Soul",   folder: "2. 🌳 Areas/Health/Soul",   hue: 135, lightness: 46 },
-  // Relationships — warm pinks/oranges
-  { macro: "Relationships", sub: "Romance", folder: "2. 🌳 Areas/Relationships/Romance", hue: 350, lightness: 38 },
-  { macro: "Relationships", sub: "Family",  folder: "2. 🌳 Areas/Relationships/Family",  hue: 20,  lightness: 40 },
-  { macro: "Relationships", sub: "Friends", folder: "2. 🌳 Areas/Relationships/Friends", hue: 40,  lightness: 42 },
-  // Work — cool blues
-  { macro: "Work", sub: "Mission", folder: "2. 🌳 Areas/Work/Mission", hue: 220, lightness: 34 },
-  { macro: "Work", sub: "Money",   folder: "2. 🌳 Areas/Work/Money",   hue: 220, lightness: 42 },
-  { macro: "Work", sub: "Growth",  folder: "2. 🌳 Areas/Work/Growth",  hue: 220, lightness: 50 },
+  // Health — greens (kept; user said "perfect")
+  { macro: "Health", sub: "Body",   folder: "2. 🌳 Areas/Health/Body",   hue: 135, lightness: 28 },
+  { macro: "Health", sub: "Mind",   folder: "2. 🌳 Areas/Health/Mind",   hue: 135, lightness: 40 },
+  { macro: "Health", sub: "Soul",   folder: "2. 🌳 Areas/Health/Soul",   hue: 135, lightness: 52 },
+  // Relationships — actual reds (not pink/orange)
+  { macro: "Relationships", sub: "Romance", folder: "2. 🌳 Areas/Relationships/Romance", hue: 0, lightness: 32 },
+  { macro: "Relationships", sub: "Family",  folder: "2. 🌳 Areas/Relationships/Family",  hue: 0, lightness: 42 },
+  { macro: "Relationships", sub: "Friends", folder: "2. 🌳 Areas/Relationships/Friends", hue: 0, lightness: 52 },
+  // Work — blues with wider spread
+  { macro: "Work", sub: "Mission", folder: "2. 🌳 Areas/Work/Mission", hue: 215, lightness: 28 },
+  { macro: "Work", sub: "Money",   folder: "2. 🌳 Areas/Work/Money",   hue: 215, lightness: 42 },
+  { macro: "Work", sub: "Growth",  folder: "2. 🌳 Areas/Work/Growth",  hue: 215, lightness: 56 },
 ];
 
 function renderAreas(body: HTMLElement, plugin: SecondBrainPlugin) {
-  const sec = body.createDiv({ cls: "second-brain-section" });
+  const sec = body.createDiv({ cls: "second-brain-section second-brain-wheel-section" });
   sec.createEl("h3", { text: "Wheel of Life" });
   sec.createEl("p", {
     cls: "second-brain-muted",
-    text: "Three macro areas, three sub-areas each (Ali Abdaal's layout). Click a slice to open the folder. Empty slices are by design — not every area needs to be active.",
+    text: "Click slice to open the folder.",
   });
+
+  // Legend above the wheel.
+  const legend = sec.createDiv({ cls: "second-brain-wheel-legend" });
+  const macroGroups: Record<string, WheelSlice[]> = {};
+  for (const s of WHEEL) {
+    if (!macroGroups[s.macro]) macroGroups[s.macro] = [];
+    macroGroups[s.macro].push(s);
+  }
+  for (const [macro, slices] of Object.entries(macroGroups)) {
+    const row = legend.createDiv({ cls: "second-brain-wheel-legend-row" });
+    const swatch = row.createSpan({ cls: "second-brain-wheel-legend-swatch" });
+    swatch.style.backgroundColor = `hsl(${slices[1].hue}, 55%, ${slices[1].lightness}%)`;
+    row.createSpan({
+      text: ` ${macro} — ${slices.map((s) => s.sub).join(" · ")}`,
+    });
+  }
 
   const wheel = sec.createDiv({ cls: "second-brain-wheel" });
   const svgNS = "http://www.w3.org/2000/svg";
@@ -232,37 +248,7 @@ function renderAreas(body: HTMLElement, plugin: SecondBrainPlugin) {
     svg.appendChild(text);
   }
 
-  // Central macro labels (Health, Relationships, Work) as a ring above
-  // their three slices. Each macro group spans 3 × 40° = 120°.
-  const macros = ["Health", "Relationships", "Work"];
-  for (let i = 0; i < macros.length; i++) {
-    const startDeg = i * 120 - 90;
-    const midDeg = startDeg + 60;
-    const macroR = r + 14;
-    const lx = cx + macroR * Math.cos((midDeg * Math.PI) / 180);
-    const ly = cy + macroR * Math.sin((midDeg * Math.PI) / 180);
-    // Most readers find macro labels above the wheel awkward — instead
-    // surface them as a legend below.
-    void lx; void ly; void macros[i];
-  }
-
   wheel.appendChild(svg);
-
-  // Legend
-  const legend = sec.createDiv({ cls: "second-brain-wheel-legend" });
-  const macroGroups: Record<string, WheelSlice[]> = {};
-  for (const s of WHEEL) {
-    if (!macroGroups[s.macro]) macroGroups[s.macro] = [];
-    macroGroups[s.macro].push(s);
-  }
-  for (const [macro, slices] of Object.entries(macroGroups)) {
-    const row = legend.createDiv({ cls: "second-brain-wheel-legend-row" });
-    const swatch = row.createSpan({ cls: "second-brain-wheel-legend-swatch" });
-    swatch.style.backgroundColor = `hsl(${slices[0].hue}, 55%, ${slices[1].lightness}%)`;
-    row.createSpan({
-      text: ` ${macro} — ${slices.map((s) => s.sub).join(" · ")}`,
-    });
-  }
 }
 
 /** SVG arc path from (cx,cy) center, radius r, start to end degrees. */

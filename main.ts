@@ -6,9 +6,11 @@ import {
   SecondBrainSettings,
 } from "./src/settings";
 import { BUILT_IN_COMMANDS } from "./src/commands";
+import { ErrorLog } from "./src/errorLog";
 
 export default class SecondBrainPlugin extends Plugin {
   settings: SecondBrainSettings;
+  errorLog = new ErrorLog();
 
   async onload() {
     await this.loadSettings();

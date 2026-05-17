@@ -27,6 +27,7 @@ import {
 } from "./thinkTab";
 import { renderGoals, GoalsTabState, defaultGoalsTabState } from "./goalsTab";
 import { TopicInputModal } from "./topicInputModal";
+import { LogsModal } from "./errorLog";
 import { todayISO } from "./paths";
 
 export const VIEW_TYPE_SECOND_BRAIN = "second-brain-view";
@@ -206,6 +207,19 @@ export class SecondBrainView extends ItemView {
     });
     refreshBtn.addEventListener("click", () => this.render());
 
+    // 🐛 button surfaces the in-plugin error log so users can copy the
+    // actual error message when something fails (instead of seeing a
+    // disappearing Notice). Badge shows count when > 0.
+    const logCount = this.plugin.errorLog.count();
+    const logsBtn = right.createEl("button", {
+      text: logCount > 0 ? `🐛 ${logCount}` : "🐛",
+      cls: `second-brain-iconbtn${logCount > 0 ? " second-brain-iconbtn-alert" : ""}`,
+      attr: { title: "View error log" },
+    });
+    logsBtn.addEventListener("click", () =>
+      new LogsModal(this.app, this.plugin.errorLog).open()
+    );
+
     const settingsBtn = right.createEl("button", {
       text: "⚙",
       cls: "second-brain-iconbtn",
@@ -274,8 +288,10 @@ export class SecondBrainView extends ItemView {
       new Notice(`Command not found: ${commandId}`);
       return;
     }
-    if (cmd.topicPromptText && !topicInput) {
-      new TopicInputModal(this.app, cmd.topicPromptText, (topic) => {
+    if (cmd.topicPromptText && topicInput === undefined) {
+      new TopicInputModal(this.app, cmd.label, cmd.topicPromptText, (topic) => {
+        // Pass empty string (not undefined) so we don't re-prompt forever
+        // when the user submits with nothing — Draft Habit allows blank.
         this.runCommandById(commandId, anchorOverride, topic);
       }).open();
       return;
@@ -326,8 +342,11 @@ export class SecondBrainView extends ItemView {
       await this.render();
       this.notifyRunResult(cmd.label, result);
     } catch (err) {
-      new Notice(`${cmd.label} failed: ${(err as Error).message}`);
-      console.error(err);
+      this.plugin.errorLog.push(`run:${cmd.id}`, err);
+      new Notice(
+        `${cmd.label} failed: ${(err as Error).message}\nOpen 🐛 in the topbar for details.`,
+        8000
+      );
     } finally {
       window.clearInterval(interval);
       progress.hide();
@@ -369,8 +388,11 @@ export class SecondBrainView extends ItemView {
       this.reviewState = defaultReviewTabState();
       await this.render();
     } catch (err) {
-      new Notice(`Finish failed: ${(err as Error).message}`);
-      console.error(err);
+      this.plugin.errorLog.push("finishReview", err);
+      new Notice(
+        `Finish failed: ${(err as Error).message}\nOpen 🐛 in the topbar for details.`,
+        8000
+      );
     }
   }
 
@@ -444,8 +466,11 @@ export class SecondBrainView extends ItemView {
       this.notifyRunResult(command.label, result);
       await this.app.workspace.getLeaf(false).openFile(result.file);
     } catch (err) {
-      new Notice(`${command.label} failed: ${(err as Error).message}`);
-      console.error(err);
+      this.plugin.errorLog.push(`run:${command.id}`, err);
+      new Notice(
+        `${command.label} failed: ${(err as Error).message}\nOpen 🐛 in the topbar for details.`,
+        8000
+      );
     } finally {
       window.clearInterval(interval);
       progress.hide();
@@ -544,8 +569,11 @@ class CaptureModal extends Modal {
       new Notice(`Captured → ${path}`);
       this.onSaved?.();
     } catch (err) {
-      new Notice(`Capture failed: ${(err as Error).message}`);
-      console.error(err);
+      this.plugin.errorLog.push("capture", err);
+      new Notice(
+        `Capture failed: ${(err as Error).message}\nOpen 🐛 in the topbar for details.`,
+        8000
+      );
     }
     this.close();
   }

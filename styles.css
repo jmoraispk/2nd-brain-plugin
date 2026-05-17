@@ -962,3 +962,72 @@
   height: 12px;
   border-radius: 2px;
 }
+
+/* ── v0.8.3: bottom breathing room so Obsidian Mobile's tray doesn't
+       cover the last content. Applied to the wheel section specifically
+       (large standalone element) and bumps the global tab-body floor. */
+
+.second-brain-wheel-section {
+  margin-bottom: 80px;
+}
+
+.second-brain-tab-body {
+  padding-bottom: 60px;
+}
+
+/* ── v0.8.3: error log UI ─────────────────────────────────────────── */
+
+.second-brain-iconbtn-alert {
+  background: var(--text-error, #e08080);
+  color: var(--background-primary);
+  font-weight: 600;
+}
+
+.second-brain-logs-list {
+  margin: 12px 0;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.second-brain-logs-item {
+  border-left: 3px solid var(--text-error, #e08080);
+  padding: 6px 10px;
+  margin: 8px 0;
+  background: var(--background-secondary);
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.second-brain-logs-head {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 4px;
+  font-size: 11px;
+}
+
+.second-brain-logs-ts {
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+}
+
+.second-brain-logs-tag {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.second-brain-logs-msg {
+  font-family: var(--font-monospace);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.second-brain-logs-stack {
+  font-size: 11px;
+  font-family: var(--font-monospace);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 6px 0 0;
+  padding: 6px;
+  background: var(--background-primary);
+  border-radius: 3px;
+}
