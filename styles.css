@@ -911,8 +911,9 @@
 }
 
 .second-brain-habit-cell-missing {
+  /* Darker gray — past day with no log / no habit evaluation. */
   background: var(--background-modifier-border);
-  opacity: 0.3;
+  opacity: 0.9;
 }
 
 /* ── v0.8.2: Wheel of Life + Life-tab polish ─────────────────────────── */
@@ -1126,7 +1127,62 @@
 }
 
 .second-brain-habit-cell-future {
-  background: transparent;
-  border: 1px dashed var(--background-modifier-border);
-  opacity: 0.4;
+  /* Lighter gray — day hasn't come yet. */
+  background: var(--background-modifier-border);
+  opacity: 0.25;
+}
+
+/* ── v0.8.8: Year-view grid + numeric stats tiles + month labels ──── */
+
+.second-brain-year-month-row {
+  display: grid;
+  grid-template-columns: 24px repeat(52, 1fr);
+  gap: 1px;
+  margin-bottom: 2px;
+}
+
+.second-brain-year-month-label {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-align: left;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.second-brain-year-grid {
+  display: grid;
+  grid-template-columns: 24px repeat(52, 1fr);
+  gap: 1px;
+  align-items: center;
+}
+
+.second-brain-year-grid .second-brain-week-dow-label {
+  font-size: 9px;
+  padding-right: 2px;
+}
+
+.second-brain-stats-numeric {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.second-brain-stats-tile {
+  background: var(--background-secondary);
+  border-radius: 8px;
+  padding: 10px 8px;
+  text-align: center;
+}
+
+.second-brain-stats-tile-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.second-brain-stats-tile-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-normal);
 }

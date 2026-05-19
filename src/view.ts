@@ -107,6 +107,13 @@ export class SecondBrainView extends ItemView {
           this.lifeState.statsOffset = Math.max(0, n);
           this.render();
         },
+        setStatsHabitId: (id) => {
+          this.lifeState.statsHabitId = id;
+          // Reset offset when switching habit so the user always lands on the
+          // current period for the new selection.
+          this.lifeState.statsOffset = 0;
+          this.render();
+        },
       });
     } else if (this.mode === "review") {
       renderReview(
