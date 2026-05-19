@@ -40,24 +40,51 @@ export const WHEEL_AREAS: Array<{ macro: string; sub: string; path: string }> = 
   { macro: "Work", sub: "Growth",  path: "2. 🌳 Areas/Work/Growth" },
 ];
 
+/**
+ * Each entry under `1. 🎯 Projects/` is one project:
+ *   - A top-level `<name>.md` file → that's the project.
+ *   - A folder `<name>/` → look for a folder note (`<name>/<name>.md`);
+ *     if absent, fall back to the first `.md` in the folder. Children of
+ *     the folder are *not* separate projects, they're supporting files.
+ *
+ * This lets a project grow from one file → a whole folder when it accrues
+ * notes, attachments, sub-plans, etc., without becoming several projects.
+ */
 export async function loadProjects(app: App): Promise<Project[]> {
   const root = app.vault.getAbstractFileByPath(PROJECTS_FOLDER);
   if (!(root instanceof TFolder)) return [];
-  const files: TFile[] = [];
-  collectMarkdown(root, files);
   const projects: Project[] = [];
-  for (const f of files) {
-    const p = await parseProject(app, f);
-    if (p) projects.push(p);
+  for (const child of root.children) {
+    if (child instanceof TFile && child.name.endsWith(".md")) {
+      projects.push(await parseProject(app, child));
+    } else if (child instanceof TFolder) {
+      const folderNoteName = `${child.name}.md`;
+      let main: TFile | undefined;
+      for (const c of child.children) {
+        if (c instanceof TFile && c.name === folderNoteName) {
+          main = c;
+          break;
+        }
+      }
+      if (!main) {
+        for (const c of child.children) {
+          if (c instanceof TFile && c.name.endsWith(".md")) {
+            main = c;
+            break;
+          }
+        }
+      }
+      if (main) projects.push(await parseProject(app, main));
+    }
   }
   return projects;
 }
 
-function collectMarkdown(folder: TFolder, out: TFile[]) {
-  for (const c of folder.children) {
-    if (c instanceof TFolder) collectMarkdown(c, out);
-    else if (c instanceof TFile && c.name.endsWith(".md")) out.push(c);
-  }
+/** Normalize a `"[[…]]"` or bare path string to just the inner path. */
+export function normalizeAreaPath(area: string | undefined): string | undefined {
+  if (!area) return undefined;
+  const inner = area.replace(/^\[\[/, "").replace(/\]\]$/, "").trim();
+  return inner.length > 0 ? inner : undefined;
 }
 
 async function parseProject(app: App, file: TFile): Promise<Project> {

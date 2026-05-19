@@ -13,7 +13,7 @@
 import { App, TFile, TFolder } from "obsidian";
 import SecondBrainPlugin from "../main";
 import { Habit, loadHabits, HABITS_FOLDER } from "./habits";
-import { Project, loadProjects, PROJECTS_FOLDER } from "./projects";
+import { Project, loadProjects, PROJECTS_FOLDER, normalizeAreaPath } from "./projects";
 import { ProjectCreateModal } from "./projectCreateModal";
 import { applyDatePlaceholders, todayISO, toISO } from "./paths";
 
@@ -79,7 +79,9 @@ export async function renderGoals(
     const projects = await loadProjects(plugin.app);
     renderProjectsList(body, plugin, projects, cb);
   } else if (state.subtab === "areas") {
-    renderAreas(body, plugin);
+    const habits = await loadHabits(plugin.app);
+    const projects = await loadProjects(plugin.app);
+    renderAreas(body, plugin, habits, projects);
   } else {
     // "stats" (default fallback) — shows heatmap + streak per habit.
     const habits = await loadHabits(plugin.app);
@@ -272,15 +274,37 @@ const WHEEL: WheelSlice[] = [
   { macro: "Work", sub: "Growth",  folder: "2. 🌳 Areas/Work/Growth",  hue: 215, lightness: 56 },
 ];
 
-function renderAreas(body: HTMLElement, plugin: SecondBrainPlugin) {
+function renderAreas(
+  body: HTMLElement,
+  plugin: SecondBrainPlugin,
+  habits: Habit[],
+  projects: Project[]
+) {
   const sec = body.createDiv({ cls: "second-brain-section second-brain-wheel-section" });
   sec.createEl("h3", { text: "Wheel of Life" });
   sec.createEl("p", {
     cls: "second-brain-muted",
-    text: "Click slice to open the folder.",
+    text: "Click slice to open the folder. Numbers show habits + projects linked to each sub-area.",
   });
 
-  // Legend above the wheel.
+  // Count habits + projects per sub-area path so we can show connections.
+  const countByArea = new Map<string, { habits: number; projects: number }>();
+  for (const h of habits.filter((x) => x.status === "active")) {
+    const a = normalizeAreaPath(h.area);
+    if (!a) continue;
+    const slot = countByArea.get(a) ?? { habits: 0, projects: 0 };
+    slot.habits++;
+    countByArea.set(a, slot);
+  }
+  for (const p of projects.filter((x) => x.status === "active")) {
+    const a = normalizeAreaPath(p.area);
+    if (!a) continue;
+    const slot = countByArea.get(a) ?? { habits: 0, projects: 0 };
+    slot.projects++;
+    countByArea.set(a, slot);
+  }
+
+  // Legend above the wheel — now shows counts per sub-area.
   const legend = sec.createDiv({ cls: "second-brain-wheel-legend" });
   const macroGroups: Record<string, WheelSlice[]> = {};
   for (const s of WHEEL) {
@@ -291,8 +315,13 @@ function renderAreas(body: HTMLElement, plugin: SecondBrainPlugin) {
     const row = legend.createDiv({ cls: "second-brain-wheel-legend-row" });
     const swatch = row.createSpan({ cls: "second-brain-wheel-legend-swatch" });
     swatch.style.backgroundColor = `hsl(${slices[1].hue}, 55%, ${slices[1].lightness}%)`;
+    const subsWithCounts = slices.map((s) => {
+      const c = countByArea.get(s.folder) ?? { habits: 0, projects: 0 };
+      const total = c.habits + c.projects;
+      return total > 0 ? `${s.sub} (${total})` : s.sub;
+    });
     row.createSpan({
-      text: ` ${macro} — ${slices.map((s) => s.sub).join(" · ")}`,
+      text: ` ${macro} — ${subsWithCounts.join(" · ")}`,
     });
   }
 
@@ -331,7 +360,8 @@ function renderAreas(body: HTMLElement, plugin: SecondBrainPlugin) {
     path.appendChild(titleEl);
     svg.appendChild(path);
 
-    // Label at the slice midpoint.
+    // Label at the slice midpoint, with a count badge below if the sub-area
+    // has anything linked to it. The count = active habits + active projects.
     const midDeg = (start + end) / 2;
     const lx = cx + labelR * Math.cos((midDeg * Math.PI) / 180);
     const ly = cy + labelR * Math.sin((midDeg * Math.PI) / 180);
@@ -346,6 +376,22 @@ function renderAreas(body: HTMLElement, plugin: SecondBrainPlugin) {
     text.setAttribute("pointer-events", "none");
     text.textContent = slice.sub;
     svg.appendChild(text);
+
+    const counts = countByArea.get(slice.folder);
+    const total = (counts?.habits ?? 0) + (counts?.projects ?? 0);
+    if (total > 0) {
+      const badge = document.createElementNS(svgNS, "text");
+      badge.setAttribute("x", String(lx));
+      badge.setAttribute("y", String(ly + 16));
+      badge.setAttribute("text-anchor", "middle");
+      badge.setAttribute("dominant-baseline", "central");
+      badge.setAttribute("fill", "rgba(255,255,255,0.85)");
+      badge.setAttribute("font-size", "11");
+      badge.setAttribute("font-weight", "500");
+      badge.setAttribute("pointer-events", "none");
+      badge.textContent = `· ${total} ·`;
+      svg.appendChild(badge);
+    }
   }
 
   wheel.appendChild(svg);
