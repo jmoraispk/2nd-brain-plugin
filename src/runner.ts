@@ -32,6 +32,8 @@ import {
 } from "./reviewMeta";
 import { buildHabitContextBlock, loadActiveHabits } from "./habits";
 import { writeHabitDataFiles, mergeBackfillIntoData } from "./habitData";
+import { loadProjects } from "./projects";
+import { mergeExtractedTodos, parseTodosBlock } from "./proposals";
 
 interface InputContent {
   label: string;
@@ -114,6 +116,20 @@ export async function runCommand(
     if (block) userMsgParts.push("", block);
   }
 
+  // Active projects — injected for the daily review so the LLM can extract
+  // TODO proposals and match each one to a target project.
+  if (command.id === "todays-review") {
+    const projects = await loadProjects(app);
+    const activeProjects = projects.filter((p) => p.status === "active");
+    if (activeProjects.length > 0) {
+      const lines = ["## Active projects (for TODO matching)", ""];
+      for (const p of activeProjects) {
+        lines.push(`- ${p.file.path}: ${p.name}`);
+      }
+      userMsgParts.push("", lines.join("\n"));
+    }
+  }
+
   // Kepano reflection question for weekly + monthly reviews.
   if (command.kepanoQuestion) {
     const q =
@@ -155,7 +171,8 @@ export async function runCommand(
     outFile = await app.vault.create(outputPath, result);
   }
 
-  // Daily review → refresh per-habit heatmap data from today's review.
+  // Daily review → refresh per-habit heatmap data from today's review AND
+  // extract any LLM-emitted TODO proposals into the proposals store.
   // Backfill → parse the LLM's YAML block and merge across historical dates.
   if (command.id === "todays-review") {
     try {
@@ -163,6 +180,14 @@ export async function runCommand(
       await writeHabitDataFiles(app, settings.reviewsPathTemplate, habits);
     } catch (err) {
       console.error("habit-data write failed (non-fatal):", err);
+    }
+    try {
+      const extracted = parseTodosBlock(body);
+      if (extracted.length > 0) {
+        await mergeExtractedTodos(app, anchor, extracted);
+      }
+    } catch (err) {
+      console.error("proposal extraction failed (non-fatal):", err);
     }
   } else if (command.id === "backfill-habits") {
     try {

@@ -25,6 +25,8 @@ export interface Project {
   status: ProjectStatus;
   created?: string;
   targetDate?: string;
+  /** v0.9: when true, the project's Active TODOs surface on the main Dashboard. */
+  pinned: boolean;
 }
 
 /** The nine Wheel-of-Life sub-areas — also surfaced in the New Project modal. */
@@ -90,6 +92,7 @@ export function normalizeAreaPath(area: string | undefined): string | undefined 
 async function parseProject(app: App, file: TFile): Promise<Project> {
   const raw = await app.vault.read(file);
   const fm = parseFrontmatter(raw);
+  const pinnedRaw = scalar(fm?.["pinned"]);
   return {
     id: file.basename,
     file,
@@ -98,6 +101,7 @@ async function parseProject(app: App, file: TFile): Promise<Project> {
     status: ((fm?.["status"] as string) ?? "active") as ProjectStatus,
     created: scalar(fm?.["created"]),
     targetDate: scalar(fm?.["target-date"]),
+    pinned: pinnedRaw === "true" || pinnedRaw === "yes",
   };
 }
 
@@ -155,12 +159,15 @@ export function projectFileBody(name: string, areaPath: string | null): string {
     )}-${String(d.getDate()).padStart(2, "0")}`;
   })();
   const areaLine = areaPath ? `area: "[[${areaPath}]]"` : "area:";
+  // v0.9 schema: five canonical sections that AI may also edit (Current state
+  // / Active TODOs / History). Why + Done criteria stay user-only.
   return [
     "---",
     areaLine,
     "status: active",
     `created: ${today}`,
     "target-date:",
+    "pinned: false",
     "---",
     "",
     `# ${name}`,
@@ -168,12 +175,14 @@ export function projectFileBody(name: string, areaPath: string | null): string {
     "## Why",
     "",
     "## Done criteria",
-    "_How will I know this project is finished? Be specific enough that pass/fail is unambiguous._",
+    "_Pass/fail-able definition of done._",
     "",
-    "## Status",
+    "## Current state",
     "",
-    "## Next steps",
+    "## Active TODOs",
     "- [ ] ",
+    "",
+    "## History",
     "",
   ].join("\n");
 }

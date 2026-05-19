@@ -1,4 +1,4 @@
-import { App, TFile, TFolder } from "obsidian";
+import { TFile, TFolder } from "obsidian";
 import SecondBrainPlugin from "../main";
 import {
   resolveDailyLogPath,
@@ -10,6 +10,8 @@ import {
   anchorForInputKind,
   periodLabel,
 } from "./paths";
+import { loadProjects } from "./projects";
+import { loadPendingProposals, Proposal } from "./proposals";
 
 export interface PendingReview {
   commandId: string;
@@ -172,29 +174,35 @@ export async function skipReview(
  * Order: displayed-day section first (with ◀ ▶ navigation, capped at
  * yesterday → today), then pending reviews, then context.
  */
+export interface DashboardCallbacks {
+  onAction: (id: "capture" | "this-review") => void;
+  onChangeDate: (newDate: string) => void;
+  onRunCommand: (commandId: string, anchorOverride?: string) => void;
+  onRefresh: () => void;
+  togglePendingCollapsed: () => void;
+  onAcceptProposal: (date: string, proposalId: string) => Promise<void>;
+  onDeleteProposal: (date: string, proposalId: string) => Promise<void>;
+}
+
 export async function renderDashboard(
   parent: HTMLElement,
   plugin: SecondBrainPlugin,
   displayedDate: string,
-  onAction: (id: "capture" | "this-review") => void,
-  onChangeDate: (newDate: string) => void,
-  onRunCommand: (commandId: string, anchorOverride?: string) => void,
-  onRefresh: () => void,
   pendingCollapsed: boolean,
-  togglePendingCollapsed: () => void
+  cb: DashboardCallbacks
 ): Promise<void> {
   const body = parent.createDiv({ cls: "second-brain-dashboard" });
-  await renderDayHeader(body, plugin, displayedDate, onAction, onChangeDate);
+  await renderDayHeader(body, plugin, displayedDate, cb.onAction, cb.onChangeDate);
   await renderPendingReviewsBanner(
     body,
     plugin,
-    onRunCommand,
-    onRefresh,
+    cb.onRunCommand,
+    cb.onRefresh,
     pendingCollapsed,
-    togglePendingCollapsed
+    cb.togglePendingCollapsed
   );
-  await renderThreadsSection(body, plugin);
-  renderProjectsSection(body, plugin);
+  await renderPendingProposalsSection(body, plugin, cb);
+  await renderPinnedTodosSection(body, plugin);
 }
 
 async function renderPendingReviewsBanner(
@@ -371,177 +379,142 @@ async function renderDayHeader(
   reviewBtn.addEventListener("click", () => onAction("this-review"));
 }
 
-// ── Threads in motion ────────────────────────────────────────────────────
+// ── Pending AI proposals (v0.9) ──────────────────────────────────────────
+// Surfaces TODOs the daily review extracted but the user hasn't acted on.
+// Each row: text + (project link or "no project") + Accept / Delete buttons.
 
-interface Thread {
-  target: string;
-  occurrences: number;
-  daysSinceLastSeen: number;
-  drifting: boolean;
-}
-
-async function renderThreadsSection(
+async function renderPendingProposalsSection(
   parent: HTMLElement,
-  plugin: SecondBrainPlugin
+  plugin: SecondBrainPlugin,
+  cb: DashboardCallbacks
 ) {
+  const proposals = await loadPendingProposals(plugin.app);
+
   const sec = parent.createDiv({ cls: "second-brain-section" });
-  sec.createEl("h3", { text: "Threads in motion (last 14 days)" });
+  sec.createEl("h3", { text: `⏰ Pending AI proposals (${proposals.length})` });
 
-  const threads = await computeThreads(plugin, 14, 3);
-
-  if (threads.length === 0) {
+  if (proposals.length === 0) {
     sec.createEl("div", {
       cls: "second-brain-muted",
-      text: "No recurring wikilinks in recent captures. Use [[topic]] in your daily notes to surface threads here.",
+      text: "Nothing waiting. The daily review extracts new ones from your captures.",
     });
     return;
   }
 
-  const list = sec.createEl("ul", { cls: "second-brain-list" });
-  for (const t of threads.slice(0, 8)) {
+  const list = sec.createEl("ul", { cls: "second-brain-banner-list" });
+  for (const p of proposals) {
     const li = list.createEl("li");
-    const link = li.createEl("a", { text: t.target, cls: "second-brain-link" });
-    link.addEventListener("click", () =>
-      plugin.app.workspace.openLinkText(t.target, "", false)
-    );
-    const meta = li.createEl("span", { cls: "second-brain-thread-meta" });
-    const lastLabel =
-      t.daysSinceLastSeen === 0
-        ? "today"
-        : t.daysSinceLastSeen === 1
-        ? "yesterday"
-        : `${t.daysSinceLastSeen}d ago`;
-    meta.setText(` · ${t.occurrences} days · last ${lastLabel}`);
-    if (t.drifting) {
-      li.createEl("span", {
-        text: " ⚠️ drifting",
-        cls: "second-brain-drift",
+    const left = li.createDiv({ cls: "second-brain-proposal-text" });
+    left.createSpan({ text: p.text });
+    if (p.projectPath) {
+      const projName = p.projectPath
+        .replace(/^1\. 🎯 Projects\//, "")
+        .replace(/\.md$/, "");
+      const target = left.createEl("a", {
+        text: ` → ${projName}`,
+        cls: "second-brain-proposal-target",
+      });
+      target.addEventListener("click", () => {
+        plugin.app.workspace.openLinkText(p.projectPath!, "", false);
+      });
+    } else {
+      left.createSpan({
+        text: " — no project",
+        cls: "second-brain-proposal-noproject",
       });
     }
-  }
-}
-
-async function computeThreads(
-  plugin: SecondBrainPlugin,
-  daysBack: number,
-  minOccurrences: number
-): Promise<Thread[]> {
-  const today = new Date();
-  const todayStr = toISO(today);
-  const counts = new Map<string, Set<string>>();
-  const lastSeen = new Map<string, string>();
-
-  for (let i = 0; i < daysBack; i++) {
-    const d = new Date(today.valueOf());
-    d.setDate(d.getDate() - i);
-    const dateStr = toISO(d);
-    const path = await resolveDailyLogPath(
-      plugin.app,
-      plugin.settings,
-      dateStr
-    );
-    const file = plugin.app.vault.getAbstractFileByPath(path);
-    if (!(file instanceof TFile)) continue;
-    const content = await plugin.app.vault.read(file);
-    const seen = new Set<string>();
-    for (const m of content.matchAll(/\[\[([^\]|#]+)/g)) {
-      const target = m[1].trim();
-      if (!target) continue;
-      if (seen.has(target)) continue;
-      seen.add(target);
-      if (!counts.has(target)) counts.set(target, new Set());
-      counts.get(target)!.add(dateStr);
-      const prev = lastSeen.get(target);
-      if (!prev || dateStr > prev) lastSeen.set(target, dateStr);
-    }
-  }
-
-  const threads: Thread[] = [];
-  for (const [target, dates] of counts) {
-    if (dates.size < minOccurrences) continue;
-    const ls = lastSeen.get(target)!;
-    const days = Math.floor(
-      (Date.parse(todayStr) - Date.parse(ls)) / 86400000
-    );
-    threads.push({
-      target,
-      occurrences: dates.size,
-      daysSinceLastSeen: days,
-      drifting: days > 5,
-    });
-  }
-  threads.sort((a, b) => b.occurrences - a.occurrences);
-  return threads;
-}
-
-// ── Projects ─────────────────────────────────────────────────────────────
-
-function renderProjectsSection(parent: HTMLElement, plugin: SecondBrainPlugin) {
-  const sec = parent.createDiv({ cls: "second-brain-section" });
-  sec.createEl("h3", { text: "🎯 Projects" });
-
-  const folder = findProjectsFolder(plugin.app);
-  if (!folder) {
-    sec.createEl("div", {
-      cls: "second-brain-muted",
-      text: "No projects folder found. Expected one of: '🎯 1. Projects/', '1. Projects/', 'Projects/'.",
-    });
-    return;
-  }
-
-  const items = folder.children.slice().sort((a, b) => a.name.localeCompare(b.name));
-  if (items.length === 0) {
-    sec.createEl("div", {
-      cls: "second-brain-muted",
-      text: "Projects folder is empty.",
-    });
-    return;
-  }
-
-  const list = sec.createEl("ul", { cls: "second-brain-list" });
-  for (const child of items) {
-    const li = list.createEl("li");
-    const name = child instanceof TFile
-      ? child.basename
-      : child.name;
-    const link = li.createEl("a", { text: name, cls: "second-brain-link" });
-    link.addEventListener("click", () => {
-      if (child instanceof TFile) {
-        plugin.app.workspace.getLeaf(false).openFile(child);
-      } else if (child instanceof TFolder) {
-        plugin.app.workspace.openLinkText(child.path, "", false);
-      }
-    });
-    if (child instanceof TFolder) {
-      const n = countMarkdownFiles(child);
-      li.createEl("span", {
-        text: ` · ${n} files`,
+    if (p.capturedAt) {
+      left.createSpan({
+        text: ` · ${p.capturedAt}`,
         cls: "second-brain-thread-meta",
       });
     }
+
+    const actions = li.createDiv({ cls: "second-brain-banner-actions" });
+
+    const acceptBtn = actions.createEl("button", {
+      text: "✓",
+      cls: "second-brain-banner-run",
+      attr: {
+        title: p.projectPath
+          ? `Append to ${p.projectPath}'s Active TODOs`
+          : "Mark accepted (no project to write to)",
+      },
+    });
+    acceptBtn.addEventListener("click", async () => {
+      await cb.onAcceptProposal(p.date, p.id);
+    });
+
+    const deleteBtn = actions.createEl("button", {
+      text: "✕",
+      cls: "second-brain-banner-skip",
+      attr: { title: "Dismiss this proposal" },
+    });
+    deleteBtn.addEventListener("click", async () => {
+      await cb.onDeleteProposal(p.date, p.id);
+    });
   }
 }
 
-function findProjectsFolder(app: App): TFolder | null {
-  const candidates = [
-    "1. 🎯 Projects",
-    "🎯 1. Projects",
-    "1. Projects",
-    "Projects",
-  ];
-  for (const name of candidates) {
-    const f = app.vault.getAbstractFileByPath(name);
-    if (f instanceof TFolder) return f;
+// ── Pinned TODOs (v0.9) ──────────────────────────────────────────────────
+// Reads each project file with `pinned: true` and surfaces its
+// `## Active TODOs` checkboxes here so the user can see what's on their
+// plate without leaving the Dashboard. Click a TODO → opens the project.
+
+async function renderPinnedTodosSection(
+  parent: HTMLElement,
+  plugin: SecondBrainPlugin
+) {
+  const projects = await loadProjects(plugin.app);
+  const pinned = projects.filter((p) => p.pinned && p.status === "active");
+
+  const sec = parent.createDiv({ cls: "second-brain-section" });
+  sec.createEl("h3", { text: `📌 Pinned project TODOs` });
+
+  if (pinned.length === 0) {
+    sec.createEl("div", {
+      cls: "second-brain-muted",
+      text: 'Add `pinned: true` to a project\'s frontmatter to surface its TODOs here.',
+    });
+    return;
   }
-  return null;
+
+  for (const p of pinned) {
+    const content = await plugin.app.vault.read(p.file);
+    const todos = extractActiveTodos(content);
+    if (todos.length === 0) continue;
+    const projSec = sec.createDiv({ cls: "second-brain-pinned-project" });
+    const titleEl = projSec.createEl("div", {
+      cls: "second-brain-pinned-project-title",
+    });
+    const link = titleEl.createEl("a", {
+      text: p.name,
+      cls: "second-brain-link",
+    });
+    link.addEventListener("click", () =>
+      plugin.app.workspace.getLeaf(false).openFile(p.file)
+    );
+    const list = projSec.createEl("ul", { cls: "second-brain-list" });
+    for (const t of todos) {
+      const li = list.createEl("li");
+      li.createSpan({ text: t });
+    }
+  }
 }
 
-function countMarkdownFiles(folder: TFolder): number {
-  let n = 0;
-  for (const c of folder.children) {
-    if (c instanceof TFile && c.name.endsWith(".md")) n++;
-    else if (c instanceof TFolder) n += countMarkdownFiles(c);
+function extractActiveTodos(content: string): string[] {
+  const re = /^##\s+Active TODOs\s*$/m;
+  const m = content.match(re);
+  if (!m || m.index === undefined) return [];
+  const start = m.index + m[0].length;
+  const rest = content.slice(start);
+  const next = rest.search(/^##\s+/m);
+  const body = next < 0 ? rest : rest.slice(0, next);
+  const todos: string[] = [];
+  for (const line of body.split(/\r?\n/)) {
+    const t = line.match(/^\s*-\s*\[\s\]\s+(.+?)\s*$/);
+    if (t && t[1].trim()) todos.push(t[1].trim());
   }
-  return n;
+  return todos;
 }
 

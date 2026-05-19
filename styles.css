@@ -1186,3 +1186,42 @@
   font-weight: 700;
   color: var(--text-normal);
 }
+
+/* ── v0.9.0: pending proposals + pinned project TODOs ──────────────── */
+
+.second-brain-proposal-text {
+  flex: 1;
+  line-height: 1.4;
+  font-size: 14px;
+}
+
+.second-brain-proposal-target {
+  color: var(--link-color);
+  cursor: pointer;
+}
+
+.second-brain-proposal-noproject {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.second-brain-pinned-project {
+  margin: 8px 0 12px;
+}
+
+.second-brain-pinned-project-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-normal);
+  margin-bottom: 2px;
+}
+
+.second-brain-pinned-project .second-brain-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.second-brain-pinned-project .second-brain-list li {
+  font-size: 13px;
+  color: var(--text-normal);
+}

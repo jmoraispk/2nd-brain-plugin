@@ -27,6 +27,7 @@ import {
 } from "./thinkTab";
 import { renderGoals, GoalsTabState, defaultGoalsTabState } from "./goalsTab";
 import { TopicInputModal } from "./topicInputModal";
+import { acceptProposal, deleteProposal } from "./proposals";
 import { todayISO } from "./paths";
 
 export const VIEW_TYPE_SECOND_BRAIN = "second-brain-view";
@@ -76,18 +77,45 @@ export class SecondBrainView extends ItemView {
         container,
         this.plugin,
         this.displayedDate,
-        (id) => this.handleQuickAction(id),
-        (newDate) => {
-          this.displayedDate = newDate;
-          this.render();
-        },
-        (commandId, anchorOverride) =>
-          this.forwardPendingToReview(commandId, anchorOverride),
-        () => this.render(),
         this.pendingReviewsCollapsed,
-        () => {
-          this.pendingReviewsCollapsed = !this.pendingReviewsCollapsed;
-          this.render();
+        {
+          onAction: (id) => this.handleQuickAction(id),
+          onChangeDate: (newDate) => {
+            this.displayedDate = newDate;
+            this.render();
+          },
+          onRunCommand: (commandId, anchorOverride) =>
+            this.forwardPendingToReview(commandId, anchorOverride),
+          onRefresh: () => this.render(),
+          togglePendingCollapsed: () => {
+            this.pendingReviewsCollapsed = !this.pendingReviewsCollapsed;
+            this.render();
+          },
+          onAcceptProposal: async (date, proposalId) => {
+            try {
+              await acceptProposal(this.app, date, proposalId);
+              new Notice("Accepted — appended to project's Active TODOs.");
+              await this.render();
+            } catch (err) {
+              this.plugin.errorLog.push("acceptProposal", err);
+              new Notice(
+                `Accept failed: ${(err as Error).message}\nSee Settings → Logs for details.`,
+                8000
+              );
+            }
+          },
+          onDeleteProposal: async (date, proposalId) => {
+            try {
+              await deleteProposal(this.app, date, proposalId);
+              await this.render();
+            } catch (err) {
+              this.plugin.errorLog.push("deleteProposal", err);
+              new Notice(
+                `Delete failed: ${(err as Error).message}\nSee Settings → Logs for details.`,
+                8000
+              );
+            }
+          },
         }
       );
     } else if (this.mode === "life") {

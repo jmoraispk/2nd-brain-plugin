@@ -475,6 +475,23 @@ Mentions in captures that refer to earlier days. **Skip entirely if none.**
 ## Review prompts (for the user to answer)
 3–5 pointed questions phrased in the user's voice, e.g. "What did I avoid today, and why?"
 
+## TODO proposals
+If the user message contains an "## Active projects (for TODO matching)" section, scan today's captures for items that imply concrete action steps and emit a fenced YAML block at the end of your output:
+
+\`\`\`yaml
+todos:
+  - text: "Be specific about the action — readable standalone"
+    project: "1. 🎯 Projects/Project A.md"   # exact path from the list, or null
+    captured-at: "[14:22]"                    # the [HH:MM] timestamp that triggered it
+\`\`\`
+
+Rules:
+- One TODO per concrete action. Don't aggregate "do X and Y" into a single item.
+- text must be standalone — readable without context.
+- project must be an EXACT path from the list above, or null. Don't invent project names.
+- If no actionable items were captured, emit \`todos: []\`.
+- Skip this section entirely if the user message had no projects list.
+
 Rules:
 - Be faithful. No fluff. No invented content.
 - Skip empty sections entirely (no "N/A" placeholders).
