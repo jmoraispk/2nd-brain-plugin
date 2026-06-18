@@ -25,7 +25,10 @@ NAME: <a concise project name, 2–6 words, no quotes>
 <1–3 sentences on why this project matters, in the user's voice>
 
 ## Done criteria
-<an unambiguous, pass/fail definition of "finished">
+<an unambiguous, pass/fail definition of "finished" — the end goal>
+
+## Milestones
+<intermediate checkpoints toward Done, as "- [ ] <milestone>"; leave a single empty "- [ ] " if none are clear>
 
 ## Current state
 <where things stand right now, from the description; brief>
@@ -40,7 +43,7 @@ NAME: <a concise project name, 2–6 words, no quotes>
 Rules:
 - Be faithful to the description. Don't invent scope.
 - Keep each section tight. Empty is fine if the description doesn't cover it.
-- Output only the NAME line + the five H2 sections, in that order.`;
+- Output only the NAME line + the six H2 sections, in that order.`;
 
 const UPDATE_SYSTEM = `You apply a spoken instruction to an existing project note, editing ONLY these sections: Current state, Active TODOs, History. Never touch Why or Done criteria.
 

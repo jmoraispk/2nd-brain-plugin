@@ -121,7 +121,7 @@ export async function renderGoals(
   } else if (state.subtab === "areas") {
     const habits = await loadHabits(plugin.app);
     const projects = await loadProjects(plugin.app);
-    renderAreas(body, plugin, habits, projects);
+    await renderAreas(body, plugin, habits, projects);
   } else {
     // "stats" (default fallback) — shows heatmap + streak per habit.
     const habits = await loadHabits(plugin.app);
@@ -295,6 +295,30 @@ function renderProjectsList(
     }
   }
 
+  // Progress box — milestone + TODO progress per active project.
+  if (active.length > 0) {
+    const prog = body.createDiv({ cls: "second-brain-section" });
+    prog.createEl("h3", { text: "Progress" });
+    for (const p of active.sort((a, b) => a.name.localeCompare(b.name))) {
+      const row = prog.createDiv({ cls: "second-brain-progress-row" });
+      row.createEl("div", {
+        text: p.name,
+        cls: "second-brain-progress-name",
+      });
+      const hasMs = p.milestonesTotal > 0;
+      const ratio = hasMs ? p.milestonesDone / p.milestonesTotal : 0;
+      const bar = row.createDiv({ cls: "second-brain-progress-bar" });
+      const fill = bar.createDiv({ cls: "second-brain-progress-fill" });
+      fill.style.width = `${Math.round(ratio * 100)}%`;
+      row.createEl("div", {
+        cls: "second-brain-progress-label",
+        text: hasMs
+          ? `${p.milestonesDone}/${p.milestonesTotal} milestones · ${p.openTodos} todo`
+          : `${p.openTodos} open todo${p.openTodos === 1 ? "" : "s"}`,
+      });
+    }
+  }
+
   // Secondary action row mirrors the Habits tab pattern.
   const actions = sec.createDiv({ cls: "second-brain-secondary-actions" });
   const talkBtn = actions.createEl("button", {
@@ -375,7 +399,7 @@ const WHEEL: WheelSlice[] = [
   { macro: "Work", sub: "Growth",  folder: "2. 🌳 Areas/Work/Growth",  hue: 215, lightness: 56 },
 ];
 
-function renderAreas(
+async function renderAreas(
   body: HTMLElement,
   plugin: SecondBrainPlugin,
   habits: Habit[],
@@ -385,8 +409,13 @@ function renderAreas(
   sec.createEl("h3", { text: "Wheel of Life" });
   sec.createEl("p", {
     cls: "second-brain-muted",
-    text: "Click slice to open the folder. Numbers show habits + projects linked to each sub-area.",
+    text: "Click slice to open the folder. Brighter = more alive (activity in the last 14 days). Numbers show linked habits + projects.",
   });
+
+  // Recent-activity score per area path (last 14 days): habit pass-days +
+  // project History completions. Drives slice brightness + the Journey box.
+  const activity = await computeAreaActivity(plugin, habits, projects);
+  const maxScore = Math.max(1, ...[...activity.values()].map((a) => a.score));
 
   // Count habits + projects per sub-area path so we can show connections.
   // Flat-tag aware: an item in two areas counts in both (set membership).
@@ -451,9 +480,14 @@ function renderAreas(
     const end = (i + 1) * sliceDeg - 90;
     const slice = WHEEL[i];
 
+    // Aliveness: scale the slice's fill opacity by recent activity. Faded =
+    // dormant, bright = active. Floor at 0.28 so empty slices stay legible.
+    const score = activity.get(slice.folder)?.score ?? 0;
+    const alpha = (0.28 + 0.72 * Math.min(1, score / maxScore)).toFixed(2);
+
     const path = document.createElementNS(svgNS, "path");
     path.setAttribute("d", arcPath(cx, cy, r, start, end));
-    path.setAttribute("fill", `hsl(${slice.hue}, 55%, ${slice.lightness}%)`);
+    path.setAttribute("fill", `hsla(${slice.hue}, 55%, ${slice.lightness}%, ${alpha})`);
     path.setAttribute("stroke", "var(--background-primary, #fff)");
     path.setAttribute("stroke-width", "1.5");
     path.setAttribute("class", "second-brain-wheel-slice");
@@ -501,6 +535,102 @@ function renderAreas(
   }
 
   wheel.appendChild(svg);
+
+  // ── Journey box: per sub-area, recent activity + how long since active ──
+  const journey = sec.createDiv({ cls: "second-brain-section" });
+  journey.createEl("h3", { text: "Journey" });
+  const today = todayISO();
+  for (const s of WHEEL) {
+    const act = activity.get(s.folder);
+    const counts = countByArea.get(s.folder);
+    const linked = (counts?.habits ?? 0) + (counts?.projects ?? 0);
+    let label: string;
+    let cls: string;
+    if (act && act.score > 0) {
+      label = `active · ${act.score} this fortnight`;
+      cls = "second-brain-journey-active";
+    } else if (linked > 0) {
+      const last = act?.lastDate
+        ? `${daysBetween(act.lastDate, today)}d since activity`
+        : "no recent activity";
+      label = `quiet · ${last}`;
+      cls = "second-brain-journey-quiet";
+    } else {
+      label = "empty — nothing linked yet";
+      cls = "second-brain-journey-dormant";
+    }
+    const row = journey.createDiv({ cls: "second-brain-journey-row" });
+    const dot = row.createSpan({ cls: `second-brain-journey-dot ${cls}` });
+    dot.style.backgroundColor = `hsl(${s.hue}, 55%, 45%)`;
+    row.createSpan({ text: `${s.macro} · ${s.sub}`, cls: "second-brain-journey-name" });
+    row.createSpan({ text: label, cls: "second-brain-muted" });
+  }
+}
+
+interface AreaActivity {
+  score: number;
+  lastDate?: string;
+}
+
+/**
+ * Recent-activity score per area path over the last 14 days:
+ *   + 1 per habit pass-day for habits linked to the area
+ *   + 1 per project History completion (dated within 14d) for linked projects
+ * Tracks the most recent activity date for the "quiet" label.
+ */
+async function computeAreaActivity(
+  plugin: SecondBrainPlugin,
+  habits: Habit[],
+  projects: Project[]
+): Promise<Map<string, AreaActivity>> {
+  const out = new Map<string, AreaActivity>();
+  const bump = (areaPath: string, date?: string) => {
+    const def = areaFor(areaPath);
+    if (!def) return;
+    const a = out.get(def.path) ?? { score: 0 };
+    a.score++;
+    if (date && (!a.lastDate || date > a.lastDate)) a.lastDate = date;
+    out.set(def.path, a);
+  };
+
+  const today = todayISO();
+  const days: string[] = [];
+  for (let i = 0; i < 14; i++) {
+    const d = new Date(today + "T00:00:00");
+    d.setDate(d.getDate() - i);
+    days.push(toISO(d));
+  }
+
+  // Habit pass-days (file-backed habits carry areas; auto habits don't).
+  for (const h of habits.filter((x) => x.status === "active" && x.areas.length)) {
+    for (const iso of days) {
+      const s = await habitStatusOn(plugin, h, iso);
+      if (s === "pass") for (const a of h.areas) bump(a, iso);
+    }
+  }
+
+  // Project History completions within the window.
+  const cutoff = days[days.length - 1];
+  for (const p of projects.filter((x) => x.status === "active" && x.areas.length)) {
+    const content = await plugin.app.vault.read(p.file);
+    const m = content.match(/^##\s+History\s*$/m);
+    if (!m || m.index === undefined) continue;
+    const body = content.slice(m.index + m[0].length);
+    const nextRel = body.search(/^##\s+/m);
+    const hist = nextRel < 0 ? body : body.slice(0, nextRel);
+    for (const line of hist.split(/\r?\n/)) {
+      const dm = line.match(/(\d{4}-\d{2}-\d{2})/);
+      if (dm && dm[1] >= cutoff) for (const a of p.areas) bump(a, dm[1]);
+    }
+  }
+
+  return out;
+}
+
+function daysBetween(fromIso: string, toIso: string): number {
+  const a = new Date(fromIso + "T00:00:00").valueOf();
+  const b = new Date(toIso + "T00:00:00").valueOf();
+  return Math.max(0, Math.round((b - a) / 86400000));
 }
 
 /** SVG arc path from (cx,cy) center, radius r, start to end degrees. */

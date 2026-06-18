@@ -31,6 +31,11 @@ export interface Project {
   targetDate?: string;
   /** v0.9: when true, the project's Active TODOs surface on the main Dashboard. */
   pinned: boolean;
+  /** v0.9.9: milestone progress (counts of `- [x]` / total in ## Milestones). */
+  milestonesDone: number;
+  milestonesTotal: number;
+  /** v0.9.9: open `- [ ]` count in ## Active TODOs. */
+  openTodos: number;
 }
 
 /** The nine Wheel-of-Life sub-areas — also surfaced in the New Project modal. */
@@ -105,6 +110,8 @@ async function parseProject(app: App, file: TFile): Promise<Project> {
       if (!areas.includes(a)) areas.push(a);
     }
   }
+  const milestones = checkboxCounts(raw, "Milestones");
+  const todos = checkboxCounts(raw, "Active TODOs");
   return {
     id: file.basename,
     file,
@@ -115,7 +122,34 @@ async function parseProject(app: App, file: TFile): Promise<Project> {
     created: scalar(fm?.["created"]),
     targetDate: scalar(fm?.["target-date"]),
     pinned: pinnedRaw === "true" || pinnedRaw === "yes",
+    milestonesDone: milestones.done,
+    milestonesTotal: milestones.total,
+    openTodos: todos.total - todos.done,
   };
+}
+
+/** Count `- [x]` (done) and total checkboxes within a named `## section`. */
+function checkboxCounts(
+  content: string,
+  heading: string
+): { done: number; total: number } {
+  const esc = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const m = content.match(new RegExp(`^##\\s+${esc}\\s*$`, "m"));
+  if (!m || m.index === undefined) return { done: 0, total: 0 };
+  const start = m.index + m[0].length;
+  const rest = content.slice(start);
+  const next = rest.search(/^##\s+/m);
+  const body = next < 0 ? rest : rest.slice(0, next);
+  let done = 0;
+  let total = 0;
+  for (const line of body.split(/\r?\n/)) {
+    const cb = line.match(/^\s*-\s*\[([ xX])\]/);
+    if (cb) {
+      total++;
+      if (cb[1].toLowerCase() === "x") done++;
+    }
+  }
+  return { done, total };
 }
 
 function scalar(v: unknown): string | undefined {
@@ -188,7 +222,11 @@ export function projectFileBody(name: string, areaPath: string | null): string {
     "## Why",
     "",
     "## Done criteria",
-    "_Pass/fail-able definition of done._",
+    "_Pass/fail-able definition of done (the end goal)._",
+    "",
+    "## Milestones",
+    "_Intermediate checkpoints toward Done._",
+    "- [ ] ",
     "",
     "## Current state",
     "",

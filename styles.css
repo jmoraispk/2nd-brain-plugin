@@ -1363,3 +1363,62 @@
 .second-brain-todo-check:hover {
   color: var(--color-green, #4caf50);
 }
+
+/* ── v0.9.9: project progress bars + area journey ──────────────────── */
+
+.second-brain-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 5px 0;
+}
+
+.second-brain-progress-name {
+  flex: 0 0 130px;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.second-brain-progress-bar {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--background-modifier-border);
+  overflow: hidden;
+}
+
+.second-brain-progress-fill {
+  height: 100%;
+  background: var(--color-green, #4caf50);
+}
+
+.second-brain-progress-label {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.second-brain-journey-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+  font-size: 13px;
+}
+
+.second-brain-journey-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.second-brain-journey-quiet { opacity: 0.6; }
+.second-brain-journey-dormant { opacity: 0.3; }
+
+.second-brain-journey-name {
+  flex: 0 0 160px;
+  font-weight: 500;
+}
