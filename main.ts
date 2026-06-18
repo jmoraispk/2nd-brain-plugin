@@ -138,6 +138,17 @@ export default class SecondBrainPlugin extends Plugin {
       changed = true;
     }
 
+    // v0.9.5: the default OpenAI model moved gpt-5-mini → gpt-5. Bump existing
+    // installs that were still on the old default, once. Anyone who later
+    // deliberately picks a different model keeps it (the flag prevents re-bump).
+    if (!this.settings.defaultModelBumped) {
+      if (this.settings.openaiModel === "gpt-5-mini") {
+        this.settings.openaiModel = "gpt-5";
+      }
+      this.settings.defaultModelBumped = true;
+      changed = true;
+    }
+
     if (changed) await this.saveSettings();
   }
 

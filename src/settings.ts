@@ -36,6 +36,8 @@ export interface SecondBrainSettings {
   /** @deprecated as of v0.2.0 — migrated into customCommands. Kept for read-time migration only. */
   reviewPromptOverride?: string;
   customCommands: Command[];
+  /** v0.9.5 one-time flag: bumped the old gpt-5-mini default → gpt-5. */
+  defaultModelBumped?: boolean;
 }
 
 export const DEFAULT_SETTINGS: SecondBrainSettings = {
@@ -43,7 +45,7 @@ export const DEFAULT_SETTINGS: SecondBrainSettings = {
   anthropicApiKey: "",
   anthropicModel: "claude-opus-4-7",
   openaiApiKey: "",
-  openaiModel: "gpt-5-mini",
+  openaiModel: "gpt-5",
   logsFolder: "🧑 Me/Logs",
   dailyLogPathTemplate: "🧑 Me/Logs/{ISO_YEAR}/Q{Q}/W{WW}/{YYYY-MM-DD}.md",
   reviewsPathTemplate: "🤖 AI/Reviews/Daily/{ISO_YEAR}/Q{Q}/W{WW}/{YYYY-MM-DD}.md",
