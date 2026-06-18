@@ -425,6 +425,8 @@ export async function addManualTodo(
       throw new Error(`Project missing: ${projectPath}`);
     }
     await appendTodoToProject(app, file, text);
+    // Manual creation satisfies any matching AI "add" proposal — retire it.
+    await retireMatchingProposals(app, text, projectPath);
     return;
   }
   await ensureFolder(app, PROPOSALS_FOLDER);
@@ -434,6 +436,47 @@ export async function addManualTodo(
     all.push({ id, text, projectPath: null, status: "pending", kind: "add" });
     await writeProposalsFile(app, date, all);
   }
+}
+
+/**
+ * Reconciliation (v0.9.7): when the user does something by hand that a pending
+ * AI proposal also suggested — completes or creates the same TODO — retire the
+ * now-redundant proposal so it doesn't double up. Matches on normalized text
+ * (and project when the proposal names one). Scans all proposal files; marks
+ * matches as deleted. Returns how many were retired.
+ */
+export async function retireMatchingProposals(
+  app: App,
+  text: string,
+  projectPath: string | null
+): Promise<number> {
+  const folder = app.vault.getAbstractFileByPath(PROPOSALS_FOLDER);
+  if (!folder) return 0;
+  // @ts-ignore — children via TFolder
+  const children = (folder as any).children ?? [];
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+  const target = norm(text);
+  let retired = 0;
+  for (const c of children) {
+    if (!(c instanceof TFile) || !c.name.endsWith(".md")) continue;
+    const date = c.basename;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    const all = await readProposalsFile(app, date);
+    let touched = false;
+    for (let i = 0; i < all.length; i++) {
+      const p = all[i];
+      if (p.status !== "pending") continue;
+      if (norm(p.text) !== target) continue;
+      // If both name a project, they must match; a project-less proposal
+      // matches anything.
+      if (p.projectPath && projectPath && p.projectPath !== projectPath) continue;
+      all[i] = { ...p, status: "deleted" };
+      touched = true;
+      retired++;
+    }
+    if (touched) await writeProposalsFile(app, date, all);
+  }
+  return retired;
 }
 
 /** Delete a pending proposal — just marks status, never touches projects. */

@@ -182,6 +182,8 @@ export interface DashboardCallbacks {
   togglePendingCollapsed: () => void;
   onAcceptProposal: (date: string, proposalId: string) => Promise<void>;
   onDeleteProposal: (date: string, proposalId: string) => Promise<void>;
+  /** Manually complete a project TODO (→ History) + retire any matching proposal. */
+  onCompleteTodo: (projectPath: string, text: string) => Promise<void>;
 }
 
 export async function renderDashboard(
@@ -196,7 +198,7 @@ export async function renderDashboard(
   // Review reminders moved to the Review tab in v0.9.1. Home is action-only:
   // day header + TODO proposals + pinned TODOs.
   await renderPendingProposalsSection(body, plugin, cb);
-  await renderPinnedTodosSection(body, plugin);
+  await renderPinnedTodosSection(body, plugin, cb);
   // `pendingCollapsed` / togglePendingCollapsed are still threaded through for
   // the Review tab, which now hosts the pending-reviews banner.
   void pendingCollapsed;
@@ -485,7 +487,8 @@ async function renderPendingProposalsSection(
 
 async function renderPinnedTodosSection(
   parent: HTMLElement,
-  plugin: SecondBrainPlugin
+  plugin: SecondBrainPlugin,
+  cb: DashboardCallbacks
 ) {
   const projects = await loadProjects(plugin.app);
   const pinned = projects.filter((p) => p.pinned && p.status === "active");
@@ -518,8 +521,18 @@ async function renderPinnedTodosSection(
     );
     const list = projSec.createEl("ul", { cls: "second-brain-list" });
     for (const t of todos) {
-      const li = list.createEl("li");
-      li.createSpan({ text: t });
+      const li = list.createEl("li", { cls: "second-brain-pinned-todo" });
+      const done = li.createEl("button", {
+        text: "☐",
+        cls: "second-brain-todo-check",
+        attr: { title: "Mark done — moves to the project's History" },
+      });
+      const label = li.createSpan({ text: t });
+      done.addEventListener("click", async () => {
+        done.setText("⏳");
+        await cb.onCompleteTodo(p.file.path, t);
+      });
+      void label;
     }
   }
 }

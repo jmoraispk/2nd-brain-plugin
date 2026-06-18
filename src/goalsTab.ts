@@ -17,6 +17,11 @@ import { Project, loadProjects, PROJECTS_FOLDER } from "./projects";
 import { ProjectCreateModal } from "./projectCreateModal";
 import { ProjectTalkCreateModal, ProjectEditModal } from "./projectAIModals";
 import { renderAreaChips, areaFor } from "./areas";
+import {
+  refreshManualMarks,
+  manualMarkFor,
+  setManualMark,
+} from "./habitManual";
 import { applyDatePlaceholders, todayISO, toISO, resolveDailyLogPath } from "./paths";
 
 export type GoalsSubtab = "habits" | "projects" | "areas" | "stats";
@@ -73,6 +78,9 @@ export async function renderGoals(
   scope: GoalsScope
 ): Promise<void> {
   const body = parent.createDiv({ cls: "second-brain-tab-body" });
+
+  // Load manual habit marks once per render so per-cell lookups stay sync.
+  await refreshManualMarks(plugin.app);
 
   // Coerce the shared subtab into one valid for this scope (the two tabs
   // share GoalsTabState; clicking between them may leave a foreign subtab).
@@ -165,20 +173,34 @@ async function renderHabitsList(
       tr.createEl("td", { text: h.periodicity });
 
       const statusCell = tr.createEl("td");
-      // Auto-habits compute today's status deterministically; others read the
-      // latest review's "## Today's habits status" section.
-      const s = h.auto
-        ? await habitStatusOn(plugin, h, todayISO())
-        : todayStatus.get(h.id);
-      if (s === "pass") statusCell.setText("✅");
-      else if (s === "fail") statusCell.setText("❌");
-      else if (s === "uncertain") {
-        statusCell.createSpan({
-          text: "⚠️",
-          cls: "second-brain-danger",
-          attr: { title: "Uncertain — no evidence in today's log" },
+      const today = todayISO();
+      const glyph = (st: string | undefined) =>
+        st === "pass" ? "✅" : st === "fail" ? "❌" : st === "uncertain" ? "⚠️" : "—";
+
+      if (h.auto) {
+        // Auto-habits compute today's status deterministically — not tickable.
+        statusCell.setText(glyph(await habitStatusOn(plugin, h, today)));
+      } else {
+        // File-backed: manual mark wins; cell is a tap-to-cycle control
+        // (pass → fail → clear, where clear reverts to the AI/derived status).
+        const manual = manualMarkFor(today, h.id);
+        const effective = manual ?? todayStatus.get(h.id);
+        const btn = statusCell.createEl("button", {
+          text: glyph(effective),
+          cls: `second-brain-tick${manual ? " manual" : ""}`,
+          attr: {
+            title: manual
+              ? `Manually marked ${manual} — tap to change (pass → fail → clear)`
+              : "Tap to mark today (pass → fail → clear)",
+          },
         });
-      } else statusCell.setText("—");
+        btn.addEventListener("click", async () => {
+          const next: "pass" | "fail" | null =
+            manual === "pass" ? "fail" : manual === "fail" ? null : "pass";
+          await setManualMark(plugin.app, today, h.id, next);
+          cb.onChanged();
+        });
+      }
 
       tr.createEl("td", { text: h.binaryCriterion });
     }
@@ -572,14 +594,18 @@ async function renderStats(
       plugin.app,
       plugin.settings.reviewsPathTemplate
     );
+    const todayIso = todayISO();
     let passed = 0;
     for (const h of active) {
-      if (todayStatus.get(h.id) === "pass") passed++;
+      const st = h.auto
+        ? await habitStatusOn(plugin, h, todayIso)
+        : manualMarkFor(todayIso, h.id) ?? todayStatus.get(h.id);
+      if (st === "pass") passed++;
     }
     sec.createEl("div", {
       cls: "second-brain-stats-today-badge",
       text: `🎯 ${passed}/${active.length} habits today`,
-      attr: { title: "Habits with explicit pass status in today's review" },
+      attr: { title: "Habits passing today (manual marks + AI + auto)" },
     });
   }
 
@@ -769,6 +795,12 @@ async function habitStatusOn(
   habit: Habit,
   iso: string
 ): Promise<CellStatus> {
+  // Manual marks win over everything for file-backed habits (auto-habits are
+  // deterministic from vault state and aren't hand-tickable).
+  if (!habit.auto) {
+    const mark = manualMarkFor(iso, habit.id);
+    if (mark) return mark;
+  }
   if (habit.auto === "capture") return captureStatusOnDate(plugin, iso);
   if (habit.auto === "review" || habit.periodicity === "weekly") {
     return weekStatusFor(plugin, habit, iso);
@@ -834,7 +866,7 @@ async function weekStatusFor(
 
   let sawFail = false;
   for (const dt of dates) {
-    const s = await statusForHabitOnDate(plugin, habit.id, dt);
+    const s = manualMarkFor(dt, habit.id) ?? (await statusForHabitOnDate(plugin, habit.id, dt));
     if (s === "pass") return "pass";
     if (s === "fail") sawFail = true;
   }

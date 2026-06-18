@@ -1324,3 +1324,42 @@
   color: var(--color-green, #4caf50);
   font-weight: 600;
 }
+
+/* ── v0.9.7: manual habit tick + pinned-TODO complete ──────────────── */
+
+.second-brain-tick {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.second-brain-tick:hover {
+  background: var(--background-modifier-hover);
+}
+
+.second-brain-tick.manual {
+  outline: 1px dashed var(--interactive-accent);
+}
+
+.second-brain-pinned-todo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.second-brain-todo-check {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 2px;
+  color: var(--text-muted);
+}
+
+.second-brain-todo-check:hover {
+  color: var(--color-green, #4caf50);
+}

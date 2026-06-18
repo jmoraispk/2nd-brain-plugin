@@ -27,8 +27,14 @@ import {
 } from "./thinkTab";
 import { renderGoals, GoalsTabState, defaultGoalsTabState } from "./goalsTab";
 import { TopicInputModal } from "./topicInputModal";
-import { acceptProposal, deleteProposal, addManualTodo } from "./proposals";
+import {
+  acceptProposal,
+  deleteProposal,
+  addManualTodo,
+  retireMatchingProposals,
+} from "./proposals";
 import { loadProjects } from "./projects";
+import { completeTodoInProject } from "./projectMutate";
 import { todayISO } from "./paths";
 
 export const VIEW_TYPE_SECOND_BRAIN = "second-brain-view";
@@ -125,6 +131,24 @@ export class SecondBrainView extends ItemView {
               this.plugin.errorLog.push("deleteProposal", err);
               new Notice(
                 `Delete failed: ${(err as Error).message}\nSee Settings → Logs for details.`,
+                8000
+              );
+            }
+          },
+          onCompleteTodo: async (projectPath, text) => {
+            try {
+              const file = this.app.vault.getAbstractFileByPath(projectPath);
+              if (file instanceof TFile) {
+                await completeTodoInProject(this.app, file, text, todayISO());
+              }
+              // Manual completion retires any matching pending AI proposal.
+              await retireMatchingProposals(this.app, text, projectPath);
+              new Notice("Marked done → moved to History.");
+              await this.render();
+            } catch (err) {
+              this.plugin.errorLog.push("completeTodo", err);
+              new Notice(
+                `Complete failed: ${(err as Error).message}\nSee Settings → Logs for details.`,
                 8000
               );
             }
