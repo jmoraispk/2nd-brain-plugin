@@ -63,6 +63,61 @@ export async function appendToProjectHistory(
   await app.vault.modify(projectFile, newContent);
 }
 
+/**
+ * Mark a TODO complete: remove the matching `- [ ] <text>` line from
+ * `## Active TODOs` and append `- [x] <date> — <text>` to `## History`.
+ * Matching is case-insensitive on the text (modulo checkbox + whitespace).
+ * No-op (returns false) if the TODO isn't found in Active TODOs.
+ */
+export async function completeTodoInProject(
+  app: App,
+  projectFile: TFile,
+  todoText: string,
+  date: string
+): Promise<boolean> {
+  const content = await app.vault.read(projectFile);
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/^\s*-\s*\[[ x]\]\s*/, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  const target = norm(todoText);
+
+  // Locate the Active TODOs section.
+  const headingRe = /^##\s+Active TODOs\s*$/m;
+  const m = content.match(headingRe);
+  if (!m || m.index === undefined) return false;
+  const headingEnd = m.index + m[0].length;
+  const rest = content.slice(headingEnd);
+  const nextRel = rest.search(/^##\s+/m);
+  const sectionEnd = nextRel < 0 ? content.length : headingEnd + nextRel;
+
+  const before = content.slice(0, headingEnd);
+  const section = content.slice(headingEnd, sectionEnd);
+  const after = content.slice(sectionEnd);
+
+  const lines = section.split(/\r?\n/);
+  let removed = false;
+  const kept: string[] = [];
+  for (const line of lines) {
+    if (!removed && /^\s*-\s*\[[ x]\]/.test(line) && norm(line) === target) {
+      removed = true;
+      continue;
+    }
+    kept.push(line);
+  }
+  if (!removed) return false;
+
+  let next = before + kept.join("\n").replace(/\s+$/, "") + "\n\n" + after.replace(/^\s*\n+/, "");
+  // Append to History (dated). appendToSection handles missing section.
+  next = appendToSection(next, "History", `- [x] ${date} — ${todoText.trim()}`, {
+    dedupeWithinSection: true,
+  });
+  await app.vault.modify(projectFile, next);
+  return true;
+}
+
 interface AppendOptions {
   dedupeWithinSection?: boolean;
   /** If the target section doesn't exist, insert it before this section name. */

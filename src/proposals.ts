@@ -14,11 +14,13 @@
  */
 
 import { App, TFile } from "obsidian";
-import { appendTodoToProject } from "./projectMutate";
+import { appendTodoToProject, completeTodoInProject } from "./projectMutate";
 
 export const PROPOSALS_FOLDER = "🤖 AI/Proposals";
 
 export type ProposalStatus = "pending" | "accepted" | "deleted";
+/** add = new TODO to append; complete = an existing TODO the AI thinks is done. */
+export type ProposalKind = "add" | "complete";
 
 export interface Proposal {
   id: string;
@@ -26,6 +28,8 @@ export interface Proposal {
   /** Vault path of the matched project file, or null if AI couldn't match. */
   projectPath: string | null;
   status: ProposalStatus;
+  /** add (default) or complete an existing TODO. */
+  kind: ProposalKind;
   /** [HH:MM] timestamp of the capture that triggered this proposal (optional). */
   capturedAt?: string;
 }
@@ -57,19 +61,30 @@ export interface ExtractedTodo {
   text: string;
   projectPath: string | null;
   capturedAt?: string;
+  kind: ProposalKind;
 }
 
+/** Parse both the `todos:` (new) and `updates:` (completed) YAML blocks. */
 export function parseTodosBlock(reviewBody: string): ExtractedTodo[] {
+  const out: ExtractedTodo[] = [];
   const blocks = reviewBody.matchAll(/```ya?ml\s*\n([\s\S]*?)```/g);
   for (const m of blocks) {
     const block = m[1];
-    if (!/^\s*todos:/m.test(block)) continue;
-    return parseTodosYaml(block);
+    if (/^\s*todos:/m.test(block)) {
+      out.push(...parseTodosYaml(block, "todos", "add"));
+    }
+    if (/^\s*updates:/m.test(block)) {
+      out.push(...parseTodosYaml(block, "updates", "complete"));
+    }
   }
-  return [];
+  return out;
 }
 
-function parseTodosYaml(block: string): ExtractedTodo[] {
+function parseTodosYaml(
+  block: string,
+  key: "todos" | "updates",
+  kind: ProposalKind
+): ExtractedTodo[] {
   const out: ExtractedTodo[] = [];
   const lines = block.split(/\r?\n/);
   let inTodos = false;
@@ -81,15 +96,27 @@ function parseTodosYaml(block: string): ExtractedTodo[] {
         text: current.text,
         projectPath: current.projectPath ?? null,
         capturedAt: current.capturedAt,
+        kind,
       });
     }
     current = null;
   };
 
+  const emptyRe = new RegExp(`^${key}:\\s*\\[\\s*\\]\\s*$`);
+  const startRe = new RegExp(`^${key}:\\s*$`);
   for (const line of lines) {
-    if (/^todos:\s*\[\s*\]\s*$/.test(line)) return [];
-    if (/^todos:\s*$/.test(line)) {
+    if (emptyRe.test(line)) {
+      inTodos = false;
+      continue;
+    }
+    if (startRe.test(line)) {
       inTodos = true;
+      continue;
+    }
+    // A different top-level key ends the current list.
+    if (inTodos && /^[a-zA-Z][\w-]*:\s*$/.test(line) && !startRe.test(line)) {
+      flush();
+      inTodos = false;
       continue;
     }
     if (!inTodos) continue;
@@ -133,8 +160,14 @@ function stripQuotes(s: string): string {
  * Stable proposal id from the date + text (collapses repeats across re-runs).
  * Browser-friendly SHA-1, truncated to keep ids short.
  */
-async function makeProposalId(date: string, text: string): Promise<string> {
-  const buf = new TextEncoder().encode(`${date}|${text.toLowerCase().trim()}`);
+async function makeProposalId(
+  date: string,
+  text: string,
+  kind: ProposalKind
+): Promise<string> {
+  const buf = new TextEncoder().encode(
+    `${date}|${kind}|${text.toLowerCase().trim()}`
+  );
   const hash = await crypto.subtle.digest("SHA-1", buf);
   return Array.from(new Uint8Array(hash))
     .slice(0, 6)
@@ -159,7 +192,7 @@ export async function mergeExtractedTodos(
 
   let added = 0;
   for (const e of extracted) {
-    const id = await makeProposalId(date, e.text);
+    const id = await makeProposalId(date, e.text, e.kind);
     if (knownIds.has(id)) continue;
     existing.push({
       id,
@@ -167,6 +200,7 @@ export async function mergeExtractedTodos(
       projectPath: e.projectPath,
       capturedAt: e.capturedAt,
       status: "pending",
+      kind: e.kind,
     });
     knownIds.add(id);
     added++;
@@ -231,6 +265,7 @@ async function writeProposalsFile(
       `    project: ${p.projectPath === null ? "null" : yamlString(p.projectPath)}`
     );
     lines.push(`    status: ${p.status}`);
+    lines.push(`    kind: ${p.kind}`);
     if (p.capturedAt) {
       lines.push(`    captured-at: ${yamlString(p.capturedAt)}`);
     }
@@ -285,6 +320,7 @@ function parseProposalsFrontmatter(raw: string): Proposal[] {
         text: cur.text,
         projectPath: cur.projectPath ?? null,
         status: (cur.status as ProposalStatus) ?? "pending",
+        kind: (cur.kind as ProposalKind) ?? "add",
         capturedAt: cur.capturedAt,
       });
     }
@@ -304,13 +340,14 @@ function parseProposalsFrontmatter(raw: string): Proposal[] {
       continue;
     }
     if (!cur) continue;
-    const m = line.match(/^\s+(text|project|status|captured-at):\s*(.+)\s*$/);
+    const m = line.match(/^\s+(text|project|status|kind|captured-at):\s*(.+)\s*$/);
     if (m) {
       const [, key, valRaw] = m;
       const val = stripQuotes(valRaw.trim());
       if (key === "text") cur.text = val;
       else if (key === "project") cur.projectPath = val === "null" || val === "" ? null : val;
       else if (key === "status") cur.status = val as ProposalStatus;
+      else if (key === "kind") cur.kind = val as ProposalKind;
       else if (key === "captured-at") cur.capturedAt = val;
     }
   }
@@ -351,14 +388,52 @@ export async function acceptProposal(
   const p = all[idx];
   if (p.projectPath) {
     const file = app.vault.getAbstractFileByPath(p.projectPath);
-    if (file instanceof TFile) {
-      await appendTodoToProject(app, file, p.text);
-    } else {
+    if (!(file instanceof TFile)) {
       throw new Error(`Target project missing: ${p.projectPath}`);
+    }
+    if (p.kind === "complete") {
+      const ok = await completeTodoInProject(app, file, p.text, date);
+      if (!ok) {
+        // The TODO wasn't found in Active TODOs — log it to History anyway so
+        // the completion isn't lost.
+        await appendTodoToProject(app, file, p.text);
+        await completeTodoInProject(app, file, p.text, date);
+      }
+    } else {
+      await appendTodoToProject(app, file, p.text);
     }
   }
   all[idx] = { ...p, status: "accepted" };
   await writeProposalsFile(app, date, all);
+}
+
+/**
+ * Manually add a TODO (v0.9.3 quick-capture). If a project is chosen, append
+ * directly to its Active TODOs (the user authored it — no accept step needed).
+ * If no project, store a pending proposal with projectPath = null so it
+ * surfaces on the Dashboard for later assignment.
+ */
+export async function addManualTodo(
+  app: App,
+  date: string,
+  text: string,
+  projectPath: string | null
+): Promise<void> {
+  if (projectPath) {
+    const file = app.vault.getAbstractFileByPath(projectPath);
+    if (!(file instanceof TFile)) {
+      throw new Error(`Project missing: ${projectPath}`);
+    }
+    await appendTodoToProject(app, file, text);
+    return;
+  }
+  await ensureFolder(app, PROPOSALS_FOLDER);
+  const all = await readProposalsFile(app, date);
+  const id = await makeProposalId(date, text, "add");
+  if (!all.some((p) => p.id === id)) {
+    all.push({ id, text, projectPath: null, status: "pending", kind: "add" });
+    await writeProposalsFile(app, date, all);
+  }
 }
 
 /** Delete a pending proposal — just marks status, never touches projects. */

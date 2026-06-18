@@ -417,6 +417,14 @@ async function renderPendingProposalsSection(
   for (const p of proposals) {
     const li = list.createEl("li");
     const left = li.createDiv({ cls: "second-brain-proposal-text" });
+    // Completion proposals read "done" — distinguish them from new TODOs.
+    if (p.kind === "complete") {
+      left.createSpan({
+        text: "✓ done: ",
+        cls: "second-brain-proposal-done",
+        attr: { title: "AI thinks this existing TODO is complete" },
+      });
+    }
     left.createSpan({ text: p.text });
     if (p.projectPath) {
       const projName = p.projectPath
@@ -444,14 +452,16 @@ async function renderPendingProposalsSection(
 
     const actions = li.createDiv({ cls: "second-brain-banner-actions" });
 
+    const acceptTitle =
+      p.kind === "complete"
+        ? "Mark done → move to the project's History"
+        : p.projectPath
+        ? `Append to ${p.projectPath}'s Active TODOs`
+        : "Mark accepted (no project to write to)";
     const acceptBtn = actions.createEl("button", {
       text: "✓",
       cls: "second-brain-banner-run",
-      attr: {
-        title: p.projectPath
-          ? `Append to ${p.projectPath}'s Active TODOs`
-          : "Mark accepted (no project to write to)",
-      },
+      attr: { title: acceptTitle },
     });
     acceptBtn.addEventListener("click", async () => {
       await cb.onAcceptProposal(p.date, p.id);

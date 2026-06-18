@@ -432,15 +432,15 @@ For each (3–7 max):
 
 Rules: it's OK to import frameworks from outside the vault — that's what makes Leverage strategically useful. Anchor recommendations in actual constraints visible in the notes.`;
 
-const REVIEW_PROMPT = `You are synthesizing a daily review.
+const REVIEW_PROMPT = `You are producing a daily SUMMARY (not a reflection). It's the light, frequent digest the user reads before optionally writing their own reflection separately. Keep it factual and tight — no coaching, no invented prompts.
 
-The user message has two date fields: "Period anchor" (the day being reviewed — the target) and "Today's date" (the day the review is being generated). Use the **anchor** for the title and any "today" framing inside the synthesis. Use **Today's date** ONLY in the "Reviewed on" footer.
+The user message has two date fields: "Period anchor" (the day being summarized — the target) and "Today's date" (the day the summary is generated). Use the **anchor** for the title and any "today" framing. Use **Today's date** ONLY in the "Generated on" footer.
 
-You will be given the user's raw captures for the anchor day. If the user message also contains an "## Active habits to evaluate" section, you MUST include a "Today's habits status" section near the top of your output (immediately after Captures summary). Produce a clean Markdown review using exactly this structure (do not invent content):
+You will be given the user's raw captures for the anchor day. If the user message also contains an "## Active habits to evaluate" section, you MUST include a "Today's habits status" section near the top of your output (immediately after Captures summary). Produce a clean Markdown summary using exactly this structure (do not invent content):
 
-# Daily Review — <human-readable anchor date>
+# Daily Summary — <human-readable anchor date>
 
-_Reviewed on <Today's date>. This file is owned by the command and will be overwritten on re-run; your own reflection lives in a separate file._
+_Generated on <Today's date>. Owned by the command, overwritten on re-run; your own reflection lives in a separate file._
 
 ## Captures summary
 A condensed, faithful summary of what was captured. Group by theme if many items. Quote verbatim where a phrasing is striking.
@@ -472,30 +472,31 @@ If no target date is implied, use [target: ?]. **If there are no such items, ski
 ## Backward references
 Mentions in captures that refer to earlier days. **Skip entirely if none.**
 
-## Review prompts (for the user to answer)
-3–5 pointed questions phrased in the user's voice, e.g. "What did I avoid today, and why?"
-
 ## TODO proposals
-If the user message contains an "## Active projects (for TODO matching)" section, scan today's captures for items that imply concrete action steps and emit a fenced YAML block at the end of your output:
+If the user message contains an "## Active projects (for TODO matching)" section, emit a fenced YAML block at the end of your output with TWO lists:
 
 \`\`\`yaml
-todos:
+todos:       # NEW action items implied by today's captures
   - text: "Be specific about the action — readable standalone"
     project: "1. 🎯 Projects/Project A.md"   # exact path from the list, or null
     captured-at: "[14:22]"                    # the [HH:MM] timestamp that triggered it
+updates:     # EXISTING TODOs today's captures indicate are DONE
+  - text: "Exact text of the existing TODO from the project's Active TODOs"
+    project: "1. 🎯 Projects/Project A.md"   # exact path the TODO lives in
+    captured-at: "[16:39]"
 \`\`\`
 
 Rules:
-- One TODO per concrete action. Don't aggregate "do X and Y" into a single item.
+- \`todos\` = new actions. \`updates\` = existing TODOs the captures say were completed (match the existing TODO text as closely as you can; only from the "Active TODOs" lists provided).
+- One item per concrete action. Don't aggregate "do X and Y".
 - text must be standalone — readable without context.
-- project must be an EXACT path from the list above, or null. Don't invent project names.
-- If no actionable items were captured, emit \`todos: []\`.
-- Skip this section entirely if the user message had no projects list.
+- project must be an EXACT path from the list above, or null (for \`todos\`). Don't invent project names.
+- If nothing applies, emit \`todos: []\` and/or \`updates: []\`.
+- Skip the whole block only if the user message had no projects list.
 
 Rules:
-- Be faithful. No fluff. No invented content.
-- Skip empty sections entirely (no "N/A" placeholders).
-- The user writes their own review in a separate file; don't include a "plan" or "scaffold" section.`;
+- Be faithful. No fluff. No invented content. This is a summary — do NOT add reflection questions or coaching; the user reflects separately.
+- Skip empty sections entirely (no "N/A" placeholders).`;
 
 const WEEKLY_REVIEW_PROMPT = `You are synthesizing a weekly review for the user.
 

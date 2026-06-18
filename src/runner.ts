@@ -117,14 +117,23 @@ export async function runCommand(
   }
 
   // Active projects — injected for the daily review so the LLM can extract
-  // TODO proposals and match each one to a target project.
+  // new TODO proposals AND detect completions of existing TODOs. We include
+  // each project's current Active TODOs so "updates" can match real items.
   if (command.id === "todays-review") {
     const projects = await loadProjects(app);
     const activeProjects = projects.filter((p) => p.status === "active");
     if (activeProjects.length > 0) {
       const lines = ["## Active projects (for TODO matching)", ""];
       for (const p of activeProjects) {
-        lines.push(`- ${p.file.path}: ${p.name}`);
+        lines.push(`### ${p.file.path}: ${p.name}`);
+        const todos = extractActiveTodoLines(await app.vault.read(p.file));
+        if (todos.length > 0) {
+          lines.push("Active TODOs:");
+          for (const t of todos) lines.push(`  - ${t}`);
+        } else {
+          lines.push("Active TODOs: (none)");
+        }
+        lines.push("");
       }
       userMsgParts.push("", lines.join("\n"));
     }
@@ -394,6 +403,22 @@ async function collectAllDailyDates(
   const out: string[] = [];
   walkForDailyFilenames(root, out);
   out.sort();
+  return out;
+}
+
+/** Pull the unchecked `- [ ] …` lines from a project's Active TODOs section. */
+function extractActiveTodoLines(content: string): string[] {
+  const m = content.match(/^##\s+Active TODOs\s*$/m);
+  if (!m || m.index === undefined) return [];
+  const start = m.index + m[0].length;
+  const rest = content.slice(start);
+  const next = rest.search(/^##\s+/m);
+  const body = next < 0 ? rest : rest.slice(0, next);
+  const out: string[] = [];
+  for (const line of body.split(/\r?\n/)) {
+    const t = line.match(/^\s*-\s*\[\s\]\s+(.+?)\s*$/);
+    if (t && t[1].trim()) out.push(t[1].trim());
+  }
   return out;
 }
 

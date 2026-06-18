@@ -1286,3 +1286,41 @@
   font-size: 13px;
   line-height: 1;
 }
+
+/* ── v0.9.3: capture Note/TODO toggle + completion proposals ───────── */
+
+.second-brain-capture-seg {
+  display: flex;
+  gap: 4px;
+  margin: 8px 0;
+}
+
+.second-brain-capture-seg button {
+  flex: 1;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.second-brain-capture-seg button.active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+.second-brain-capture-project-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0;
+}
+
+.second-brain-proposal-done {
+  color: var(--color-green, #4caf50);
+  font-weight: 600;
+}

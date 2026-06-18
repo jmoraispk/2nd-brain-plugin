@@ -27,7 +27,8 @@ import {
 } from "./thinkTab";
 import { renderGoals, GoalsTabState, defaultGoalsTabState } from "./goalsTab";
 import { TopicInputModal } from "./topicInputModal";
-import { acceptProposal, deleteProposal } from "./proposals";
+import { acceptProposal, deleteProposal, addManualTodo } from "./proposals";
+import { loadProjects } from "./projects";
 import { todayISO } from "./paths";
 
 export const VIEW_TYPE_SECOND_BRAIN = "second-brain-view";
@@ -106,7 +107,7 @@ export class SecondBrainView extends ItemView {
           onAcceptProposal: async (date, proposalId) => {
             try {
               await acceptProposal(this.app, date, proposalId);
-              new Notice("Accepted — appended to project's Active TODOs.");
+              new Notice("Accepted.");
               await this.render();
             } catch (err) {
               this.plugin.errorLog.push("acceptProposal", err);
@@ -573,6 +574,8 @@ class CaptureModal extends Modal {
   targetDate?: string;
   onSaved?: () => void;
   textarea!: HTMLTextAreaElement;
+  mode: "note" | "todo" = "note";
+  projectSelect: HTMLSelectElement | null = null;
 
   constructor(
     app: App,
@@ -613,11 +616,52 @@ class CaptureModal extends Modal {
     });
     closeBtn.addEventListener("click", () => this.close());
 
+    // Note / TODO segmented toggle.
+    const seg = contentEl.createDiv({ cls: "second-brain-capture-seg" });
+    const noteBtn = seg.createEl("button", { text: "Note" });
+    const todoBtn = seg.createEl("button", { text: "TODO" });
+    const projectRow = contentEl.createDiv({
+      cls: "second-brain-capture-project-row",
+    });
+    const syncSeg = () => {
+      noteBtn.toggleClass("active", this.mode === "note");
+      todoBtn.toggleClass("active", this.mode === "todo");
+      projectRow.style.display = this.mode === "todo" ? "" : "none";
+      this.textarea.setAttribute(
+        "placeholder",
+        this.mode === "todo" ? "What needs doing?" : "What's on your mind?"
+      );
+    };
+    noteBtn.addEventListener("click", () => {
+      this.mode = "note";
+      syncSeg();
+    });
+    todoBtn.addEventListener("click", () => {
+      this.mode = "todo";
+      syncSeg();
+    });
+
     this.textarea = contentEl.createEl("textarea", {
       cls: "second-brain-modal-textarea",
       attr: { placeholder: "What's on your mind?" },
     });
     this.textarea.focus();
+
+    // Project picker (TODO mode). Populated async — "no project" default.
+    projectRow.createEl("label", {
+      text: "Project",
+      cls: "second-brain-picker-label",
+    });
+    this.projectSelect = projectRow.createEl("select", {
+      cls: "second-brain-select",
+    });
+    const none = this.projectSelect.createEl("option", { text: "— no project —" });
+    none.value = "";
+    void this.loadProjectOptions();
+
+    // Move the row + select into place; default hidden until TODO mode.
+    contentEl.insertBefore(projectRow, this.textarea.nextSibling);
+    syncSeg();
 
     const actions = contentEl.createDiv({ cls: "second-brain-modal-actions" });
 
@@ -641,25 +685,51 @@ class CaptureModal extends Modal {
     });
   }
 
+  private async loadProjectOptions() {
+    if (!this.projectSelect) return;
+    try {
+      const projects = (await loadProjects(this.app)).filter(
+        (p) => p.status === "active"
+      );
+      for (const p of projects) {
+        const opt = this.projectSelect.createEl("option", { text: p.name });
+        opt.value = p.file.path;
+      }
+    } catch (err) {
+      this.plugin.errorLog.push("loadProjectOptions", err);
+    }
+  }
+
   async saveAndClose() {
     const content = this.textarea.value.trim();
     if (!content) {
       this.close();
       return;
     }
+    const date = this.targetDate ?? todayISO();
     try {
-      const path = await appendCapture(
-        this.app,
-        this.plugin.settings,
-        content,
-        this.targetDate
-      );
-      new Notice(`Captured → ${path}`);
+      if (this.mode === "todo") {
+        const projectPath = this.projectSelect?.value || null;
+        await addManualTodo(this.app, date, content, projectPath);
+        new Notice(
+          projectPath
+            ? "TODO added to project."
+            : "TODO captured — assign it a project on Home."
+        );
+      } else {
+        const path = await appendCapture(
+          this.app,
+          this.plugin.settings,
+          content,
+          this.targetDate
+        );
+        new Notice(`Captured → ${path}`);
+      }
       this.onSaved?.();
     } catch (err) {
       this.plugin.errorLog.push("capture", err);
       new Notice(
-        `Capture failed: ${(err as Error).message}\nSee Settings → Logs for details.`,
+        `Save failed: ${(err as Error).message}\nSee Settings → Logs for details.`,
         8000
       );
     }
