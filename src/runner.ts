@@ -2,6 +2,7 @@ import { App, TFile } from "obsidian";
 import { Command, CommandInput } from "./types";
 import { SecondBrainSettings } from "./settings";
 import { callLLM } from "./llm";
+import { resolveRoute, taskGroupForCommand } from "./modelRoutes";
 import {
   resolveDailyLogPath,
   applyDatePlaceholders,
@@ -162,7 +163,13 @@ export async function runCommand(
   );
   const userMsg = userMsgParts.join("\n\n");
 
-  const body = await callLLM(settings, command.systemPrompt, userMsg);
+  // Per-task model routing (v0.9.6): pick the model + effort for this
+  // command's task-group, falling back to the default model.
+  const route = resolveRoute(settings, taskGroupForCommand(command.id));
+  const body = await callLLM(settings, command.systemPrompt, userMsg, {
+    model: route.model,
+    effort: route.effort,
+  });
 
   const meta: ReviewMetadata = {
     ...currentFingerprint,

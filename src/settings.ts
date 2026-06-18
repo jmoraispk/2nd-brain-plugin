@@ -5,6 +5,12 @@ import { BUILT_IN_COMMANDS, getEffectiveCommands } from "./commands";
 import { CommandEditModal } from "./commandEditModal";
 import { testConnection } from "./llm";
 import { LogsModal } from "./errorLog";
+import {
+  TASK_GROUPS,
+  MODEL_CATALOG,
+  costHint,
+  defaultModel,
+} from "./modelRoutes";
 
 export type LLMProvider = "anthropic" | "openai";
 
@@ -38,6 +44,12 @@ export interface SecondBrainSettings {
   customCommands: Command[];
   /** v0.9.5 one-time flag: bumped the old gpt-5-mini default → gpt-5. */
   defaultModelBumped?: boolean;
+  /**
+   * v0.9.6 per-task model routing. Key = task-group id; value = the model +
+   * reasoning effort for that group. Unset groups fall back to the default
+   * provider/model. `model: ""` also means "use default".
+   */
+  modelRoutes?: Record<string, { model: string; effort: "default" | "off" | "low" | "high" }>;
 }
 
 export const DEFAULT_SETTINGS: SecondBrainSettings = {
@@ -67,6 +79,9 @@ export class SecondBrainSettingTab extends PluginSettingTab {
 
     this.collapsible(containerEl, "LLM provider", true, (body) =>
       this.renderProvider(body)
+    );
+    this.collapsible(containerEl, "Task routing", false, (body) =>
+      this.renderTaskRouting(body)
     );
     this.collapsible(containerEl, "Paths", false, (body) =>
       this.renderPaths(body)
@@ -264,6 +279,94 @@ export class SecondBrainSettingTab extends PluginSettingTab {
             })
         );
     }
+  }
+
+  /**
+   * Per-task model routing (v0.9.6). One row per task-group: a model dropdown
+   * (Default + the catalog) and a thinking-effort dropdown, with a live
+   * cost-per-run hint. "Default" leaves the group on the provider/model in the
+   * LLM provider section, so the zero-config case is "everything on default".
+   */
+  private renderTaskRouting(containerEl: HTMLElement) {
+    const def = defaultModel(this.plugin.settings);
+    containerEl.createEl("p", {
+      cls: "second-brain-muted",
+      text: `Every task runs on your default model (${def}) unless you route it elsewhere here. Set the deep "Think" tasks to a stronger model, keep the daily loop cheap — the cost-per-run hint shows the tradeoff.`,
+    });
+
+    const routes = this.plugin.settings.modelRoutes ?? {};
+
+    for (const group of TASK_GROUPS) {
+      const current = routes[group.id];
+      const chosenModel = current?.model || "";
+      const chosenEffort = current?.effort ?? "default";
+
+      const setting = new Setting(containerEl)
+        .setName(group.label)
+        .setDesc(group.desc);
+
+      // Model dropdown.
+      setting.addDropdown((d) => {
+        d.addOption("", `Default (${def})`);
+        for (const m of MODEL_CATALOG) d.addOption(m.id, m.label);
+        d.setValue(chosenModel);
+        d.onChange(async (v) => {
+          await this.setRoute(group.id, { model: v });
+          this.display();
+        });
+      });
+
+      // Effort dropdown.
+      setting.addDropdown((d) => {
+        d.addOption("default", "Think: default");
+        d.addOption("off", "Think: off");
+        d.addOption("low", "Think: low");
+        d.addOption("high", "Think: high");
+        d.setValue(chosenEffort);
+        d.onChange(async (v) => {
+          await this.setRoute(group.id, {
+            effort: v as "default" | "off" | "low" | "high",
+          });
+        });
+      });
+
+      // Cost hint for the effective model.
+      const effModel = chosenModel || def;
+      const hint = costHint(effModel, group);
+      if (hint) {
+        setting.descEl.createEl("div", {
+          cls: "second-brain-muted",
+          text: `${effModel} · ${hint}`,
+        });
+      }
+    }
+
+    new Setting(containerEl)
+      .setName("Reset routing")
+      .setDesc("Clear all per-task assignments — everything back to the default model.")
+      .addButton((btn) =>
+        btn.setButtonText("Reset").onClick(async () => {
+          this.plugin.settings.modelRoutes = {};
+          await this.plugin.saveSettings();
+          new Notice("Task routing reset to default model.");
+          this.display();
+        })
+      );
+  }
+
+  private async setRoute(
+    groupId: string,
+    patch: { model?: string; effort?: "default" | "off" | "low" | "high" }
+  ) {
+    const routes = { ...(this.plugin.settings.modelRoutes ?? {}) };
+    const existing = routes[groupId] ?? { model: "", effort: "default" as const };
+    routes[groupId] = { ...existing, ...patch };
+    // Drop the entry entirely if it's back to the default (no model, default effort).
+    if (!routes[groupId].model && routes[groupId].effort === "default") {
+      delete routes[groupId];
+    }
+    this.plugin.settings.modelRoutes = routes;
+    await this.plugin.saveSettings();
   }
 
   private renderPaths(containerEl: HTMLElement) {

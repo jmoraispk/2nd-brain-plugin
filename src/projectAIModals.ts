@@ -9,6 +9,7 @@
 import { App, Modal, Notice, TFile } from "obsidian";
 import SecondBrainPlugin from "../main";
 import { callLLM } from "./llm";
+import { resolveRoute } from "./modelRoutes";
 import { WHEEL_AREAS, Project, createProjectWithBody } from "./projects";
 import { replaceSection } from "./projectMutate";
 
@@ -144,7 +145,11 @@ export class ProjectTalkCreateModal extends Modal {
     btn.setAttribute("disabled", "true");
     btn.setText("Structuring…");
     try {
-      const out = await callLLM(this.plugin.settings, CREATE_SYSTEM, desc);
+      const route = resolveRoute(this.plugin.settings, "project-ai");
+      const out = await callLLM(this.plugin.settings, CREATE_SYSTEM, desc, {
+        model: route.model,
+        effort: route.effort,
+      });
       const { name, body } = splitNameAndBody(out);
       const areaPaths = this.areaSelect.value ? [this.areaSelect.value] : [];
       const file = await createProjectWithBody(
@@ -254,7 +259,11 @@ export class ProjectEditModal extends Modal {
         "## Current project sections",
         sectionsContext(current),
       ].join("\n");
-      const out = await callLLM(this.plugin.settings, UPDATE_SYSTEM, ctx);
+      const route = resolveRoute(this.plugin.settings, "project-ai");
+      const out = await callLLM(this.plugin.settings, UPDATE_SYSTEM, ctx, {
+        model: route.model,
+        effort: route.effort,
+      });
       this.proposed = out.trim();
       this.renderPreview(out.trim());
     } catch (err) {

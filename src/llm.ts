@@ -75,32 +75,52 @@ export async function testConnection(
   }
 }
 
+/**
+ * Optional per-call override (v0.9.6 model orchestration). When `model` is
+ * set, it wins over the provider/model in settings and the provider is
+ * inferred from the model id. `effort` maps to OpenAI's reasoning_effort
+ * ("off" omits it / "default" leaves the model's own default).
+ */
+export interface LLMOverride {
+  model?: string;
+  effort?: "default" | "off" | "low" | "high";
+}
+
 export async function callLLM(
   settings: SecondBrainSettings,
   systemPrompt: string,
-  userMessage: string
+  userMessage: string,
+  override?: LLMOverride
 ): Promise<string> {
-  switch (settings.provider) {
-    case "anthropic":
-      return callAnthropic(settings, systemPrompt, userMessage);
-    case "openai":
-      return callOpenAI(settings, systemPrompt, userMessage);
-    default:
-      throw new Error(`Unknown provider: ${settings.provider}`);
+  // Resolve effective provider + model.
+  let provider = settings.provider;
+  let model =
+    settings.provider === "anthropic"
+      ? settings.anthropicModel
+      : settings.openaiModel;
+  if (override?.model) {
+    model = override.model;
+    provider = override.model.startsWith("claude") ? "anthropic" : "openai";
   }
+
+  if (provider === "anthropic") {
+    return callAnthropic(settings, systemPrompt, userMessage, model);
+  }
+  return callOpenAI(settings, systemPrompt, userMessage, model, override?.effort);
 }
 
 async function callAnthropic(
   settings: SecondBrainSettings,
   systemPrompt: string,
-  userMessage: string
+  userMessage: string,
+  model: string
 ): Promise<string> {
   if (!settings.anthropicApiKey) {
     throw new Error("Anthropic API key not set. Configure in plugin settings.");
   }
 
   const body = JSON.stringify({
-    model: settings.anthropicModel,
+    model,
     max_tokens: 4096,
     system: systemPrompt,
     messages: [{ role: "user", content: userMessage }],
@@ -132,19 +152,27 @@ async function callAnthropic(
 async function callOpenAI(
   settings: SecondBrainSettings,
   systemPrompt: string,
-  userMessage: string
+  userMessage: string,
+  model: string,
+  effort?: "default" | "off" | "low" | "high"
 ): Promise<string> {
   if (!settings.openaiApiKey) {
     throw new Error("OpenAI API key not set. Configure in plugin settings.");
   }
 
-  const body = JSON.stringify({
-    model: settings.openaiModel,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const payload: Record<string, any> = {
+    model,
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userMessage },
     ],
-  });
+  };
+  // "Thinking mode" → reasoning_effort. Only attach for low/high; "off" and
+  // "default" leave the model's own behavior alone.
+  if (effort === "low" || effort === "high") {
+    payload.reasoning_effort = effort;
+  }
 
   const res = await requestUrl({
     url: "https://api.openai.com/v1/chat/completions",
@@ -153,7 +181,7 @@ async function callOpenAI(
       "content-type": "application/json",
       authorization: `Bearer ${settings.openaiApiKey}`,
     },
-    body,
+    body: JSON.stringify(payload),
     throw: false,
   });
 
