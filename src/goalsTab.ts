@@ -13,9 +13,10 @@
 import { App, TFile, TFolder } from "obsidian";
 import SecondBrainPlugin from "../main";
 import { Habit, loadHabits, HABITS_FOLDER } from "./habits";
-import { Project, loadProjects, PROJECTS_FOLDER, normalizeAreaPath } from "./projects";
+import { Project, loadProjects, PROJECTS_FOLDER } from "./projects";
 import { ProjectCreateModal } from "./projectCreateModal";
-import { applyDatePlaceholders, todayISO, toISO } from "./paths";
+import { renderAreaChips, areaFor } from "./areas";
+import { applyDatePlaceholders, todayISO, toISO, resolveDailyLogPath } from "./paths";
 
 export type GoalsSubtab = "habits" | "projects" | "areas" | "stats";
 export type StatsPeriod = "week" | "month" | "year";
@@ -138,17 +139,36 @@ async function renderHabitsList(
     for (const h of active) {
       const tr = tbody.createEl("tr");
       const nameCell = tr.createEl("td");
-      const link = nameCell.createEl("a", {
-        text: h.name,
-        cls: "second-brain-link",
-      });
-      link.addEventListener("click", () =>
-        plugin.app.workspace.getLeaf(false).openFile(h.file)
-      );
-      tr.createEl("td", { text: h.area ?? "—" });
+      if (h.file) {
+        const link = nameCell.createEl("a", {
+          text: h.name,
+          cls: "second-brain-link",
+        });
+        const file = h.file;
+        link.addEventListener("click", () =>
+          plugin.app.workspace.getLeaf(false).openFile(file)
+        );
+      } else {
+        // Auto-habit — no backing file. Mark it so the user knows it's built-in.
+        nameCell.createSpan({ text: h.name });
+        nameCell.createSpan({
+          text: " · auto",
+          cls: "second-brain-thread-meta",
+        });
+      }
+
+      const areaCell = tr.createEl("td");
+      if (h.areas.length > 0) renderAreaChips(areaCell, h.areas);
+      else areaCell.setText("—");
+
       tr.createEl("td", { text: h.periodicity });
+
       const statusCell = tr.createEl("td");
-      const s = todayStatus.get(h.id);
+      // Auto-habits compute today's status deterministically; others read the
+      // latest review's "## Today's habits status" section.
+      const s = h.auto
+        ? await habitStatusOn(plugin, h, todayISO())
+        : todayStatus.get(h.id);
       if (s === "pass") statusCell.setText("✅");
       else if (s === "fail") statusCell.setText("❌");
       else if (s === "uncertain") {
@@ -158,6 +178,7 @@ async function renderHabitsList(
           attr: { title: "Uncertain — no evidence in today's log" },
         });
       } else statusCell.setText("—");
+
       tr.createEl("td", { text: h.binaryCriterion });
     }
   }
@@ -222,7 +243,9 @@ function renderProjectsList(
       link.addEventListener("click", () =>
         plugin.app.workspace.getLeaf(false).openFile(p.file)
       );
-      tr.createEl("td", { text: p.area ?? "—" });
+      const areaCell = tr.createEl("td");
+      if (p.areas.length > 0) renderAreaChips(areaCell, p.areas);
+      else areaCell.setText("—");
       tr.createEl("td", { text: p.status });
       tr.createEl("td", { text: p.created ?? "—" });
       tr.createEl("td", { text: p.targetDate ?? "—" });
@@ -308,20 +331,25 @@ function renderAreas(
   });
 
   // Count habits + projects per sub-area path so we can show connections.
+  // Flat-tag aware: an item in two areas counts in both (set membership).
   const countByArea = new Map<string, { habits: number; projects: number }>();
   for (const h of habits.filter((x) => x.status === "active")) {
-    const a = normalizeAreaPath(h.area);
-    if (!a) continue;
-    const slot = countByArea.get(a) ?? { habits: 0, projects: 0 };
-    slot.habits++;
-    countByArea.set(a, slot);
+    for (const a of h.areas) {
+      const def = areaFor(a);
+      if (!def) continue;
+      const slot = countByArea.get(def.path) ?? { habits: 0, projects: 0 };
+      slot.habits++;
+      countByArea.set(def.path, slot);
+    }
   }
   for (const p of projects.filter((x) => x.status === "active")) {
-    const a = normalizeAreaPath(p.area);
-    if (!a) continue;
-    const slot = countByArea.get(a) ?? { habits: 0, projects: 0 };
-    slot.projects++;
-    countByArea.set(a, slot);
+    for (const a of p.areas) {
+      const def = areaFor(a);
+      if (!def) continue;
+      const slot = countByArea.get(def.path) ?? { habits: 0, projects: 0 };
+      slot.projects++;
+      countByArea.set(def.path, slot);
+    }
   }
 
   // Legend above the wheel — now shows counts per sub-area.
@@ -561,8 +589,8 @@ async function renderNumericStatsFor(
 ) {
   const today = todayISO();
   const yearDays = 365;
-  const allCells = await collectHabitStrip(plugin, habit.id, today, yearDays);
-  const streak = await computeStreak(plugin, habit.id, today, yearDays);
+  const allCells = await collectHabitStrip(plugin, habit, today, yearDays);
+  const streak = await computeStreak(plugin, habit, today, yearDays);
   const best = computeBestStreak(allCells);
   const passCount = allCells.filter((c) => c.status === "pass").length;
   const evaluated = allCells.filter(
@@ -616,8 +644,8 @@ async function renderStatsMonth(
     return toISO(d);
   })();
   for (const h of active) {
-    const cells = await collectHabitStrip(plugin, h.id, endIso, days);
-    const streak = await computeStreak(plugin, h.id, todayISO(), 365);
+    const cells = await collectHabitStrip(plugin, h, endIso, days);
+    const streak = await computeStreak(plugin, h, todayISO(), 365);
     const row = sec.createDiv({ cls: "second-brain-habit-strip-row" });
     row.createEl("div", { text: h.name, cls: "second-brain-habit-strip-label" });
     const grid = row.createDiv({ cls: "second-brain-habit-strip" });
@@ -692,7 +720,7 @@ async function renderStatsWeek(
           grid.createEl("div", { cls: "second-brain-habit-cell second-brain-habit-cell-future" });
           continue;
         }
-        const status = await statusForHabitOnDate(plugin, h.id, iso);
+        const status = await habitStatusOn(plugin, h, iso);
         grid.createEl("div", {
           cls: `second-brain-habit-cell ${cellClass(status)}`,
           attr: { title: `${iso} — ${status}` },
@@ -702,11 +730,96 @@ async function renderStatsWeek(
   }
 }
 
+type CellStatus = "pass" | "uncertain" | "fail" | "missing";
+
+/**
+ * Central per-date status that respects habit kind:
+ *   - auto "capture" → did the day's log get a capture (deterministic)
+ *   - auto "review" / weekly periodicity → evaluate the whole ISO week
+ *   - daily file-backed → read the LLM's status from that day's review
+ */
+async function habitStatusOn(
+  plugin: SecondBrainPlugin,
+  habit: Habit,
+  iso: string
+): Promise<CellStatus> {
+  if (habit.auto === "capture") return captureStatusOnDate(plugin, iso);
+  if (habit.auto === "review" || habit.periodicity === "weekly") {
+    return weekStatusFor(plugin, habit, iso);
+  }
+  return statusForHabitOnDate(plugin, habit.id, iso);
+}
+
+/** Deterministic: pass if that day's daily log has ≥1 [HH:MM] capture. */
+async function captureStatusOnDate(
+  plugin: SecondBrainPlugin,
+  iso: string
+): Promise<CellStatus> {
+  const path = await resolveDailyLogPath(plugin.app, plugin.settings, iso);
+  const f = plugin.app.vault.getAbstractFileByPath(path);
+  if (!(f instanceof TFile)) return "missing";
+  const c = await plugin.app.vault.read(f);
+  return /^\[\d{2}:\d{2}\]/m.test(c) ? "pass" : "missing";
+}
+
+/** Sunday-start week containing iso → 7 ISO date strings. */
+function weekDatesOf(iso: string): string[] {
+  const d = new Date(iso + "T00:00:00");
+  const sun = new Date(d.valueOf());
+  sun.setDate(d.getDate() - d.getDay());
+  const out: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const x = new Date(sun.valueOf());
+    x.setDate(sun.getDate() + i);
+    out.push(toISO(x));
+  }
+  return out;
+}
+
+/**
+ * Weekly status. For the "review" auto-habit: pass if any review (daily or
+ * weekly) exists in the week. For a file-backed weekly habit: pass if any day
+ * in the week passed; fail if a day failed and none passed; else missing.
+ */
+async function weekStatusFor(
+  plugin: SecondBrainPlugin,
+  habit: Habit,
+  iso: string
+): Promise<CellStatus> {
+  const dates = weekDatesOf(iso);
+
+  if (habit.auto === "review") {
+    for (const dt of dates) {
+      const p = applyDatePlaceholders(plugin.settings.reviewsPathTemplate, dt);
+      if (plugin.app.vault.getAbstractFileByPath(p) instanceof TFile) {
+        return "pass";
+      }
+    }
+    // Weekly review file (Monday anchors the ISO week).
+    const wp = applyDatePlaceholders(
+      "🤖 AI/Reviews/Weekly/{ISO_YEAR}-W{WW}.md",
+      dates[1] ?? iso
+    );
+    if (plugin.app.vault.getAbstractFileByPath(wp) instanceof TFile) {
+      return "pass";
+    }
+    return "missing";
+  }
+
+  let sawFail = false;
+  for (const dt of dates) {
+    const s = await statusForHabitOnDate(plugin, habit.id, dt);
+    if (s === "pass") return "pass";
+    if (s === "fail") sawFail = true;
+  }
+  return sawFail ? "fail" : "missing";
+}
+
 async function statusForHabitOnDate(
   plugin: SecondBrainPlugin,
   habitId: string,
   iso: string
-): Promise<"pass" | "uncertain" | "fail" | "missing"> {
+): Promise<CellStatus> {
   const path = applyDatePlaceholders(
     plugin.settings.reviewsPathTemplate,
     iso
@@ -797,7 +910,7 @@ async function renderStatsYear(
           });
           continue;
         }
-        const status = await statusForHabitOnDate(plugin, h.id, iso);
+        const status = await habitStatusOn(plugin, h, iso);
         grid.createEl("div", {
           cls: `second-brain-habit-cell ${cellClass(status)}`,
           attr: { title: `${iso} — ${status}` },
@@ -815,7 +928,7 @@ interface HabitDayCell {
 
 async function collectHabitStrip(
   plugin: SecondBrainPlugin,
-  habitId: string,
+  habit: Habit,
   today: string,
   days: number
 ): Promise<HabitDayCell[]> {
@@ -824,21 +937,7 @@ async function collectHabitStrip(
     const d = new Date(today + "T00:00:00");
     d.setDate(d.getDate() - i);
     const dateStr = toISO(d);
-    const path = applyDatePlaceholders(
-      plugin.settings.reviewsPathTemplate,
-      dateStr
-    );
-    const file = plugin.app.vault.getAbstractFileByPath(path);
-    if (!(file instanceof TFile)) {
-      out.push({ date: dateStr, status: "missing" });
-      continue;
-    }
-    const content = await plugin.app.vault.read(file);
-    const status = parseHabitStatusFromReview(content, habitId);
-    out.push({
-      date: dateStr,
-      status: status ?? "missing",
-    });
+    out.push({ date: dateStr, status: await habitStatusOn(plugin, habit, dateStr) });
   }
   return out;
 }
@@ -864,40 +963,26 @@ function cellClass(s: HabitDayCell["status"]): string {
  */
 async function computeStreak(
   plugin: SecondBrainPlugin,
-  habitId: string,
+  habit: Habit,
   today: string,
   maxLookback: number
 ): Promise<{ current: number; lastEvidence?: string }> {
   let streak = 0;
-  let lastEvidence: string | undefined;
   for (let i = 0; i < maxLookback; i++) {
     const d = new Date(today + "T00:00:00");
     d.setDate(d.getDate() - i);
     const dateStr = toISO(d);
-    const path = applyDatePlaceholders(
-      plugin.settings.reviewsPathTemplate,
-      dateStr
-    );
-    const file = plugin.app.vault.getAbstractFileByPath(path);
-    if (!(file instanceof TFile)) {
-      // No review yet today is OK (might still happen later) — only break
-      // streak if we're past today.
-      if (i === 0) continue;
-      break;
-    }
-    const content = await plugin.app.vault.read(file);
-    const status = parseHabitStatusFromReview(content, habitId);
+    const status = await habitStatusOn(plugin, habit, dateStr);
     if (status === "fail") break;
     if (status === "pass" || status === "uncertain") {
       streak++;
-      if (status === "pass" && !lastEvidence) lastEvidence = dateStr;
     } else {
-      // Section missing or habit not listed — neutral, don't break.
+      // Missing today is OK (still might happen); past missing breaks.
       if (i === 0) continue;
       break;
     }
   }
-  return { current: streak, lastEvidence };
+  return { current: streak };
 }
 
 /**

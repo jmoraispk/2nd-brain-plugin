@@ -12,6 +12,7 @@
  */
 
 import { App, TFile, TFolder } from "obsidian";
+import { parseAreaList } from "./areas";
 
 export const PROJECTS_FOLDER = "1. 🎯 Projects";
 
@@ -21,7 +22,10 @@ export interface Project {
   id: string;
   file: TFile;
   name: string;
+  /** @deprecated single area — kept for back-compat reads. Use `areas`. */
   area?: string;
+  /** Flat list of area paths this project touches (v0.9.2). */
+  areas: string[];
   status: ProjectStatus;
   created?: string;
   targetDate?: string;
@@ -93,11 +97,20 @@ async function parseProject(app: App, file: TFile): Promise<Project> {
   const raw = await app.vault.read(file);
   const fm = parseFrontmatter(raw);
   const pinnedRaw = scalar(fm?.["pinned"]);
+  // Flat-tag areas (v0.9.2): merge new `areas:` list + legacy `area:` scalar.
+  const areas = parseAreaList(fm?.["areas"]);
+  const legacyArea = scalar(fm?.["area"]);
+  if (legacyArea) {
+    for (const a of parseAreaList(legacyArea)) {
+      if (!areas.includes(a)) areas.push(a);
+    }
+  }
   return {
     id: file.basename,
     file,
     name: extractH1(raw) ?? file.basename,
-    area: scalar(fm?.["area"]),
+    area: legacyArea,
+    areas,
     status: ((fm?.["status"] as string) ?? "active") as ProjectStatus,
     created: scalar(fm?.["created"]),
     targetDate: scalar(fm?.["target-date"]),

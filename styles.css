@@ -1265,3 +1265,24 @@
   padding: 6px 10px;
   margin-bottom: 8px;
 }
+
+/* ── v0.9.2: area chips (emoji on macro-color background) ───────────── */
+
+.second-brain-area-chips {
+  display: inline-flex;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+
+.second-brain-area-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 4px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-size: 13px;
+  line-height: 1;
+}

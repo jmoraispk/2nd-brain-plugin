@@ -10,18 +10,57 @@
  */
 
 import { App, TFile, TFolder } from "obsidian";
+import { parseAreaList } from "./areas";
 
 export const HABITS_FOLDER = "🧑 Me/Habits";
+
+/**
+ * Built-in auto-habits shipped for everyone (v0.9.2). They have no backing
+ * file and are evaluated deterministically from vault state. Prepended to the
+ * user's own habits everywhere habits are listed.
+ */
+export function builtInAutoHabits(): Habit[] {
+  return [
+    {
+      id: "capture",
+      file: null,
+      name: "Daily capture",
+      areas: [],
+      projects: [],
+      periodicity: "daily",
+      binaryCriterion: "Captured at least once today",
+      status: "active",
+      auto: "capture",
+    },
+    {
+      id: "review",
+      file: null,
+      name: "Weekly review",
+      areas: [],
+      projects: [],
+      periodicity: "weekly",
+      binaryCriterion: "Reviewed at least once this week",
+      status: "active",
+      auto: "review",
+    },
+  ];
+}
 
 export type Periodicity = "daily" | "weekdays" | "weekly" | "monthly";
 export type HabitStatus = "active" | "paused" | "archived";
 
 export interface Habit {
   id: string;
-  file: TFile;
+  /** Auto-habits (capture / review) are synthetic and have no backing file. */
+  file: TFile | null;
   name: string;
   linkedGoal?: string;
+  /** @deprecated single area — kept for back-compat reads. Use `areas`. */
   area?: string;
+  /** Flat list of area paths this habit touches (v0.9.2). */
+  areas: string[];
+  /** Flat list of project paths (v0.9.2). */
+  projects: string[];
   periodicity: Periodicity;
   binaryCriterion: string;
   quantitative?: {
@@ -35,6 +74,14 @@ export interface Habit {
   environment?: string;
   recovery?: string;
   status: HabitStatus;
+  /**
+   * Auto-habits compute their status deterministically from vault state
+   * rather than from the LLM's "## Today's habits status" section.
+   *   - "capture": pass on day D if D's daily log has ≥1 capture.
+   *   - "review":  pass for the ISO week containing D if any review exists
+   *     in that week.
+   */
+  auto?: "capture" | "review";
 }
 
 /** Inference result the AI returns per-habit in the daily review. */
@@ -48,20 +95,25 @@ export interface HabitInferenceLine {
 }
 
 export async function loadHabits(app: App): Promise<Habit[]> {
+  const habits: Habit[] = [...builtInAutoHabits()];
   const root = app.vault.getAbstractFileByPath(HABITS_FOLDER);
-  if (!(root instanceof TFolder)) return [];
-  const files: TFile[] = [];
-  collectMarkdown(root, files);
-  const habits: Habit[] = [];
-  for (const f of files) {
-    const h = await parseHabit(app, f);
-    if (h) habits.push(h);
+  if (root instanceof TFolder) {
+    const files: TFile[] = [];
+    collectMarkdown(root, files);
+    for (const f of files) {
+      const h = await parseHabit(app, f);
+      if (h) habits.push(h);
+    }
   }
   return habits;
 }
 
 export async function loadActiveHabits(app: App): Promise<Habit[]> {
-  return (await loadHabits(app)).filter((h) => h.status === "active");
+  // Auto-habits are excluded from the LLM evaluation context (they're computed
+  // deterministically), so only return file-backed habits here.
+  return (await loadHabits(app)).filter(
+    (h) => h.status === "active" && !h.auto
+  );
 }
 
 function collectMarkdown(folder: TFolder, out: TFile[]) {
@@ -81,6 +133,22 @@ async function parseHabit(app: App, file: TFile): Promise<Habit | null> {
   const binary = (fm["binary-criterion"] ?? "").toString().trim();
   if (!binary) return null;
 
+  // Flat-tag areas/projects (v0.9.2). Accept new `areas:`/`projects:` lists
+  // and the legacy single `area:` scalar, merged.
+  const areas = parseAreaList(fm["areas"]);
+  const legacyArea = scalar(fm["area"]);
+  if (legacyArea) {
+    const norm = parseAreaList(legacyArea);
+    for (const a of norm) if (!areas.includes(a)) areas.push(a);
+  }
+  const projects = parseAreaList(fm["projects"]);
+  const legacyGoal = scalar(fm["linked-goal"]);
+  if (legacyGoal) {
+    for (const p of parseAreaList(legacyGoal)) {
+      if (!projects.includes(p)) projects.push(p);
+    }
+  }
+
   const habit: Habit = {
     id: file.basename,
     file,
@@ -88,8 +156,10 @@ async function parseHabit(app: App, file: TFile): Promise<Habit | null> {
     periodicity,
     binaryCriterion: binary,
     status,
-    linkedGoal: scalar(fm["linked-goal"]),
-    area: scalar(fm["area"]),
+    linkedGoal: legacyGoal,
+    area: legacyArea,
+    areas,
+    projects,
     why: scalar(fm["why"]),
     environment: scalar(fm["environment"]),
     recovery: scalar(fm["recovery"]),
