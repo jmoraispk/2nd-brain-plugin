@@ -10,7 +10,7 @@ import {
   todayISO as todayISOLocal,
 } from "./paths";
 import { Command } from "./types";
-import { renderDashboard } from "./dashboard";
+import { renderDashboard, renderPendingReviewsBanner } from "./dashboard";
 import {
   renderReview,
   writeUserReview,
@@ -32,15 +32,26 @@ import { todayISO } from "./paths";
 
 export const VIEW_TYPE_SECOND_BRAIN = "second-brain-view";
 
-type ViewMode = "dashboard" | "review" | "life" | "think";
+type ViewMode = "home" | "habits" | "projects" | "review" | "think";
+
+/** Verb + one-line description per tab — shown under the tab bar with an ⓘ. */
+const TAB_META: Record<ViewMode, { verb: string; info: string }> = {
+  home: { verb: "Act", info: "What needs doing now." },
+  habits: { verb: "Track", info: "Keep up the recurring behaviors that compound." },
+  projects: { verb: "Build", info: "Bounded outcomes, milestone by milestone." },
+  review: { verb: "Reflect", info: "Synthesize a period and add your own voice." },
+  think: { verb: "Discover", info: "Interrogate the dump; surface what you can't see." },
+};
 
 export class SecondBrainView extends ItemView {
   plugin: SecondBrainPlugin;
-  mode: ViewMode = "dashboard";
+  mode: ViewMode = "home";
   reviewState: ReviewTabState = defaultReviewTabState();
   thinkState: ThinkTabState = defaultThinkTabState();
   lifeState: GoalsTabState = defaultGoalsTabState();
   pendingReviewsCollapsed: boolean = true;
+  /** Whether the tab's ⓘ description is expanded. */
+  tabInfoOpen: boolean = false;
   /** Date the Dashboard's day-header is showing (capped at yesterday ↔ today). */
   displayedDate: string = todayISO();
 
@@ -71,8 +82,9 @@ export class SecondBrainView extends ItemView {
     container.addClass("second-brain-container");
 
     this.renderTopBar(container);
+    this.renderVerbRow(container);
 
-    if (this.mode === "dashboard") {
+    if (this.mode === "home") {
       await renderDashboard(
         container,
         this.plugin,
@@ -118,32 +130,51 @@ export class SecondBrainView extends ItemView {
           },
         }
       );
-    } else if (this.mode === "life") {
-      await renderGoals(container, this.plugin, this.lifeState, {
-        setSubtab: (t) => {
-          this.lifeState.subtab = t;
-          this.render();
+    } else if (this.mode === "habits" || this.mode === "projects") {
+      await renderGoals(
+        container,
+        this.plugin,
+        this.lifeState,
+        {
+          setSubtab: (t) => {
+            this.lifeState.subtab = t;
+            this.render();
+          },
+          onChanged: () => this.render(),
+          runCommand: (id) => this.runCommandById(id),
+          setStatsPeriod: (p) => {
+            this.lifeState.statsPeriod = p;
+            this.lifeState.statsOffset = 0;
+            this.render();
+          },
+          setStatsOffset: (n) => {
+            this.lifeState.statsOffset = Math.max(0, n);
+            this.render();
+          },
+          setStatsHabitId: (id) => {
+            this.lifeState.statsHabitId = id;
+            // Reset offset when switching habit so the user always lands on the
+            // current period for the new selection.
+            this.lifeState.statsOffset = 0;
+            this.render();
+          },
         },
-        onChanged: () => this.render(),
-        runCommand: (id) => this.runCommandById(id),
-        setStatsPeriod: (p) => {
-          this.lifeState.statsPeriod = p;
-          this.lifeState.statsOffset = 0;
-          this.render();
-        },
-        setStatsOffset: (n) => {
-          this.lifeState.statsOffset = Math.max(0, n);
-          this.render();
-        },
-        setStatsHabitId: (id) => {
-          this.lifeState.statsHabitId = id;
-          // Reset offset when switching habit so the user always lands on the
-          // current period for the new selection.
-          this.lifeState.statsOffset = 0;
-          this.render();
-        },
-      });
+        this.mode
+      );
     } else if (this.mode === "review") {
+      // Review reminders live here now (moved off Home in v0.9.1).
+      await renderPendingReviewsBanner(
+        container,
+        this.plugin,
+        (commandId, anchorOverride) =>
+          this.runReviewSelectionById(commandId, anchorOverride),
+        () => this.render(),
+        this.pendingReviewsCollapsed,
+        () => {
+          this.pendingReviewsCollapsed = !this.pendingReviewsCollapsed;
+          this.render();
+        }
+      );
       renderReview(
         container,
         this.plugin,
@@ -219,14 +250,40 @@ export class SecondBrainView extends ItemView {
     }
   }
 
+  /**
+   * Verb row under the tab bar: the current tab's verb (Act / Track / Build /
+   * Reflect / Discover) with an ⓘ that toggles the one-line description.
+   */
+  private renderVerbRow(container: HTMLElement) {
+    const meta = TAB_META[this.mode];
+    const row = container.createDiv({ cls: "second-brain-verb-row" });
+    row.createSpan({ cls: "second-brain-verb", text: meta.verb });
+    const info = row.createEl("button", {
+      text: "ⓘ",
+      cls: "second-brain-verb-info",
+      attr: { title: meta.info },
+    });
+    info.addEventListener("click", () => {
+      this.tabInfoOpen = !this.tabInfoOpen;
+      this.render();
+    });
+    if (this.tabInfoOpen) {
+      container.createDiv({
+        cls: "second-brain-verb-desc",
+        text: meta.info,
+      });
+    }
+  }
+
   private renderTopBar(container: HTMLElement) {
     const topbar = container.createDiv({ cls: "second-brain-topbar" });
 
     const tabs = topbar.createDiv({ cls: "second-brain-tabs" });
     for (const tab of [
-      { mode: "dashboard" as ViewMode, label: "Dashboard" },
+      { mode: "home" as ViewMode, label: "Home" },
+      { mode: "habits" as ViewMode, label: "Habits" },
+      { mode: "projects" as ViewMode, label: "Projects" },
       { mode: "review" as ViewMode, label: "Review" },
-      { mode: "life" as ViewMode, label: "Life" },
       { mode: "think" as ViewMode, label: "Think" },
     ]) {
       const el = tabs.createEl("button", {
@@ -236,6 +293,7 @@ export class SecondBrainView extends ItemView {
       el.addEventListener("click", () => {
         if (this.mode !== tab.mode) {
           this.mode = tab.mode;
+          this.tabInfoOpen = false;
           this.render();
         }
       });
@@ -328,7 +386,7 @@ export class SecondBrainView extends ItemView {
     }
     const ghost = document.createElement("button");
     await this.runCommandHandler(ghost, cmd, anchorOverride, topicInput);
-    if (this.mode === "dashboard") await this.render();
+    if (this.mode === "home") await this.render();
   }
 
   /**

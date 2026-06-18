@@ -1225,3 +1225,43 @@
   font-size: 13px;
   color: var(--text-normal);
 }
+
+/* ── v0.9.1: tab verb row ───────────────────────────────────────────── */
+
+.second-brain-verb-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 4px;
+}
+
+.second-brain-verb {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.second-brain-verb-info {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.second-brain-verb-info:hover {
+  color: var(--text-normal);
+}
+
+.second-brain-verb-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  background: var(--background-secondary);
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+}

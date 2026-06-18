@@ -43,24 +43,44 @@ export interface GoalsTabCallbacks {
   setStatsHabitId: (id: string | undefined) => void;
 }
 
+/**
+ * Scope = which top-level tab is hosting this renderer (v0.9.1 split the old
+ * "Life" tab into Habits + Projects). Each scope shows only its own subtabs.
+ */
+export type GoalsScope = "habits" | "projects";
+
+const SUBTABS_BY_SCOPE: Record<
+  GoalsScope,
+  Array<{ id: GoalsSubtab; label: string }>
+> = {
+  habits: [
+    { id: "habits", label: "List" },
+    { id: "stats", label: "Stats" },
+  ],
+  projects: [
+    { id: "projects", label: "List" },
+    { id: "areas", label: "Areas" },
+  ],
+};
+
 export async function renderGoals(
   parent: HTMLElement,
   plugin: SecondBrainPlugin,
   state: GoalsTabState,
-  cb: GoalsTabCallbacks
+  cb: GoalsTabCallbacks,
+  scope: GoalsScope
 ): Promise<void> {
   const body = parent.createDiv({ cls: "second-brain-tab-body" });
 
-  // Sub-tab bar. Streaks folded into Stats in v0.8.6 — current-streak count
-  // now renders next to each habit's heatmap strip.
+  // Coerce the shared subtab into one valid for this scope (the two tabs
+  // share GoalsTabState; clicking between them may leave a foreign subtab).
+  const allowed = SUBTABS_BY_SCOPE[scope];
+  if (!allowed.some((t) => t.id === state.subtab)) {
+    state.subtab = allowed[0].id;
+  }
+
   const bar = body.createDiv({ cls: "second-brain-subtabs" });
-  const subtabs: Array<{ id: GoalsSubtab; label: string }> = [
-    { id: "habits", label: "Habits" },
-    { id: "projects", label: "Projects" },
-    { id: "areas", label: "Areas" },
-    { id: "stats", label: "Stats" },
-  ];
-  for (const t of subtabs) {
+  for (const t of allowed) {
     const btn = bar.createEl("button", {
       text: t.label,
       cls: `second-brain-subtab${state.subtab === t.id ? " active" : ""}`,

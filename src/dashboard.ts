@@ -193,19 +193,16 @@ export async function renderDashboard(
 ): Promise<void> {
   const body = parent.createDiv({ cls: "second-brain-dashboard" });
   await renderDayHeader(body, plugin, displayedDate, cb.onAction, cb.onChangeDate);
-  await renderPendingReviewsBanner(
-    body,
-    plugin,
-    cb.onRunCommand,
-    cb.onRefresh,
-    pendingCollapsed,
-    cb.togglePendingCollapsed
-  );
+  // Review reminders moved to the Review tab in v0.9.1. Home is action-only:
+  // day header + TODO proposals + pinned TODOs.
   await renderPendingProposalsSection(body, plugin, cb);
   await renderPinnedTodosSection(body, plugin);
+  // `pendingCollapsed` / togglePendingCollapsed are still threaded through for
+  // the Review tab, which now hosts the pending-reviews banner.
+  void pendingCollapsed;
 }
 
-async function renderPendingReviewsBanner(
+export async function renderPendingReviewsBanner(
   parent: HTMLElement,
   plugin: SecondBrainPlugin,
   onRunCommand: (commandId: string, anchorOverride?: string) => void,
@@ -372,11 +369,26 @@ async function renderDayHeader(
   });
   captureBtn.addEventListener("click", () => onAction("capture"));
 
+  // Summarize ↔ View Summary toggle. The summary is "fresh" when the review
+  // file exists and the daily log hasn't been touched since it was generated
+  // (cheap mtime heuristic — no hashing on render). Fresh → "View Summary"
+  // (opens the file, no LLM call). Stale / missing → "Summarize" (runs).
+  const summaryFresh =
+    reviewFile instanceof TFile &&
+    (!(logFile instanceof TFile) ||
+      logFile.stat.mtime <= reviewFile.stat.mtime);
+
   const reviewBtn = actions.createEl("button", {
-    text: "This Review",
+    text: summaryFresh ? "View Summary" : "Summarize",
     cls: "second-brain-button",
   });
-  reviewBtn.addEventListener("click", () => onAction("this-review"));
+  reviewBtn.addEventListener("click", () => {
+    if (summaryFresh && reviewFile instanceof TFile) {
+      plugin.app.workspace.getLeaf(false).openFile(reviewFile);
+    } else {
+      onAction("this-review");
+    }
+  });
 }
 
 // ── Pending AI proposals (v0.9) ──────────────────────────────────────────
