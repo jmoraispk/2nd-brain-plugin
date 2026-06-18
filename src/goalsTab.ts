@@ -16,6 +16,7 @@ import { Habit, loadHabits, HABITS_FOLDER } from "./habits";
 import { Project, loadProjects, PROJECTS_FOLDER } from "./projects";
 import { ProjectCreateModal } from "./projectCreateModal";
 import { ProjectTalkCreateModal, ProjectEditModal } from "./projectAIModals";
+import { HabitDesignerModal } from "./habitDesignerModal";
 import { renderAreaChips, areaFor } from "./areas";
 import {
   refreshManualMarks,
@@ -220,15 +221,22 @@ async function renderHabitsList(
   // previous header-bar placement.
   const actions = sec.createDiv({ cls: "second-brain-secondary-actions" });
 
-  const draftBtn = actions.createEl("button", {
-    text: "✨ Draft Habit",
-    cls: "second-brain-button",
+  // The AI habit-designer (v0.10) — the primary way to add a habit. Turns a
+  // rough wish into a crisp, anchored, identity-linked habit that sticks.
+  const designBtn = actions.createEl("button", {
+    text: "✨ Design a habit",
+    cls: "second-brain-button second-brain-button-primary",
     attr: {
       title:
-        "AI drafts a new habit (or boosts an existing one) — Define / Why / Plan / Environment / Recover.",
+        "Say what you want to build; the AI designs it (tiny minimum, a cue, environment, reward, recovery) and writes the habit.",
     },
   });
-  draftBtn.addEventListener("click", () => cb.runCommand("draft-habit"));
+  designBtn.addEventListener("click", () => {
+    new HabitDesignerModal(plugin.app, plugin, (file) => {
+      cb.onChanged();
+      plugin.app.workspace.getLeaf(false).openFile(file);
+    }).open();
+  });
 
   const backfillBtn = actions.createEl("button", {
     text: "📜 Backfill history",

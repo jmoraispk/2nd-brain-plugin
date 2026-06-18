@@ -74,6 +74,19 @@ export interface Habit {
   environment?: string;
   recovery?: string;
   status: HabitStatus;
+  // ── Habit anatomy (v0.10) — the adherence-by-design fields ──
+  /** The identity this habit reinforces ("a person who moves every day"). */
+  identity?: string;
+  /** Implementation intention — when/where/after-what (the trigger). */
+  cue?: string;
+  /** Optional aspirational target ("30 minutes"). The min dose is binaryCriterion. */
+  target?: string;
+  /** Anti-gaming rules ("no phone", "timer must ring"). */
+  constraints?: string[];
+  /** What proves it happened (artifact / log mention / #tag). */
+  evidence?: string;
+  /** The immediate celebration that wires the habit. */
+  reward?: string;
   /**
    * Auto-habits compute their status deterministically from vault state
    * rather than from the LLM's "## Today's habits status" section.
@@ -163,6 +176,12 @@ async function parseHabit(app: App, file: TFile): Promise<Habit | null> {
     why: scalar(fm["why"]),
     environment: scalar(fm["environment"]),
     recovery: scalar(fm["recovery"]),
+    identity: scalar(fm["identity"]),
+    cue: scalar(fm["cue"]),
+    target: scalar(fm["target"]),
+    evidence: scalar(fm["evidence"]),
+    reward: scalar(fm["reward"]),
+    constraints: parseStringList(fm["constraints"]),
   };
 
   const plan = fm["plan"] as Record<string, unknown> | undefined;
@@ -184,6 +203,27 @@ async function parseHabit(app: App, file: TFile): Promise<Habit | null> {
   }
 
   return habit;
+}
+
+/** Parse a frontmatter value into a string list (array, or ;/, separated). */
+function parseStringList(v: unknown): string[] | undefined {
+  if (v == null) return undefined;
+  if (Array.isArray(v)) {
+    const out = v.map((x) => String(x).trim()).filter(Boolean);
+    return out.length ? out : undefined;
+  }
+  const s = String(v).trim();
+  if (!s) return undefined;
+  if (s.startsWith("[") && s.endsWith("]")) {
+    const out = s
+      .slice(1, -1)
+      .split(",")
+      .map((x) => x.trim().replace(/^["']|["']$/g, ""))
+      .filter(Boolean);
+    return out.length ? out : undefined;
+  }
+  const out = s.split(/[;,]/).map((x) => x.trim()).filter(Boolean);
+  return out.length ? out : undefined;
 }
 
 function scalar(v: unknown): string | undefined {
@@ -276,6 +316,73 @@ function parseScalar(raw: string): unknown {
  *
  * The matching prompt instructions live in REVIEW_PROMPT.
  */
+/**
+ * Create a habit file from the AI habit-designer (v0.10). `fields` is the
+ * parsed anatomy (key → value); `areaPaths`/`projectPaths` come from the
+ * modal's pickers. Disambiguates the filename. Returns the created TFile.
+ */
+export async function createHabitFromDesigner(
+  app: App,
+  name: string,
+  areaPaths: string[],
+  projectPaths: string[],
+  fields: Map<string, string>,
+  body: string
+): Promise<TFile> {
+  if (!app.vault.getAbstractFileByPath(HABITS_FOLDER)) {
+    await app.vault.createFolder(HABITS_FOLDER);
+  }
+  const safe = (name || "New habit").replace(/[\\/:*?"<>|]/g, "").trim();
+  let path = `${HABITS_FOLDER}/${safe}.md`;
+  let n = 2;
+  while (app.vault.getAbstractFileByPath(path)) {
+    path = `${HABITS_FOLDER}/${safe} (${n}).md`;
+    n++;
+  }
+
+  const q = (s: string) =>
+    /^[\w .,/%-]+$/.test(s) && !s.includes(": ") ? s : `"${s.replace(/"/g, '\\"')}"`;
+  const fm: string[] = ["---"];
+  fm.push(
+    areaPaths.length ? `areas: [${areaPaths.map((p) => `"[[${p}]]"`).join(", ")}]` : "areas: []"
+  );
+  fm.push(
+    projectPaths.length
+      ? `projects: [${projectPaths.map((p) => `"[[${p}]]"`).join(", ")}]`
+      : "projects: []"
+  );
+  fm.push(`periodicity: ${fields.get("periodicity") || "daily"}`);
+  const bc = fields.get("binary-criterion") || fields.get("minimum") || "";
+  if (bc) fm.push(`binary-criterion: ${q(bc)}`);
+  for (const key of [
+    "identity",
+    "why",
+    "cue",
+    "target",
+    "environment",
+    "evidence",
+    "reward",
+    "recovery",
+  ]) {
+    const v = fields.get(key);
+    if (v) fm.push(`${key}: ${q(v)}`);
+  }
+  const cons = fields.get("constraints");
+  if (cons) {
+    const items = cons.split(/[;]/).map((s) => s.trim()).filter(Boolean);
+    if (items.length) fm.push(`constraints: [${items.map((s) => q(s)).join(", ")}]`);
+  }
+  fm.push("status: active");
+  fm.push("---");
+  fm.push("");
+  fm.push(`# ${safe}`);
+  fm.push("");
+  fm.push(body.trim());
+  fm.push("");
+
+  return await app.vault.create(path, fm.join("\n"));
+}
+
 export function buildHabitContextBlock(habits: Habit[]): string {
   if (habits.length === 0) return "";
   const lines = ["## Active habits to evaluate", ""];
