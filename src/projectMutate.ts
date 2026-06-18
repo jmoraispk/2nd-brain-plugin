@@ -118,6 +118,44 @@ export async function completeTodoInProject(
   return true;
 }
 
+/**
+ * Replace the body of a named section (everything between its `## heading`
+ * and the next `## `), leaving the heading and the rest of the file intact.
+ * If the section is missing, it's created before `insertBefore` (or appended).
+ * Section-bounded: never touches other sections. Used by talk-to-update.
+ */
+export function replaceSection(
+  content: string,
+  heading: string,
+  newBody: string,
+  insertBefore?: string
+): string {
+  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const headingRe = new RegExp(`^##\\s+${escaped}\\s*$`, "m");
+  const m = content.match(headingRe);
+  const body = newBody.replace(/\s+$/, "");
+
+  if (!m || m.index === undefined) {
+    const block = `## ${heading}\n${body}\n\n`;
+    if (insertBefore) {
+      const beforeEsc = insertBefore.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const bm = content.match(new RegExp(`^##\\s+${beforeEsc}\\s*$`, "m"));
+      if (bm && bm.index !== undefined) {
+        return content.slice(0, bm.index) + block + content.slice(bm.index);
+      }
+    }
+    return content.replace(/\s*$/, "") + `\n\n${block}`;
+  }
+
+  const headingEnd = m.index + m[0].length;
+  const rest = content.slice(headingEnd);
+  const nextRel = rest.search(/^##\s+/m);
+  const sectionEnd = nextRel < 0 ? content.length : headingEnd + nextRel;
+  const before = content.slice(0, headingEnd);
+  const after = content.slice(sectionEnd);
+  return `${before}\n${body}\n\n${after.replace(/^\s*\n+/, "")}`;
+}
+
 interface AppendOptions {
   dedupeWithinSection?: boolean;
   /** If the target section doesn't exist, insert it before this section name. */

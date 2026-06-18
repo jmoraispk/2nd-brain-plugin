@@ -220,3 +220,51 @@ export async function createProject(
   }
   return await app.vault.create(path, projectFileBody(safeName, areaPath));
 }
+
+/**
+ * Create a project from an AI-structured markdown body (talk-to-create,
+ * v0.9.4). `body` is the section markdown (## Why … ## History); we prepend
+ * frontmatter + the H1. Disambiguates the filename if one already exists.
+ */
+export async function createProjectWithBody(
+  app: App,
+  name: string,
+  areaPaths: string[],
+  body: string
+): Promise<TFile> {
+  if (!app.vault.getAbstractFileByPath(PROJECTS_FOLDER)) {
+    await app.vault.createFolder(PROJECTS_FOLDER);
+  }
+  let safeName = name.replace(/[\\/:*?"<>|]/g, "").trim() || "Untitled project";
+  let path = `${PROJECTS_FOLDER}/${safeName}.md`;
+  let n = 2;
+  while (app.vault.getAbstractFileByPath(path)) {
+    path = `${PROJECTS_FOLDER}/${safeName} (${n}).md`;
+    n++;
+  }
+  const today = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+      d.getDate()
+    ).padStart(2, "0")}`;
+  })();
+  const areaLine =
+    areaPaths.length > 0
+      ? `areas: [${areaPaths.map((p) => `"[[${p}]]"`).join(", ")}]`
+      : "areas: []";
+  const fm = [
+    "---",
+    areaLine,
+    "status: active",
+    `created: ${today}`,
+    "target-date:",
+    "pinned: false",
+    "---",
+    "",
+    `# ${safeName}`,
+    "",
+    body.trim(),
+    "",
+  ].join("\n");
+  return await app.vault.create(path, fm);
+}

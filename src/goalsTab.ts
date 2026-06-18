@@ -15,6 +15,7 @@ import SecondBrainPlugin from "../main";
 import { Habit, loadHabits, HABITS_FOLDER } from "./habits";
 import { Project, loadProjects, PROJECTS_FOLDER } from "./projects";
 import { ProjectCreateModal } from "./projectCreateModal";
+import { ProjectTalkCreateModal, ProjectEditModal } from "./projectAIModals";
 import { renderAreaChips, areaFor } from "./areas";
 import { applyDatePlaceholders, todayISO, toISO, resolveDailyLogPath } from "./paths";
 
@@ -229,7 +230,7 @@ function renderProjectsList(
   } else {
     const table = sec.createEl("table", { cls: "second-brain-habits-table" });
     const head = table.createEl("thead").createEl("tr");
-    for (const col of ["Project", "Area", "Status", "Created", "Target"]) {
+    for (const col of ["Project", "Area", "Status", "Created", ""]) {
       head.createEl("th", { text: col });
     }
     const tbody = table.createEl("tbody");
@@ -248,18 +249,43 @@ function renderProjectsList(
       else areaCell.setText("—");
       tr.createEl("td", { text: p.status });
       tr.createEl("td", { text: p.created ?? "—" });
-      tr.createEl("td", { text: p.targetDate ?? "—" });
+      // Last column: "Edit via AI" — dictate a change, AI proposes a
+      // section-bounded edit (v0.9.4).
+      const editCell = tr.createEl("td");
+      const editBtn = editCell.createEl("button", {
+        text: "✏️ AI",
+        cls: "second-brain-row-edit",
+        attr: { title: "Edit this project by talking — AI proposes a section edit" },
+      });
+      editBtn.addEventListener("click", () => {
+        new ProjectEditModal(plugin.app, plugin, p, () => cb.onChanged()).open();
+      });
     }
   }
 
   // Secondary action row mirrors the Habits tab pattern.
   const actions = sec.createDiv({ cls: "second-brain-secondary-actions" });
-  const newBtn = actions.createEl("button", {
-    text: "+ New Project",
+  const talkBtn = actions.createEl("button", {
+    text: "✨ Describe a project",
     cls: "second-brain-button second-brain-button-primary",
     attr: {
       title:
-        "Create a project file under 1. 🎯 Projects/ with an area link and SMART scaffold (Why · Done criteria · Status · Next steps).",
+        "Talk freely about a project — AI structures it into the project format and creates the file.",
+    },
+  });
+  talkBtn.addEventListener("click", () => {
+    new ProjectTalkCreateModal(plugin.app, plugin, (file) => {
+      cb.onChanged();
+      plugin.app.workspace.getLeaf(false).openFile(file);
+    }).open();
+  });
+
+  const newBtn = actions.createEl("button", {
+    text: "+ New (blank)",
+    cls: "second-brain-button",
+    attr: {
+      title:
+        "Create a blank project file with the scaffold (Why · Done criteria · Current state · Active TODOs · History).",
     },
   });
   newBtn.addEventListener("click", () => {
