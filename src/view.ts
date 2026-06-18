@@ -183,6 +183,10 @@ export class SecondBrainView extends ItemView {
             this.lifeState.statsOffset = 0;
             this.render();
           },
+          setStatsMeasure: (m) => {
+            this.lifeState.statsMeasure = m;
+            this.render();
+          },
         },
         this.mode
       );

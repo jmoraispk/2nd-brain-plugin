@@ -26,6 +26,8 @@ import { applyDatePlaceholders, todayISO, toISO, resolveDailyLogPath } from "./p
 
 export type GoalsSubtab = "habits" | "projects" | "areas" | "stats";
 export type StatsPeriod = "week" | "month" | "year";
+/** How a habit's heatmap is measured (v0.9.8). */
+export type StatsMeasure = "binary" | "count" | "magnitude";
 
 export interface GoalsTabState {
   subtab: GoalsSubtab;
@@ -35,10 +37,17 @@ export interface GoalsTabState {
   statsOffset: number;
   /** Stats sub-tab — which habit to drill into. undefined = "All habits". */
   statsHabitId?: string;
+  /** Stats sub-tab — binary (did it) / count (how many) / magnitude (how much). */
+  statsMeasure: StatsMeasure;
 }
 
 export function defaultGoalsTabState(): GoalsTabState {
-  return { subtab: "habits", statsPeriod: "month", statsOffset: 0 };
+  return {
+    subtab: "habits",
+    statsPeriod: "month",
+    statsOffset: 0,
+    statsMeasure: "binary",
+  };
 }
 
 export interface GoalsTabCallbacks {
@@ -48,6 +57,7 @@ export interface GoalsTabCallbacks {
   setStatsPeriod: (p: StatsPeriod) => void;
   setStatsOffset: (n: number) => void;
   setStatsHabitId: (id: string | undefined) => void;
+  setStatsMeasure: (m: StatsMeasure) => void;
 }
 
 /**
@@ -551,6 +561,22 @@ async function renderStats(
     cb.setStatsPeriod(select.value as StatsPeriod);
   });
 
+  // Measure selector — binary (did it) / count (how many) / magnitude.
+  const measureSel = headerRow.createEl("select", { cls: "second-brain-select" });
+  const measureLabels: Record<StatsMeasure, string> = {
+    binary: "Did it",
+    count: "How many",
+    magnitude: "How much",
+  };
+  for (const m of ["binary", "count", "magnitude"] as StatsMeasure[]) {
+    const opt = measureSel.createEl("option", { text: measureLabels[m] });
+    opt.value = m;
+    if (m === state.statsMeasure) opt.selected = true;
+  }
+  measureSel.addEventListener("change", () => {
+    cb.setStatsMeasure(measureSel.value as StatsMeasure);
+  });
+
   const nav = headerRow.createDiv({ cls: "second-brain-stats-nav" });
   const back = nav.createEl("button", {
     text: "◀",
@@ -615,11 +641,11 @@ async function renderStats(
   }
 
   if (state.statsPeriod === "week") {
-    await renderStatsWeek(sec, plugin, visible, state.statsOffset);
+    await renderStatsWeek(sec, plugin, visible, state.statsOffset, state.statsMeasure);
   } else if (state.statsPeriod === "year") {
-    await renderStatsYear(sec, plugin, visible, state.statsOffset);
+    await renderStatsYear(sec, plugin, visible, state.statsOffset, state.statsMeasure);
   } else {
-    await renderStatsMonth(sec, plugin, visible, state.statsOffset);
+    await renderStatsMonth(sec, plugin, visible, state.statsOffset, state.statsMeasure);
   }
 
   sec.createEl("p", {
@@ -687,7 +713,8 @@ async function renderStatsMonth(
   sec: HTMLElement,
   plugin: SecondBrainPlugin,
   active: Habit[],
-  offset: number
+  offset: number,
+  measure: StatsMeasure
 ) {
   const days = 30;
   const endIso = (() => {
@@ -695,18 +722,19 @@ async function renderStatsMonth(
     d.setDate(d.getDate() - offset * days);
     return toISO(d);
   })();
+  const dates: string[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(endIso + "T00:00:00");
+    d.setDate(d.getDate() - i);
+    dates.push(toISO(d));
+  }
   for (const h of active) {
-    const cells = await collectHabitStrip(plugin, h, endIso, days);
+    const { map, max } = await computeCells(plugin, h, dates, measure);
     const streak = await computeStreak(plugin, h, todayISO(), 365);
     const row = sec.createDiv({ cls: "second-brain-habit-strip-row" });
     row.createEl("div", { text: h.name, cls: "second-brain-habit-strip-label" });
     const grid = row.createDiv({ cls: "second-brain-habit-strip" });
-    for (const cell of cells) {
-      grid.createDiv({
-        cls: `second-brain-habit-cell ${cellClass(cell.status)}`,
-        attr: { title: `${cell.date} — ${cell.status}` },
-      });
-    }
+    for (const iso of dates) paintCell(grid, iso, map.get(iso), measure, max);
     row.createEl("div", {
       cls: "second-brain-habit-streak-badge",
       text: offset === 0 && streak.current > 0 ? `🔥 ${streak.current}` : "",
@@ -729,7 +757,8 @@ async function renderStatsWeek(
   sec: HTMLElement,
   plugin: SecondBrainPlugin,
   active: Habit[],
-  offset: number
+  offset: number,
+  measure: StatsMeasure
 ) {
   const weeksPerWindow = 12;
   // Anchor: most-recent Saturday on the right edge, offset back by `offset`
@@ -744,7 +773,18 @@ async function renderStatsWeek(
 
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+  // All dates in the window (value pre-pass).
+  const allDates: string[] = [];
+  for (let w = 0; w < weeksPerWindow; w++) {
+    for (let dow = 0; dow < 7; dow++) {
+      const d = new Date(leftmostSun.valueOf());
+      d.setDate(d.getDate() + w * 7 + dow);
+      allDates.push(toISO(d));
+    }
+  }
+
   for (const h of active) {
+    const { map, max } = await computeCells(plugin, h, allDates, measure);
     const wrap = sec.createDiv({ cls: "second-brain-week-grid-wrap" });
     wrap.createEl("div", {
       text: h.name,
@@ -768,15 +808,7 @@ async function renderStatsWeek(
         const cellDate = new Date(leftmostSun.valueOf());
         cellDate.setDate(cellDate.getDate() + w * 7 + dow);
         const iso = toISO(cellDate);
-        if (cellDate > today) {
-          grid.createEl("div", { cls: "second-brain-habit-cell second-brain-habit-cell-future" });
-          continue;
-        }
-        const status = await habitStatusOn(plugin, h, iso);
-        grid.createEl("div", {
-          cls: `second-brain-habit-cell ${cellClass(status)}`,
-          attr: { title: `${iso} — ${status}` },
-        });
+        paintCell(grid, iso, map.get(iso), measure, max);
       }
     }
   }
@@ -888,6 +920,141 @@ async function statusForHabitOnDate(
   return parseHabitStatusFromReview(content, habitId) ?? "missing";
 }
 
+// ── Stat dimensions (v0.9.8): value extraction + intensity rendering ──────
+
+interface ValuedCell {
+  status: CellStatus;
+  value: number;
+  future: boolean;
+}
+
+/** # of [HH:MM] captures in a day's log (capture-habit count measure). */
+async function captureCountOn(plugin: SecondBrainPlugin, iso: string): Promise<number> {
+  const path = await resolveDailyLogPath(plugin.app, plugin.settings, iso);
+  const f = plugin.app.vault.getAbstractFileByPath(path);
+  if (!(f instanceof TFile)) return 0;
+  const c = await plugin.app.vault.read(f);
+  return (c.match(/^\[\d{2}:\d{2}\]/gm) ?? []).length;
+}
+
+/** Word count of a day's log (capture-habit magnitude = raw volume). */
+async function captureWordsOn(plugin: SecondBrainPlugin, iso: string): Promise<number> {
+  const path = await resolveDailyLogPath(plugin.app, plugin.settings, iso);
+  const f = plugin.app.vault.getAbstractFileByPath(path);
+  if (!(f instanceof TFile)) return 0;
+  const c = await plugin.app.vault.read(f);
+  const words = c.replace(/^\[\d{2}:\d{2}\]/gm, " ").trim().split(/\s+/).filter(Boolean);
+  return words.length;
+}
+
+/** Parse the first number out of a habit's line in the day's review. */
+async function magnitudeFromReview(
+  plugin: SecondBrainPlugin,
+  habitId: string,
+  iso: string
+): Promise<number | null> {
+  const path = applyDatePlaceholders(plugin.settings.reviewsPathTemplate, iso);
+  const file = plugin.app.vault.getAbstractFileByPath(path);
+  if (!(file instanceof TFile)) return null;
+  const content = await plugin.app.vault.read(file);
+  const section = extractSection(content, "Today's habits status");
+  if (!section) return null;
+  const re = new RegExp(`^\\s*-\\s+(?:✅|⚠️|❌)\\s+${escapeRegex(habitId)}\\s*[—-].*$`, "m");
+  const m = section.match(re);
+  if (!m) return null;
+  const num = m[0].match(/(\d+(?:\.\d+)?)/);
+  return num ? parseFloat(num[1]) : null;
+}
+
+/** Status + numeric value for a habit on a date, under the chosen measure. */
+async function habitValuedOn(
+  plugin: SecondBrainPlugin,
+  habit: Habit,
+  iso: string,
+  measure: StatsMeasure
+): Promise<{ status: CellStatus; value: number }> {
+  const status = await habitStatusOn(plugin, habit, iso);
+  const passish = status === "pass" || status === "uncertain";
+
+  if (measure === "binary") return { status, value: passish ? 1 : 0 };
+
+  if (habit.auto === "capture") {
+    const value =
+      measure === "count"
+        ? await captureCountOn(plugin, iso)
+        : await captureWordsOn(plugin, iso);
+    return { status, value };
+  }
+
+  // File-backed (and weekly/review auto) habits don't track sub-day instances.
+  if (measure === "magnitude") {
+    const mag = await magnitudeFromReview(plugin, habit.id, iso);
+    return { status, value: mag ?? (passish ? 1 : 0) };
+  }
+  // count → degenerates to binary for non-capture habits.
+  return { status, value: passish ? 1 : 0 };
+}
+
+/** Pre-compute status+value for a window of dates; also return the max value. */
+async function computeCells(
+  plugin: SecondBrainPlugin,
+  habit: Habit,
+  dates: string[],
+  measure: StatsMeasure
+): Promise<{ map: Map<string, ValuedCell>; max: number }> {
+  const map = new Map<string, ValuedCell>();
+  const today = new Date(todayISO() + "T00:00:00");
+  let max = 0;
+  for (const iso of dates) {
+    const future = new Date(iso + "T00:00:00") > today;
+    if (future) {
+      map.set(iso, { status: "missing", value: 0, future: true });
+      continue;
+    }
+    const { status, value } = await habitValuedOn(plugin, habit, iso, measure);
+    if (value > max) max = value;
+    map.set(iso, { status, value, future: false });
+  }
+  return { map, max };
+}
+
+/**
+ * Build a cell div for the heatmap. Binary → status colors. Count/magnitude →
+ * green intensity scaled to the window max (darker = more); zero/missing gray.
+ */
+function paintCell(
+  grid: HTMLElement,
+  iso: string,
+  cell: ValuedCell | undefined,
+  measure: StatsMeasure,
+  max: number
+): void {
+  if (!cell || cell.future) {
+    grid.createDiv({ cls: "second-brain-habit-cell second-brain-habit-cell-future" });
+    return;
+  }
+  if (measure === "binary" || max <= 0) {
+    grid.createDiv({
+      cls: `second-brain-habit-cell ${cellClass(cell.status)}`,
+      attr: { title: `${iso} — ${cell.status}` },
+    });
+    return;
+  }
+  if (cell.value <= 0) {
+    grid.createDiv({
+      cls: "second-brain-habit-cell second-brain-habit-cell-missing",
+      attr: { title: `${iso} — 0` },
+    });
+    return;
+  }
+  const ratio = Math.min(1, cell.value / max);
+  const el = grid.createDiv({
+    cls: "second-brain-habit-cell",
+    attr: { title: `${iso} — ${cell.value}` },
+  });
+  el.style.backgroundColor = `hsla(135, 55%, 42%, ${(0.25 + 0.75 * ratio).toFixed(2)})`;
+}
+
 function periodLabel(period: StatsPeriod, offset: number): string {
   if (offset === 0) {
     if (period === "week") return "Last 12 weeks";
@@ -911,7 +1078,8 @@ async function renderStatsYear(
   sec: HTMLElement,
   plugin: SecondBrainPlugin,
   active: Habit[],
-  offset: number
+  offset: number,
+  measure: StatsMeasure
 ) {
   const weeks = 52;
   const today = new Date(todayISO() + "T00:00:00");
@@ -926,14 +1094,24 @@ async function renderStatsYear(
   // month begins, so the year strip is readable left-to-right.
   const dayNames = ["S", "M", "T", "W", "T", "F", "S"];
 
+  // All dates in the window (for the value pre-pass).
+  const allDates: string[] = [];
+  for (let w = 0; w < weeks; w++) {
+    for (let dow = 0; dow < 7; dow++) {
+      const d = new Date(leftmostSun.valueOf());
+      d.setDate(d.getDate() + w * 7 + dow);
+      allDates.push(toISO(d));
+    }
+  }
+
   for (const h of active) {
+    const { map, max } = await computeCells(plugin, h, allDates, measure);
     const wrap = sec.createDiv({ cls: "second-brain-week-grid-wrap" });
     wrap.createEl("div", {
       text: h.name,
       cls: "second-brain-habit-strip-label second-brain-week-grid-title",
     });
 
-    // Month-label row (columns).
     const monthRow = wrap.createDiv({ cls: "second-brain-year-month-row" });
     monthRow.createEl("div", { cls: "second-brain-week-cell-empty" });
     let lastMonth = -1;
@@ -945,9 +1123,7 @@ async function renderStatsYear(
         cls: "second-brain-year-month-label",
       });
       if (m !== lastMonth) {
-        cell.setText(
-          colDate.toLocaleDateString("en-US", { month: "short" })
-        );
+        cell.setText(colDate.toLocaleDateString("en-US", { month: "short" }));
         lastMonth = m;
       }
     }
@@ -962,17 +1138,7 @@ async function renderStatsYear(
         const cellDate = new Date(leftmostSun.valueOf());
         cellDate.setDate(cellDate.getDate() + w * 7 + dow);
         const iso = toISO(cellDate);
-        if (cellDate > today) {
-          grid.createEl("div", {
-            cls: "second-brain-habit-cell second-brain-habit-cell-future",
-          });
-          continue;
-        }
-        const status = await habitStatusOn(plugin, h, iso);
-        grid.createEl("div", {
-          cls: `second-brain-habit-cell ${cellClass(status)}`,
-          attr: { title: `${iso} — ${status}` },
-        });
+        paintCell(grid, iso, map.get(iso), measure, max);
       }
     }
   }
