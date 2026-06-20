@@ -7,8 +7,7 @@
  * events. Desktop (Electron) first; mobile webview mic may not be available.
  */
 
-import { App, Modal, Notice, TFile } from "obsidian";
-import Vapi from "@vapi-ai/web";
+import { App, Modal, Notice, Platform, TFile } from "obsidian";
 import SecondBrainPlugin from "../main";
 import { callLLM } from "./llm";
 import { resolveRoute } from "./modelRoutes";
@@ -64,6 +63,14 @@ export class VoiceInterviewModal extends Modal {
       attr: { title: "Close" },
     });
     close.addEventListener("click", () => this.close());
+
+    if (Platform.isMobile) {
+      contentEl.createEl("div", {
+        cls: "second-brain-muted",
+        text: "Voice interview is desktop-only for now (mobile mic isn't supported). Use the 🎙️ Interview (type or dictate) instead.",
+      });
+      return;
+    }
 
     const key = this.plugin.settings.vapiPublicKey?.trim();
     const assistant = this.plugin.settings.vapiAssistantId?.trim();
@@ -132,6 +139,9 @@ export class VoiceInterviewModal extends Modal {
     this.renderStatus();
     try {
       const dayLog = await this.dayContext();
+      // Lazy-load the Vapi SDK ONLY here — importing it at module top crashed
+      // the whole plugin on mobile (daily-js touches Electron-only globals).
+      const Vapi = (await import("@vapi-ai/web")).default;
       const vapi: AnyVapi = new Vapi(key);
       this.vapi = vapi;
 
