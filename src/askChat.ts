@@ -17,6 +17,7 @@ import { loadHabits } from "./habits";
 import { loadGoals } from "./goals";
 import { loadProjects } from "./projects";
 import { AREAS } from "./areas";
+import { LESSONS_PATH } from "./lessons";
 import { resolveDailyLogPath, todayISO, toISO } from "./paths";
 
 const MAX_FILES = 8;
@@ -108,7 +109,16 @@ async function buildVaultMap(
   lines.push("- 🧑 Me/Reviews — the user's own written reflections.");
   lines.push("- 🧑 Me/Habits, 🧑 Me/Goals, 1. 🎯 Projects — structured definitions + progress.");
   lines.push("- 2. 🌳 Areas — the fixed Wheel of Life (Health/Relationships/Work).");
+  lines.push("- 🤖 AI/Lessons/lessons.md — durable lessons distilled from reviews.");
   lines.push("");
+
+  // Lessons ledger (single high-signal file).
+  if (app.vault.getAbstractFileByPath(LESSONS_PATH) instanceof TFile) {
+    allowed.add(LESSONS_PATH);
+    lines.push("### Lessons");
+    lines.push(`- ${LESSONS_PATH} — your durable lessons ledger`);
+    lines.push("");
+  }
 
   // Areas (static, no files needed).
   lines.push("### Areas");

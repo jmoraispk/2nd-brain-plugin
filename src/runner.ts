@@ -35,6 +35,7 @@ import { buildHabitContextBlock, loadActiveHabits } from "./habits";
 import { writeHabitDataFiles, mergeBackfillIntoData } from "./habitData";
 import { loadProjects } from "./projects";
 import { mergeExtractedTodos, parseTodosBlock } from "./proposals";
+import { LESSONS_PATH, lessonsUserMessage, mergeLessons, parseLessonsBlock } from "./lessons";
 
 interface InputContent {
   label: string;
@@ -57,6 +58,29 @@ export async function runCommand(
   topicInput?: string
 ): Promise<RunResult> {
   const today = todayISO();
+
+  // extract-lessons (v0.14.1) is special: it reads recent REVIEWS (not the
+  // generic log inputs), then MERGES the distilled lessons into the growing
+  // ledger (append-only + deduped) rather than overwriting a dated file.
+  if (command.id === "extract-lessons") {
+    const userMsg = [
+      `Today's date: ${today}`,
+      "",
+      await lessonsUserMessage(app, settings),
+    ].join("\n");
+    const route = resolveRoute(settings, taskGroupForCommand(command.id));
+    const body = await callLLM(settings, command.systemPrompt, userMsg, {
+      model: route.model,
+      effort: route.effort,
+    });
+    const added = await mergeLessons(app, today, parseLessonsBlock(body));
+    const ledger = app.vault.getAbstractFileByPath(LESSONS_PATH);
+    if (ledger instanceof TFile) {
+      return { kind: "fresh", file: ledger, drift: [`+${added} new`] };
+    }
+    throw new Error("Lessons ledger could not be created.");
+  }
+
   // Output path anchors on the first input's canonical date so e.g. a
   // "last-week-logs" command writes to last week's Weekly file, not this week's.
   // An explicit override (e.g. the dashboard banner asking for a specific past

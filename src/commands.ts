@@ -712,6 +712,33 @@ export const BUILT_IN_COMMANDS: Command[] = [
     outputPath: "🤖 AI/Thinking/Leverage/{YYYY-MM-DD}.md",
     systemPrompt: LEVERAGE_PROMPT,
   },
+  // Lessons ledger (v0.14.1). Distil durable lessons from recent reviews into
+  // the growing 🤖 AI/Lessons/lessons.md (the runner injects the review
+  // context and merges the output, deduped — it ignores the inputs below).
+  {
+    id: "extract-lessons",
+    label: "Extract Lessons",
+    tier: "A",
+    description:
+      "Distil durable lessons from your recent reviews into a growing, area-tagged ledger (🤖 AI/Lessons). Append-only + deduped.",
+    inputs: [{ kind: "all-logs", label: "(reviews injected by the runner)" }],
+    outputPath: "🤖 AI/Lessons/lessons.md",
+    systemPrompt: `You distil DURABLE lessons from the user's recent reviews (provided in the message). A durable lesson is a generalizable insight the user can carry forward — not a one-off event.
+
+Output ONLY a fenced YAML block:
+
+\`\`\`yaml
+lessons:
+  - text: "A crisp, first-person lesson — generalizable, not a diary entry"
+    area: "Health/Body"   # best-fit Wheel sub-area (Macro/Sub), or omit
+\`\`\`
+
+Rules:
+- Lessons must be durable and reusable ("I focus better with my phone in another room"), not events ("worked on the plugin today").
+- De-duplicate semantically — don't restate the same lesson twice.
+- 3–8 strong lessons beats 20 weak ones. If there's nothing durable, emit \`lessons: []\`.
+- Use the user's own framing. Don't moralize or invent.`,
+  },
   // Habit backfill (v0.8.2). One-shot: scan past logs, evaluate each habit
   // retroactively, and write a YAML report the plugin then merges into the
   // per-habit data files so streaks + heatmaps reflect real history.
