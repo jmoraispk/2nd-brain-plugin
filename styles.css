@@ -1607,3 +1607,30 @@
   padding: 7px 11px;
   font-size: 14px;
 }
+
+.second-brain-voice-status {
+  margin: 10px 0;
+  padding: 12px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 10px;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+}
+
+.second-brain-voice-status.live {
+  color: var(--text-on-accent);
+  background: var(--interactive-accent);
+  animation: second-brain-voice-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes second-brain-voice-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.62;
+  }
+}

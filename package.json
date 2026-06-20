@@ -1,6 +1,6 @@
 {
   "name": "obsidian-second-brain",
-  "version": "0.14.3",
+  "version": "0.15.0",
   "description": "Second Brain plugin for Obsidian — capture + daily review with Claude",
   "main": "main.js",
   "scripts": {
@@ -16,5 +16,8 @@
     "obsidian": "latest",
     "tslib": "^2.6.0",
     "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "@vapi-ai/web": "^2.5.2"
   }
 }

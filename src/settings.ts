@@ -44,6 +44,9 @@ export interface SecondBrainSettings {
   customCommands: Command[];
   /** v0.9.5 one-time flag: bumped the old gpt-5-mini default → gpt-5. */
   defaultModelBumped?: boolean;
+  /** v0.15: Vapi voice — public key (client-safe) + assistant id. */
+  vapiPublicKey?: string;
+  vapiAssistantId?: string;
   /**
    * v0.9.6 per-task model routing. Key = task-group id; value = the model +
    * reasoning effort for that group. Unset groups fall back to the default
@@ -88,6 +91,9 @@ export class SecondBrainSettingTab extends PluginSettingTab {
     );
     this.collapsible(containerEl, "Commands", false, (body) =>
       this.renderCommandsSection(body)
+    );
+    this.collapsible(containerEl, "Voice (Vapi)", false, (body) =>
+      this.renderVoice(body)
     );
     this.collapsible(containerEl, "Troubleshooting", false, (body) =>
       this.renderTroubleshooting(body)
@@ -479,6 +485,39 @@ export class SecondBrainSettingTab extends PluginSettingTab {
           }).open();
         })
     );
+  }
+
+  private renderVoice(containerEl: HTMLElement) {
+    containerEl.createEl("p", {
+      cls: "second-brain-muted",
+      text: "Voice interview via Vapi (vapi.ai). The public key only starts calls. Configure the agent's persona in the Vapi dashboard — add the interviewer prompt and a {{dayLog}} placeholder so the plugin can inject your day. Desktop-first; mic on mobile may not work.",
+    });
+
+    new Setting(containerEl)
+      .setName("Vapi public key")
+      .setDesc("Client-safe public key from vapi.ai.")
+      .addText((t) =>
+        t
+          .setPlaceholder("xxxxxxxx-xxxx-…")
+          .setValue(this.plugin.settings.vapiPublicKey ?? "")
+          .onChange(async (v) => {
+            this.plugin.settings.vapiPublicKey = v.trim();
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Vapi assistant id")
+      .setDesc("The assistant to call (configure its prompt + voice in the Vapi dashboard).")
+      .addText((t) =>
+        t
+          .setPlaceholder("xxxxxxxx-xxxx-…")
+          .setValue(this.plugin.settings.vapiAssistantId ?? "")
+          .onChange(async (v) => {
+            this.plugin.settings.vapiAssistantId = v.trim();
+            await this.plugin.saveSettings();
+          })
+      );
   }
 
   private renderTroubleshooting(containerEl: HTMLElement) {

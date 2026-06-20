@@ -35,6 +35,7 @@ import {
 } from "./proposals";
 import { askVault } from "./askChat";
 import { InterviewModal } from "./interviewModal";
+import { VoiceInterviewModal } from "./voiceInterviewModal";
 import { loadProjects } from "./projects";
 import { completeTodoInProject } from "./projectMutate";
 import { todayISO } from "./paths";
@@ -734,6 +735,21 @@ class CaptureModal extends Modal {
     interviewBtn.addEventListener("click", () => {
       this.close();
       new InterviewModal(
+        this.app,
+        this.plugin,
+        this.targetDate,
+        this.onSaved
+      ).open();
+    });
+
+    const voiceBtn = actions.createEl("button", {
+      text: "📞 Voice interview",
+      cls: "second-brain-modal-cancel",
+      attr: { title: "Talk to the agent out loud; the conversation becomes a richer capture." },
+    });
+    voiceBtn.addEventListener("click", () => {
+      this.close();
+      new VoiceInterviewModal(
         this.app,
         this.plugin,
         this.targetDate,
