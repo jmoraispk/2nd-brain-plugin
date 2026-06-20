@@ -416,7 +416,8 @@ export async function createHabitFromDesigner(
   areaPaths: string[],
   projectPaths: string[],
   fields: Map<string, string>,
-  body: string
+  body: string,
+  goalPaths: string[] = []
 ): Promise<TFile> {
   if (!app.vault.getAbstractFileByPath(HABITS_FOLDER)) {
     await app.vault.createFolder(HABITS_FOLDER);
@@ -440,6 +441,9 @@ export async function createHabitFromDesigner(
       ? `projects: [${projectPaths.map((p) => `"[[${p}]]"`).join(", ")}]`
       : "projects: []"
   );
+  if (goalPaths.length) {
+    fm.push(`goals: [${goalPaths.map((p) => `"[[${p}]]"`).join(", ")}]`);
+  }
   fm.push(`periodicity: ${fields.get("periodicity") || "daily"}`);
   const bc = fields.get("binary-criterion") || fields.get("minimum") || "";
   if (bc) fm.push(`binary-criterion: ${q(bc)}`);

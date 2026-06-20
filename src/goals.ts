@@ -138,6 +138,51 @@ export async function createGoal(
 }
 
 /**
+ * Create a goal from the AI goal-designer (v0.12.1) — `fields` is the parsed
+ * structured block, `body` the AI markdown (## Why / ## Milestones / etc.).
+ * A project link makes it active, else someday.
+ */
+export async function createGoalFromDesigner(
+  app: App,
+  name: string,
+  areaPaths: string[],
+  projectPaths: string[],
+  fields: Map<string, string>,
+  body: string
+): Promise<TFile> {
+  if (!app.vault.getAbstractFileByPath(GOALS_FOLDER)) {
+    await app.vault.createFolder(GOALS_FOLDER);
+  }
+  const safe = (name || "New goal").replace(/[\\/:*?"<>|]/g, "").trim();
+  let path = `${GOALS_FOLDER}/${safe}.md`;
+  let n = 2;
+  while (app.vault.getAbstractFileByPath(path)) {
+    path = `${GOALS_FOLDER}/${safe} (${n}).md`;
+    n++;
+  }
+  const q = (s: string) =>
+    /^[\w .,/%-]+$/.test(s) && !s.includes(": ") ? s : `"${s.replace(/"/g, '\\"')}"`;
+  const fm: string[] = ["---"];
+  fm.push(areaPaths.length ? `areas: [${areaPaths.map((p) => `"[[${p}]]"`).join(", ")}]` : "areas: []");
+  fm.push(
+    projectPaths.length
+      ? `projects: [${projectPaths.map((p) => `"[[${p}]]"`).join(", ")}]`
+      : "projects: []"
+  );
+  fm.push(`status: ${projectPaths.length ? "active" : "someday"}`);
+  const sc = fields.get("success-criterion");
+  if (sc) fm.push(`success-criterion: ${q(sc)}`);
+  const measure = fields.get("measure");
+  if (measure) fm.push(`measure: ${measure}`);
+  const target = fields.get("target");
+  if (target && Number.isFinite(Number(target))) fm.push(`target: ${Number(target)}`);
+  const unit = fields.get("unit");
+  if (unit) fm.push(`unit: ${q(unit)}`);
+  fm.push("---", "", `# ${safe}`, "", body.trim(), "");
+  return await app.vault.create(path, fm.join("\n"));
+}
+
+/**
  * Log a record (PR / progress event) — append to `## Records` and, if a
  * numeric value is given, update `current` in the frontmatter.
  */

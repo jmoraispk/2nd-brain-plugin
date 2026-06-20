@@ -18,6 +18,7 @@ import { callLLM } from "./llm";
 import { resolveRoute } from "./modelRoutes";
 import { createHabitFromDesigner } from "./habits";
 import { WHEEL_AREAS, loadProjects } from "./projects";
+import { loadGoals } from "./goals";
 
 const DESIGNER_SYSTEM = `You are a habit DESIGNER. Turn the user's rough description of a habit they want into a habit that actually sticks, using established habit science:
 
@@ -71,6 +72,7 @@ export class HabitDesignerModal extends Modal {
   private textarea!: HTMLTextAreaElement;
   private areaSelect!: HTMLSelectElement;
   private projectSelect!: HTMLSelectElement;
+  private goalSelect!: HTMLSelectElement;
 
   constructor(
     app: App,
@@ -135,7 +137,14 @@ export class HabitDesignerModal extends Modal {
     this.projectSelect = projRow.createEl("select", { cls: "second-brain-select" });
     const pnone = this.projectSelect.createEl("option", { text: "— none —" });
     pnone.value = "";
-    void this.loadProjectOptions();
+
+    // Goal picker — link the habit to a goal it serves (the "showing up" feed).
+    const goalRow = contentEl.createDiv({ cls: "second-brain-capture-project-row" });
+    goalRow.createEl("label", { text: "Goal", cls: "second-brain-picker-label" });
+    this.goalSelect = goalRow.createEl("select", { cls: "second-brain-select" });
+    this.goalSelect.createEl("option", { text: "— none —" }).value = "";
+
+    void this.loadOptions();
 
     const actions = contentEl.createDiv({ cls: "second-brain-modal-actions" });
     const go = actions.createEl("button", {
@@ -150,17 +159,20 @@ export class HabitDesignerModal extends Modal {
     cancel.addEventListener("click", () => this.close());
   }
 
-  private async loadProjectOptions() {
+  private async loadOptions() {
     try {
       const projects = (await loadProjects(this.app)).filter(
         (p) => p.status === "active"
       );
       for (const p of projects) {
-        const opt = this.projectSelect.createEl("option", { text: p.name });
-        opt.value = p.file.path;
+        this.projectSelect.createEl("option", { text: p.name }).value = p.file.path;
+      }
+      const goals = (await loadGoals(this.app)).filter((g) => g.status !== "dropped");
+      for (const g of goals) {
+        this.goalSelect.createEl("option", { text: g.name }).value = g.file.path;
       }
     } catch (err) {
-      this.plugin.errorLog.push("habitDesigner:loadProjects", err);
+      this.plugin.errorLog.push("habitDesigner:loadOptions", err);
     }
   }
 
@@ -181,13 +193,15 @@ export class HabitDesignerModal extends Modal {
       const { name, fields, body } = parseDesignerOutput(out);
       const areaPaths = this.areaSelect.value ? [this.areaSelect.value] : [];
       const projectPaths = this.projectSelect.value ? [this.projectSelect.value] : [];
+      const goalPaths = this.goalSelect.value ? [this.goalSelect.value] : [];
       const file = await createHabitFromDesigner(
         this.app,
         name || "New habit",
         areaPaths,
         projectPaths,
         fields,
-        body
+        body,
+        goalPaths
       );
       this.onCreated(file);
       this.close();

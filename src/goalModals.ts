@@ -4,8 +4,187 @@
  */
 
 import { App, Modal, Notice, TFile } from "obsidian";
+import SecondBrainPlugin from "../main";
 import { WHEEL_AREAS, loadProjects } from "./projects";
-import { createGoal, addGoalRecord, GoalMeasure, Goal } from "./goals";
+import { createGoal, createGoalFromDesigner, addGoalRecord, GoalMeasure, Goal } from "./goals";
+import { callLLM } from "./llm";
+import { resolveRoute } from "./modelRoutes";
+
+const GOAL_DESIGNER_SYSTEM = `You turn a spoken description of a GOAL into a structured goal note. A goal is a desired OUTCOME or capability (e.g. "bench 200 lbs", "read 24 books this year") — NOT a recurring habit.
+
+Return EXACTLY this shape and nothing else:
+
+NAME: <a concise goal name, 2-6 words>
+
+\`\`\`fields
+success-criterion: <unambiguous, pass/fail definition of "achieved">
+measure: <magnitude | count | binary>
+target: <the numeric target if measurable; omit the line otherwise>
+unit: <e.g. lbs, books, kg; omit if not applicable>
+\`\`\`
+
+# <name>
+
+## Why
+<why this matters, in the user's voice>
+
+## Milestones
+- [ ] <ordered intermediate checkpoint toward the target>
+- [ ] <...>
+
+## Records
+
+## Progress notes
+
+Rules:
+- Milestones are ordered checkpoints on the way to the target (e.g. 135 → 155 → 185 → 200 lbs).
+- Be faithful to the description; don't invent scope.
+- Output only the NAME line, the fields block, and the four H2 sections.`;
+
+/** Talk-to-create a goal (v0.12.1) — mirrors the project/habit designers. */
+export class GoalDesignerModal extends Modal {
+  private readonly plugin: SecondBrainPlugin;
+  private readonly onCreated: (file: TFile) => void;
+  private textarea!: HTMLTextAreaElement;
+  private areaSelect!: HTMLSelectElement;
+  private projectSelect!: HTMLSelectElement;
+
+  constructor(app: App, plugin: SecondBrainPlugin, onCreated: (file: TFile) => void) {
+    super(app);
+    this.plugin = plugin;
+    this.onCreated = onCreated;
+    this.modalEl.addClass("second-brain-capture-modal");
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    const header = contentEl.createDiv({ cls: "second-brain-capture-header" });
+    header.createEl("h2", { text: "Describe a goal", cls: "second-brain-capture-title" });
+    const close = header.createEl("button", {
+      text: "✕",
+      cls: "second-brain-capture-close",
+      attr: { title: "Close" },
+    });
+    close.addEventListener("click", () => this.close());
+
+    contentEl.createEl("div", {
+      cls: "second-brain-muted",
+      text: "Say the outcome you want (and a target if it's measurable). The AI structures it into a goal with milestones. Link a project to make it active.",
+    });
+
+    this.textarea = contentEl.createEl("textarea", {
+      cls: "second-brain-modal-textarea",
+      attr: { placeholder: "e.g. I want to bench 200 lbs — I'm at about 155 now" },
+    });
+    this.textarea.focus();
+
+    const areaRow = contentEl.createDiv({ cls: "second-brain-capture-project-row" });
+    areaRow.createEl("label", { text: "Area", cls: "second-brain-picker-label" });
+    this.areaSelect = areaRow.createEl("select", { cls: "second-brain-select" });
+    this.areaSelect.createEl("option", { text: "— none —" }).value = "";
+    let macro = "";
+    for (const a of WHEEL_AREAS) {
+      if (a.macro !== macro) {
+        const sep = this.areaSelect.createEl("option", { text: `— ${a.macro} —` });
+        sep.value = "";
+        sep.setAttribute("disabled", "true");
+        macro = a.macro;
+      }
+      this.areaSelect.createEl("option", { text: `  ${a.sub}` }).value = a.path;
+    }
+
+    const projRow = contentEl.createDiv({ cls: "second-brain-capture-project-row" });
+    projRow.createEl("label", { text: "Project", cls: "second-brain-picker-label" });
+    this.projectSelect = projRow.createEl("select", { cls: "second-brain-select" });
+    this.projectSelect.createEl("option", { text: "— none (someday) —" }).value = "";
+    void this.loadProjects();
+
+    const actions = contentEl.createDiv({ cls: "second-brain-modal-actions" });
+    const go = actions.createEl("button", { text: "Structure & create", cls: "second-brain-modal-save" });
+    go.addEventListener("click", () => this.submit(go));
+    actions.createEl("button", { text: "Cancel", cls: "second-brain-modal-cancel" })
+      .addEventListener("click", () => this.close());
+  }
+
+  private async loadProjects() {
+    const projects = (await loadProjects(this.app)).filter((p) => p.status === "active");
+    for (const p of projects) {
+      this.projectSelect.createEl("option", { text: p.name }).value = p.file.path;
+    }
+  }
+
+  private async submit(btn: HTMLButtonElement) {
+    const desc = this.textarea.value.trim();
+    if (!desc) {
+      new Notice("Describe the goal first.");
+      return;
+    }
+    btn.setAttribute("disabled", "true");
+    btn.setText("Structuring…");
+    try {
+      const route = resolveRoute(this.plugin.settings, "project-ai");
+      const out = await callLLM(this.plugin.settings, GOAL_DESIGNER_SYSTEM, desc, {
+        model: route.model,
+        effort: route.effort,
+      });
+      const { name, fields, body } = parseDesignerOutput(out);
+      const file = await createGoalFromDesigner(
+        this.app,
+        name || "New goal",
+        this.areaSelect.value ? [this.areaSelect.value] : [],
+        this.projectSelect.value ? [this.projectSelect.value] : [],
+        fields,
+        body
+      );
+      this.onCreated(file);
+      this.close();
+      new Notice(`Created goal: ${file.path}`);
+    } catch (err) {
+      this.plugin.errorLog.push("goalDesigner", err);
+      new Notice(
+        `Create failed: ${(err as Error).message}\nSee Settings → Logs for details.`,
+        8000
+      );
+      btn.removeAttribute("disabled");
+      btn.setText("Structure & create");
+    }
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
+}
+
+/** Parse NAME + ```fields``` + body from a designer LLM response. */
+function parseDesignerOutput(out: string): {
+  name: string;
+  fields: Map<string, string>;
+  body: string;
+} {
+  let name = "";
+  for (const l of out.split(/\r?\n/)) {
+    const m = l.match(/^NAME:\s*(.+?)\s*$/);
+    if (m) {
+      name = m[1].replace(/^["']|["']$/g, "").trim();
+      break;
+    }
+  }
+  const fields = new Map<string, string>();
+  const fence = out.match(/```(?:fields|ya?ml)?\s*\n([\s\S]*?)```/);
+  if (fence) {
+    for (const line of fence[1].split(/\r?\n/)) {
+      const m = line.match(/^([a-zA-Z][\w-]*):\s*(.+?)\s*$/);
+      if (m) {
+        const v = m[2].replace(/^["']|["']$/g, "").trim();
+        if (v && v.toLowerCase() !== "n/a") fields.set(m[1].toLowerCase(), v);
+      }
+    }
+  }
+  const h2 = out.search(/^##\s+/m);
+  const body = h2 >= 0 ? out.slice(h2).trimEnd() : "";
+  return { name, fields, body };
+}
 
 export class GoalCreateModal extends Modal {
   private readonly onCreated: (file: TFile) => void;

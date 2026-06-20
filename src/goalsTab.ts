@@ -18,7 +18,7 @@ import { ProjectCreateModal } from "./projectCreateModal";
 import { ProjectTalkCreateModal, ProjectEditModal } from "./projectAIModals";
 import { HabitDesignerModal } from "./habitDesignerModal";
 import { Goal, loadGoals, goalProgress, GOALS_FOLDER } from "./goals";
-import { GoalCreateModal, GoalRecordModal } from "./goalModals";
+import { GoalCreateModal, GoalRecordModal, GoalDesignerModal } from "./goalModals";
 import { HabitDetailModal, GoalDetailModal } from "./detailModals";
 import { renderAreaChips, areaFor } from "./areas";
 import {
@@ -444,9 +444,17 @@ async function renderGoalsList(
   }
 
   const actions = body.createDiv({ cls: "second-brain-secondary-actions" });
-  const newBtn = actions.createEl("button", {
-    text: "+ New Goal",
+  const describeBtn = actions.createEl("button", {
+    text: "✨ Describe a goal",
     cls: "second-brain-button second-brain-button-primary",
+    attr: { title: "Say the outcome you want; the AI structures it into a goal with milestones." },
+  });
+  describeBtn.addEventListener("click", () => {
+    new GoalDesignerModal(plugin.app, plugin, () => cb.onChanged()).open();
+  });
+  const newBtn = actions.createEl("button", {
+    text: "+ New (blank)",
+    cls: "second-brain-button",
   });
   newBtn.addEventListener("click", () => {
     new GoalCreateModal(plugin.app, () => cb.onChanged()).open();
