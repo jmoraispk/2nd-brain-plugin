@@ -27,6 +27,7 @@ export function builtInAutoHabits(): Habit[] {
       name: "Daily capture",
       areas: [],
       projects: [],
+      goals: [],
       periodicity: "daily",
       binaryCriterion: "Captured at least once today",
       status: "active",
@@ -38,6 +39,7 @@ export function builtInAutoHabits(): Habit[] {
       name: "Weekly review",
       areas: [],
       projects: [],
+      goals: [],
       periodicity: "weekly",
       binaryCriterion: "Reviewed at least once this week",
       status: "active",
@@ -61,6 +63,8 @@ export interface Habit {
   areas: string[];
   /** Flat list of project paths (v0.9.2). */
   projects: string[];
+  /** Flat list of goal paths this habit serves (v0.11). One habit, many goals. */
+  goals: string[];
   periodicity: Periodicity;
   binaryCriterion: string;
   quantitative?: {
@@ -161,6 +165,7 @@ async function parseHabit(app: App, file: TFile): Promise<Habit | null> {
       if (!projects.includes(p)) projects.push(p);
     }
   }
+  const goals = parseAreaList(fm["goals"]);
 
   const habit: Habit = {
     id: file.basename,
@@ -173,6 +178,7 @@ async function parseHabit(app: App, file: TFile): Promise<Habit | null> {
     area: legacyArea,
     areas,
     projects,
+    goals,
     why: scalar(fm["why"]),
     environment: scalar(fm["environment"]),
     recovery: scalar(fm["recovery"]),

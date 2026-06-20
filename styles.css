@@ -1422,3 +1422,25 @@
   flex: 0 0 160px;
   font-weight: 500;
 }
+
+/* ── v0.11: goals list ─────────────────────────────────────────────── */
+
+.second-brain-goal-row {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.second-brain-goal-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.second-brain-goal-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}

@@ -17,6 +17,8 @@ import { Project, loadProjects, PROJECTS_FOLDER } from "./projects";
 import { ProjectCreateModal } from "./projectCreateModal";
 import { ProjectTalkCreateModal, ProjectEditModal } from "./projectAIModals";
 import { HabitDesignerModal } from "./habitDesignerModal";
+import { Goal, loadGoals, goalProgress, GOALS_FOLDER } from "./goals";
+import { GoalCreateModal, GoalRecordModal } from "./goalModals";
 import { renderAreaChips, areaFor } from "./areas";
 import {
   refreshManualMarks,
@@ -25,7 +27,7 @@ import {
 } from "./habitManual";
 import { applyDatePlaceholders, todayISO, toISO, resolveDailyLogPath } from "./paths";
 
-export type GoalsSubtab = "habits" | "projects" | "areas" | "stats";
+export type GoalsSubtab = "habits" | "projects" | "goals" | "areas" | "stats";
 export type StatsPeriod = "week" | "month" | "year";
 /** How a habit's heatmap is measured (v0.9.8). */
 export type StatsMeasure = "binary" | "count" | "magnitude";
@@ -76,7 +78,8 @@ const SUBTABS_BY_SCOPE: Record<
     { id: "stats", label: "Stats" },
   ],
   projects: [
-    { id: "projects", label: "List" },
+    { id: "projects", label: "Projects" },
+    { id: "goals", label: "Goals" },
     { id: "areas", label: "Areas" },
   ],
 };
@@ -119,6 +122,10 @@ export async function renderGoals(
   } else if (state.subtab === "projects") {
     const projects = await loadProjects(plugin.app);
     renderProjectsList(body, plugin, projects, cb);
+  } else if (state.subtab === "goals") {
+    const goals = await loadGoals(plugin.app);
+    const habits = await loadHabits(plugin.app);
+    await renderGoalsList(body, plugin, goals, habits, cb);
   } else if (state.subtab === "areas") {
     const habits = await loadHabits(plugin.app);
     const projects = await loadProjects(plugin.app);
@@ -380,6 +387,118 @@ function renderProjectsList(
       );
     }
   }
+}
+
+// ── Goals list (v0.11) ──────────────────────────────────────────────────
+
+async function renderGoalsList(
+  body: HTMLElement,
+  plugin: SecondBrainPlugin,
+  goals: Goal[],
+  habits: Habit[],
+  cb: GoalsTabCallbacks
+) {
+  const active = goals.filter((g) => g.status === "active");
+  const someday = goals.filter((g) => g.status === "someday");
+
+  const sec = body.createDiv({ cls: "second-brain-section" });
+  sec.createEl("h3", { text: "Goals" });
+
+  if (goals.length === 0) {
+    const empty = sec.createDiv({ cls: "second-brain-muted" });
+    empty.appendText("No goals yet. Create one below, or drop a file into ");
+    empty.createEl("code", { text: GOALS_FOLDER });
+    empty.appendText(". Progress comes from showing up (linked-habit days) + records you log.");
+  } else {
+    if (active.length > 0) {
+      sec.createEl("div", { cls: "second-brain-muted", text: "Active" });
+      for (const g of active) await renderGoalRow(sec, plugin, g, habits, cb);
+    }
+    if (someday.length > 0) {
+      const det = sec.createEl("details");
+      det.createEl("summary", {
+        text: `Someday (${someday.length})`,
+        cls: "second-brain-muted",
+      });
+      for (const g of someday) await renderGoalRow(det, plugin, g, habits, cb);
+    }
+  }
+
+  const actions = body.createDiv({ cls: "second-brain-secondary-actions" });
+  const newBtn = actions.createEl("button", {
+    text: "+ New Goal",
+    cls: "second-brain-button second-brain-button-primary",
+  });
+  newBtn.addEventListener("click", () => {
+    new GoalCreateModal(plugin.app, () => cb.onChanged()).open();
+  });
+}
+
+async function renderGoalRow(
+  parent: HTMLElement,
+  plugin: SecondBrainPlugin,
+  g: Goal,
+  habits: Habit[],
+  cb: GoalsTabCallbacks
+) {
+  const wrap = parent.createDiv({ cls: "second-brain-goal-row" });
+
+  const top = wrap.createDiv({ cls: "second-brain-goal-top" });
+  const link = top.createEl("a", { text: g.name, cls: "second-brain-link" });
+  link.addEventListener("click", () =>
+    plugin.app.workspace.getLeaf(false).openFile(g.file)
+  );
+  if (g.areas.length) renderAreaChips(top, g.areas);
+
+  // Progress bar (records→target, else milestones).
+  const pct = Math.round(goalProgress(g) * 100);
+  const bar = wrap.createDiv({ cls: "second-brain-progress-bar" });
+  bar.createDiv({ cls: "second-brain-progress-fill" }).style.width = `${pct}%`;
+
+  // Adherence: pass-days (last 14) of habits linked to this goal — directly
+  // (habit.goals) or via a shared project. "Showing up" is half of progress.
+  const linked = habits.filter(
+    (h) =>
+      h.status === "active" &&
+      (h.goals.includes(g.file.path) ||
+        h.goals.includes(g.id) ||
+        h.projects.some((p) => g.projects.includes(p)))
+  );
+  let activeDays = 0;
+  if (linked.length) {
+    const today = todayISO();
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(today + "T00:00:00");
+      d.setDate(d.getDate() - i);
+      const iso = toISO(d);
+      for (const h of linked) {
+        if ((await habitStatusOn(plugin, h, iso)) === "pass") {
+          activeDays++;
+          break; // count the day once
+        }
+      }
+    }
+  }
+
+  const meta = wrap.createDiv({ cls: "second-brain-goal-meta" });
+  const bits: string[] = [];
+  if (g.target != null) {
+    bits.push(`${g.current ?? g.start ?? 0}/${g.target}${g.unit ? " " + g.unit : ""} (${pct}%)`);
+  } else if (g.milestonesTotal > 0) {
+    bits.push(`${g.milestonesDone}/${g.milestonesTotal} milestones (${pct}%)`);
+  }
+  if (linked.length) bits.push(`🔥 ${activeDays} active day${activeDays === 1 ? "" : "s"}/14`);
+  if (g.records.length) bits.push(`${g.records.length} record${g.records.length === 1 ? "" : "s"}`);
+  meta.createSpan({ text: bits.join(" · ") || "no progress yet", cls: "second-brain-muted" });
+
+  const rec = meta.createEl("button", {
+    text: "+ Record",
+    cls: "second-brain-row-edit",
+    attr: { title: "Log a progress event / personal record" },
+  });
+  rec.addEventListener("click", () => {
+    new GoalRecordModal(plugin.app, g, () => cb.onChanged()).open();
+  });
 }
 
 // ── Areas: the Wheel of Life (Ali Abdaal layout) ────────────────────────
