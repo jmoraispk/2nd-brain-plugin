@@ -10,14 +10,21 @@ import { createGoal, createGoalFromDesigner, addGoalRecord, GoalMeasure, Goal } 
 import { callLLM } from "./llm";
 import { resolveRoute } from "./modelRoutes";
 
-const GOAL_DESIGNER_SYSTEM = `You turn a spoken description of a GOAL into a structured goal note. A goal is a desired OUTCOME or capability (e.g. "bench 200 lbs", "read 24 books this year") — NOT a recurring habit.
+const GOAL_DESIGNER_SYSTEM = `You are a GOAL designer. Turn a spoken description into a well-formed, BOOSTED goal — one that's clear, measurable, and motivating. A goal is a desired OUTCOME or capability ("bench 200 lbs", "read 24 books this year"), NOT a recurring habit.
+
+Apply goal-science best practice to make it as strong as possible:
+- **Crisp & Goodhart-proof.** Make the success criterion unambiguous and pass/fail. Kill mushy wording ("get fit" → "bench 200 lbs for 1 rep"). If a number is gameable, add a constraint so it measures the real thing.
+- **Identity + why.** Tie it to who the user is becoming and their own reason (use their words).
+- **Ladder of milestones.** Break the path into ordered checkpoints, each a real sub-goal (135 → 155 → 185 → 200).
+- **A tiny first step.** Name the very next concrete action — small enough to start today.
+- **Autonomy.** It's the user's goal and reasons; sharpen, don't impose or moralize.
 
 Return EXACTLY this shape and nothing else:
 
 NAME: <a concise goal name, 2-6 words>
 
 \`\`\`fields
-success-criterion: <unambiguous, pass/fail definition of "achieved">
+success-criterion: <unambiguous, pass/fail definition of "achieved", Goodhart-proofed>
 measure: <magnitude | count | binary>
 target: <the numeric target if measurable; omit the line otherwise>
 unit: <e.g. lbs, books, kg; omit if not applicable>
@@ -26,20 +33,27 @@ unit: <e.g. lbs, books, kg; omit if not applicable>
 # <name>
 
 ## Why
-<why this matters, in the user's voice>
+<identity + the user's specific reason, in their voice — what reaching this makes true about them>
 
 ## Milestones
-- [ ] <ordered intermediate checkpoint toward the target>
-- [ ] <...>
+- [ ] <ordered checkpoint 1>
+- [ ] <checkpoint 2>
+- [ ] <…toward the target>
+
+## First step
+<the smallest concrete action they can take now to get moving>
 
 ## Records
 
 ## Progress notes
 
+## Open question
+<ONE question that, if answered, sharpens the goal — e.g. "by when?" or "what's blocked you before?">
+
 Rules:
-- Milestones are ordered checkpoints on the way to the target (e.g. 135 → 155 → 185 → 200 lbs).
 - Be faithful to the description; don't invent scope.
-- Output only the NAME line, the fields block, and the four H2 sections.`;
+- Milestones must be ordered and concrete.
+- Output only the NAME line, the fields block, and the H2 sections above.`;
 
 /** Talk-to-create a goal (v0.12.1) — mirrors the project/habit designers. */
 export class GoalDesignerModal extends Modal {

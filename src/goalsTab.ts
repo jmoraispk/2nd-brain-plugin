@@ -1083,7 +1083,7 @@ async function renderStatsWeek(
     const { map, max } = await computeCells(plugin, h, allDates, measure);
     const wrap = sec.createDiv({ cls: "second-brain-week-grid-wrap" });
     wrap.createEl("div", {
-      text: h.name,
+      text: `${h.name} · ${windowPct(h, map, allDates)}`,
       cls: "second-brain-habit-strip-label second-brain-week-grid-title",
     });
 
@@ -1351,6 +1351,24 @@ function paintCell(
   el.style.backgroundColor = `hsla(135, 55%, 42%, ${(0.25 + 0.75 * ratio).toFixed(2)})`;
 }
 
+/** Completion % over a window: passed / scheduled-and-evaluated (non-future). */
+function windowPct(
+  habit: Habit,
+  map: Map<string, ValuedCell>,
+  dates: string[]
+): string {
+  let pass = 0;
+  let due = 0;
+  for (const iso of dates) {
+    if (!isScheduledOn(habit, iso)) continue;
+    const c = map.get(iso);
+    if (!c || c.future) continue;
+    due++;
+    if (c.status === "pass" || c.status === "uncertain") pass++;
+  }
+  return due ? `${Math.round((pass / due) * 100)}%` : "—";
+}
+
 function periodLabel(period: StatsPeriod, offset: number): string {
   if (offset === 0) {
     if (period === "week") return "Last 12 weeks";
@@ -1404,7 +1422,7 @@ async function renderStatsYear(
     const { map, max } = await computeCells(plugin, h, allDates, measure);
     const wrap = sec.createDiv({ cls: "second-brain-week-grid-wrap" });
     wrap.createEl("div", {
-      text: h.name,
+      text: `${h.name} · ${windowPct(h, map, allDates)}`,
       cls: "second-brain-habit-strip-label second-brain-week-grid-title",
     });
 
