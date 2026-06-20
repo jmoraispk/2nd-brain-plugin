@@ -175,7 +175,7 @@ export async function skipReview(
  * yesterday → today), then pending reviews, then context.
  */
 export interface DashboardCallbacks {
-  onAction: (id: "capture" | "this-review") => void;
+  onAction: (id: "capture" | "this-review" | "interview") => void;
   onChangeDate: (newDate: string) => void;
   onRunCommand: (commandId: string, anchorOverride?: string) => void;
   onRefresh: () => void;
@@ -269,7 +269,7 @@ async function renderDayHeader(
   parent: HTMLElement,
   plugin: SecondBrainPlugin,
   displayedDate: string,
-  onAction: (id: "capture" | "this-review") => void,
+  onAction: (id: "capture" | "this-review" | "interview") => void,
   onChangeDate: (newDate: string) => void
 ) {
   const sec = parent.createDiv({ cls: "second-brain-section" });
@@ -370,6 +370,13 @@ async function renderDayHeader(
     cls: "second-brain-button second-brain-button-primary",
   });
   captureBtn.addEventListener("click", () => onAction("capture"));
+
+  const interviewBtn = actions.createEl("button", {
+    text: "🎙️ Interview",
+    cls: "second-brain-button",
+    attr: { title: "The agent asks about your day; the answers become a richer capture." },
+  });
+  interviewBtn.addEventListener("click", () => onAction("interview"));
 
   // Summarize ↔ View Summary toggle. The summary is "fresh" when the review
   // file exists and the daily log hasn't been touched since it was generated

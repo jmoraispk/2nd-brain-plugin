@@ -1577,3 +1577,33 @@
   border-radius: 8px;
   padding: 12px 14px;
 }
+
+/* ── v0.14.2: interview transcript ─────────────────────────────────── */
+
+.second-brain-interview-transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+  max-height: 38vh;
+  overflow-y: auto;
+}
+
+.second-brain-interview-q {
+  align-self: flex-start;
+  max-width: 88%;
+  background: var(--background-secondary);
+  border-radius: 10px 10px 10px 2px;
+  padding: 7px 11px;
+  font-size: 14px;
+}
+
+.second-brain-interview-a {
+  align-self: flex-end;
+  max-width: 88%;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-radius: 10px 10px 2px 10px;
+  padding: 7px 11px;
+  font-size: 14px;
+}

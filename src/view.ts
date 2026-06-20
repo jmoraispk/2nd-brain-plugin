@@ -34,6 +34,7 @@ import {
   retireMatchingProposals,
 } from "./proposals";
 import { askVault } from "./askChat";
+import { InterviewModal } from "./interviewModal";
 import { loadProjects } from "./projects";
 import { completeTodoInProject } from "./projectMutate";
 import { todayISO } from "./paths";
@@ -361,9 +362,18 @@ export class SecondBrainView extends ItemView {
    * Dashboard quick actions. Both target the *displayed* date so that capture
    * and review work for yesterday when the user clicked the back arrow.
    */
-  private async handleQuickAction(id: "capture" | "this-review") {
+  private async handleQuickAction(id: "capture" | "this-review" | "interview") {
     if (id === "capture") {
       new CaptureModal(
+        this.app,
+        this.plugin,
+        this.displayedDate,
+        () => this.render()
+      ).open();
+      return;
+    }
+    if (id === "interview") {
+      new InterviewModal(
         this.app,
         this.plugin,
         this.displayedDate,
