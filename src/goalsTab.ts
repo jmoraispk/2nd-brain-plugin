@@ -12,7 +12,7 @@
 
 import { App, TFile, TFolder } from "obsidian";
 import SecondBrainPlugin from "../main";
-import { Habit, loadHabits, HABITS_FOLDER } from "./habits";
+import { Habit, loadHabits, HABITS_FOLDER, isScheduledOn, elapsedSince, setQuitStart } from "./habits";
 import { Project, loadProjects, PROJECTS_FOLDER } from "./projects";
 import { ProjectCreateModal } from "./projectCreateModal";
 import { ProjectTalkCreateModal, ProjectEditModal } from "./projectAIModals";
@@ -196,7 +196,25 @@ async function renderHabitsList(
       const glyph = (st: string | undefined) =>
         st === "pass" ? "✅" : st === "fail" ? "❌" : st === "uncertain" ? "⚠️" : "—";
 
-      if (h.auto) {
+      if (h.kind === "quit") {
+        // Quit habits show a running abstinence clock + a relapse reset.
+        const clock = statusCell.createSpan({
+          cls: "second-brain-quit-clock",
+          text: h.quitStart ? elapsedSince(h.quitStart) : "not started",
+        });
+        const reset = statusCell.createEl("button", {
+          text: "↺",
+          cls: "second-brain-tick",
+          attr: { title: "Relapsed — reset the clock to now" },
+        });
+        reset.addEventListener("click", async () => {
+          if (h.file) {
+            await setQuitStart(plugin.app, h.file, new Date().toISOString());
+            cb.onChanged();
+          }
+        });
+        void clock;
+      } else if (h.auto) {
         // Auto-habits compute today's status deterministically — not tickable.
         statusCell.setText(glyph(await habitStatusOn(plugin, h, today)));
       } else {
@@ -792,7 +810,8 @@ async function renderStats(
   cb: GoalsTabCallbacks
 ) {
   const sec = body.createDiv({ cls: "second-brain-section" });
-  const active = habits.filter((h) => h.status === "active");
+  // Quit habits aren't pass/fail heatmaps — they live as clocks in the list.
+  const active = habits.filter((h) => h.status === "active" && h.kind !== "quit");
 
   // ── Header: title + habit dropdown + period selector + arrows ────
   const headerRow = sec.createDiv({ cls: "second-brain-stats-header" });
@@ -996,16 +1015,24 @@ async function renderStatsMonth(
     row.createEl("div", { text: h.name, cls: "second-brain-habit-strip-label" });
     const grid = row.createDiv({ cls: "second-brain-habit-strip" });
     for (const iso of dates) paintCell(grid, iso, map.get(iso), measure, max);
-    row.createEl("div", {
-      cls: "second-brain-habit-streak-badge",
-      text: offset === 0 && streak.current > 0 ? `🔥 ${streak.current}` : "",
-      attr: {
-        title:
-          streak.current === 0
-            ? "No active streak"
-            : `Current streak: ${streak.current} day${streak.current === 1 ? "" : "s"}`,
-      },
-    });
+
+    // % over the window, relative to SCHEDULED days only (so a Mon/Wed/Fri
+    // habit isn't punished for the days it isn't due).
+    let pass = 0;
+    let due = 0;
+    for (const iso of dates) {
+      if (!isScheduledOn(h, iso)) continue;
+      const c = map.get(iso);
+      if (!c || c.future) continue;
+      due++;
+      if (c.status === "pass" || c.status === "uncertain") pass++;
+    }
+    const pct = due ? Math.round((pass / due) * 100) : 0;
+    const badge = row.createEl("div", { cls: "second-brain-habit-streak-badge" });
+    badge.setText(
+      `${due ? pct + "%" : "—"}${offset === 0 && streak.current > 0 ? `  🔥${streak.current}` : ""}`
+    );
+    badge.setAttribute("title", `${pass}/${due} scheduled days this window`);
   }
 }
 
@@ -1457,6 +1484,8 @@ export async function computeStreak(
     const d = new Date(today + "T00:00:00");
     d.setDate(d.getDate() - i);
     const dateStr = toISO(d);
+    // Non-scheduled days are neutral — they neither grow nor break the streak.
+    if (!isScheduledOn(habit, dateStr)) continue;
     const status = await habitStatusOn(plugin, habit, dateStr);
     if (status === "fail") break;
     if (status === "pass" || status === "uncertain") {

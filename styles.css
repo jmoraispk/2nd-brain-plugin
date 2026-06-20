@@ -1472,3 +1472,12 @@
   border-top: 1px solid var(--background-modifier-border);
   padding-top: 10px;
 }
+
+/* ── v0.12: quit-habit clock ───────────────────────────────────────── */
+
+.second-brain-quit-clock {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-normal);
+  margin-right: 6px;
+}

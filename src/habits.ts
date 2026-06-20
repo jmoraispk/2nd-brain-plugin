@@ -31,6 +31,7 @@ export function builtInAutoHabits(): Habit[] {
       periodicity: "daily",
       binaryCriterion: "Captured at least once today",
       status: "active",
+      kind: "do",
       auto: "capture",
     },
     {
@@ -43,6 +44,7 @@ export function builtInAutoHabits(): Habit[] {
       periodicity: "weekly",
       binaryCriterion: "Reviewed at least once this week",
       status: "active",
+      kind: "do",
       auto: "review",
     },
   ];
@@ -91,6 +93,15 @@ export interface Habit {
   evidence?: string;
   /** The immediate celebration that wires the habit. */
   reward?: string;
+  // ── v0.12: quit habits + flexible scheduling ──
+  /** "do" (positive, default) or "quit" (negative — a running abstinence clock). */
+  kind: "do" | "quit";
+  /** For quit habits: ISO datetime the abstinence started (reset on relapse). */
+  quitStart?: string;
+  /** Specific weekdays this habit is scheduled (0=Sun..6=Sat). Empty = every day. */
+  scheduleDays?: number[];
+  /** "N days per week" target (informational; shown in detail/target). */
+  perWeek?: number;
   /**
    * Auto-habits compute their status deterministically from vault state
    * rather than from the LLM's "## Today's habits status" section.
@@ -188,6 +199,14 @@ async function parseHabit(app: App, file: TFile): Promise<Habit | null> {
     evidence: scalar(fm["evidence"]),
     reward: scalar(fm["reward"]),
     constraints: parseStringList(fm["constraints"]),
+    kind:
+      scalar(fm["kind"]) === "quit" ||
+      (scalar(fm["goal-type"]) ?? "").toLowerCase() === "negative"
+        ? "quit"
+        : "do",
+    quitStart: scalar(fm["quit-start"]),
+    scheduleDays: parseWeekdays(fm["schedule-days"]),
+    perWeek: numeric(fm["per-week"]),
   };
 
   const plan = fm["plan"] as Record<string, unknown> | undefined;
@@ -209,6 +228,70 @@ async function parseHabit(app: App, file: TFile): Promise<Habit | null> {
   }
 
   return habit;
+}
+
+const DOW: Record<string, number> = {
+  sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
+};
+
+/** Parse weekday names ("Mon, Wed, Fri" or a list) into [0..6]. undefined = every day. */
+function parseWeekdays(v: unknown): number[] | undefined {
+  const list = parseStringList(v);
+  if (!list) return undefined;
+  const out: number[] = [];
+  for (const s of list) {
+    const n = DOW[s.slice(0, 3).toLowerCase()];
+    if (n != null && !out.includes(n)) out.push(n);
+  }
+  return out.length ? out.sort() : undefined;
+}
+
+/** True if the habit is scheduled on the given ISO date (every day if no schedule). */
+export function isScheduledOn(habit: Habit, iso: string): boolean {
+  if (!habit.scheduleDays || habit.scheduleDays.length === 0) {
+    if (habit.periodicity === "weekdays") {
+      const d = new Date(iso + "T00:00:00").getDay();
+      return d >= 1 && d <= 5;
+    }
+    return true;
+  }
+  return habit.scheduleDays.includes(new Date(iso + "T00:00:00").getDay());
+}
+
+/** Human elapsed time since an ISO datetime → "Xd Yh Zm". */
+export function elapsedSince(iso: string): string {
+  const start = new Date(iso).valueOf();
+  if (!Number.isFinite(start)) return "—";
+  let s = Math.max(0, Math.floor((Date.now() - start) / 1000));
+  const d = Math.floor(s / 86400);
+  s -= d * 86400;
+  const h = Math.floor(s / 3600);
+  s -= h * 3600;
+  const m = Math.floor(s / 60);
+  return `${d}d ${h}h ${m}m`;
+}
+
+/** Set/reset a quit habit's start datetime in its frontmatter. */
+export async function setQuitStart(
+  app: App,
+  file: TFile,
+  isoDateTime: string
+): Promise<void> {
+  let content = await app.vault.read(file);
+  if (!content.startsWith("---")) {
+    content = `---\nkind: quit\nquit-start: ${isoDateTime}\n---\n\n` + content;
+    await app.vault.modify(file, content);
+    return;
+  }
+  const end = content.indexOf("\n---", 3);
+  if (end < 0) return;
+  const head = content.slice(0, end);
+  if (/^quit-start:/m.test(head)) {
+    content = head.replace(/^quit-start:.*$/m, `quit-start: ${isoDateTime}`) + content.slice(end);
+  } else {
+    content = content.slice(0, end) + `\nquit-start: ${isoDateTime}` + content.slice(end);
+  }
+  await app.vault.modify(file, content);
 }
 
 /** Parse a frontmatter value into a string list (array, or ;/, separated). */
@@ -378,6 +461,16 @@ export async function createHabitFromDesigner(
     const items = cons.split(/[;]/).map((s) => s.trim()).filter(Boolean);
     if (items.length) fm.push(`constraints: [${items.map((s) => q(s)).join(", ")}]`);
   }
+  // v0.12: quit habits + flexible scheduling.
+  const kind = (fields.get("kind") || "do").toLowerCase() === "quit" ? "quit" : "do";
+  if (kind === "quit") {
+    fm.push("kind: quit");
+    fm.push(`quit-start: ${fields.get("quit-start") || new Date().toISOString()}`);
+  }
+  const sched = fields.get("schedule-days");
+  if (sched) fm.push(`schedule-days: [${sched.split(/[;,]/).map((s) => s.trim()).filter(Boolean).join(", ")}]`);
+  const perWeek = fields.get("per-week");
+  if (perWeek && Number.isFinite(Number(perWeek))) fm.push(`per-week: ${Number(perWeek)}`);
   fm.push("status: active");
   fm.push("---");
   fm.push("");

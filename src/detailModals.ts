@@ -8,7 +8,7 @@
 
 import { App, Modal, Notice } from "obsidian";
 import SecondBrainPlugin from "../main";
-import { Habit, loadHabits } from "./habits";
+import { Habit, loadHabits, elapsedSince } from "./habits";
 import { Goal, goalProgress } from "./goals";
 import { GoalRecordModal } from "./goalModals";
 import { renderAreaChips } from "./areas";
@@ -85,8 +85,17 @@ export class HabitDetailModal extends Modal {
 
   private renderOverview(c: HTMLElement) {
     const h = this.habit;
+    if (h.kind === "quit") {
+      this.row(c, "Quit clock", h.quitStart ? elapsedSince(h.quitStart) : "not started");
+    }
     this.row(c, "Criterion", h.binaryCriterion);
     this.row(c, "Periodicity", h.periodicity);
+    if (h.scheduleDays && h.scheduleDays.length) {
+      const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      this.row(c, "Scheduled", h.scheduleDays.map((d) => names[d]).join(", "));
+    } else if (h.perWeek) {
+      this.row(c, "Scheduled", `${h.perWeek}× per week`);
+    }
     if (h.areas.length) {
       const r = c.createDiv({ cls: "second-brain-detail-row" });
       r.createSpan({ text: "Areas", cls: "second-brain-detail-key" });

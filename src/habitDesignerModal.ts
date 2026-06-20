@@ -33,17 +33,20 @@ Return EXACTLY this shape and nothing else:
 NAME: <a short, concrete habit name, 2-5 words>
 
 \`\`\`fields
+kind: <do | quit — use "quit" if they want to STOP/QUIT/abstain from something (smoking, drinking, doomscrolling); else "do">
 periodicity: <daily | weekdays | weekly | monthly>
-binary-criterion: <the MINIMUM that counts as done today — tiny, unambiguous, pass/fail in 3 seconds>
+schedule-days: <only if they named specific days, e.g. "Mon, Wed, Fri"; omit otherwise>
+per-week: <only if they said "N days a week", e.g. 3; omit otherwise>
+binary-criterion: <the MINIMUM that counts as done today — tiny, unambiguous, pass/fail in 3 seconds. For a quit habit, this is the abstinence ("no cigarettes today").>
 target: <optional aspirational amount, e.g. "30 minutes"; omit the line if not applicable>
 identity: <the kind of person this habit makes them — one line>
 why: <their specific personal reason; use their words if given>
-cue: <when/where/after-what — a concrete implementation intention>
+cue: <when/where/after-what — a concrete implementation intention. For a quit habit, the cue is the high-risk trigger to plan around.>
 environment: <one friction-lowering tweak to set up in advance>
 constraints: <anti-gaming rules separated by semicolons; omit if none>
 evidence: <what proves it happened — an artifact, a log mention, or a #tag>
 reward: <an immediate small celebration>
-recovery: <the smaller re-entry if a day is missed (never miss twice)>
+recovery: <the smaller re-entry if a day is missed / relapse plan (never miss twice)>
 \`\`\`
 
 # <name>
