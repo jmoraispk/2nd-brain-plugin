@@ -1565,3 +1565,15 @@
   color: var(--text-on-accent);
   border-color: var(--interactive-accent);
 }
+
+/* ── v0.14: Ask answer ─────────────────────────────────────────────── */
+
+.second-brain-ask-answer {
+  white-space: pre-wrap;
+  line-height: 1.5;
+  font-size: 14px;
+  color: var(--text-normal);
+  background: var(--background-secondary);
+  border-radius: 8px;
+  padding: 12px 14px;
+}

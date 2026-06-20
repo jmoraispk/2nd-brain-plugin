@@ -33,6 +33,7 @@ import {
   addManualTodo,
   retireMatchingProposals,
 } from "./proposals";
+import { askVault } from "./askChat";
 import { loadProjects } from "./projects";
 import { completeTodoInProject } from "./projectMutate";
 import { todayISO } from "./paths";
@@ -273,6 +274,10 @@ export class SecondBrainView extends ItemView {
             this.thinkState.qs.draftAnswer = text;
           },
           onQsAnswerSaved: () => this.render(),
+          setAskQuestion: (q) => {
+            this.thinkState.ask.question = q;
+          },
+          runAsk: (q) => this.runAsk(q),
         },
         (commandId) => this.runCommandById(commandId)
       );
@@ -549,6 +554,27 @@ export class SecondBrainView extends ItemView {
       return;
     }
     new Notice(`${label}: wrote ${result.file.path}`);
+  }
+
+  /** Ask sub-tab: two-pass vault Q&A with a busy state + re-render. */
+  private async runAsk(question: string) {
+    const q = question.trim();
+    if (!q || this.thinkState.ask.busy) return;
+    this.thinkState.ask.question = q;
+    this.thinkState.ask.busy = true;
+    await this.render();
+    try {
+      const { answer, sources } = await askVault(this.plugin, q);
+      this.thinkState.ask.answer = answer;
+      this.thinkState.ask.sources = sources;
+    } catch (err) {
+      this.plugin.errorLog.push("ask", err);
+      this.thinkState.ask.answer = `Ask failed: ${(err as Error).message}\nSee Settings → Logs for details.`;
+      this.thinkState.ask.sources = [];
+    } finally {
+      this.thinkState.ask.busy = false;
+      await this.render();
+    }
   }
 
   async runCommandHandler(

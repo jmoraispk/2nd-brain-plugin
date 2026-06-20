@@ -18,6 +18,7 @@ export type TaskGroupId =
   | "think-deep"
   | "think-light"
   | "project-ai"
+  | "ask"
   | "utility";
 
 export interface TaskGroup {
@@ -61,9 +62,16 @@ export const TASK_GROUPS: TaskGroup[] = [
   {
     id: "project-ai",
     label: "Project AI",
-    desc: "Describe-a-project + edit-via-AI.",
+    desc: "Describe-a-project + edit-via-AI + habit/goal designers.",
     typIn: 1500,
     typOut: 600,
+  },
+  {
+    id: "ask",
+    label: "Ask (chat)",
+    desc: "Two-pass Q&A over the vault: a cheap planner picks files, then the answerer reads only those.",
+    typIn: 14000,
+    typOut: 700,
   },
   {
     id: "utility",

@@ -9,20 +9,23 @@ import {
   QsKind,
 } from "./qsTab";
 
-export type ThinkSubtab = "S" | "A" | "B" | "Custom" | "Qs";
+export type ThinkSubtab = "Ask" | "S" | "A" | "B" | "Custom" | "Qs";
 
 export interface ThinkTabState {
   subtab: ThinkSubtab;
   /** Command ids whose prompt-preview pane is currently expanded. */
   expandedCommandIds: Set<string>;
   qs: QsTabState;
+  /** Ask sub-tab (v0.14). */
+  ask: { question: string; answer?: string; sources: string[]; busy: boolean };
 }
 
 export function defaultThinkTabState(): ThinkTabState {
   return {
-    subtab: "S",
+    subtab: "Ask",
     expandedCommandIds: new Set(),
     qs: { kind: "year", draftAnswer: "" },
+    ask: { question: "", sources: [], busy: false },
   };
 }
 
@@ -33,6 +36,10 @@ export interface ThinkTabCallbacks {
   setQsKind: (k: QsKind) => void;
   setQsDraftAnswer: (text: string) => void;
   onQsAnswerSaved: () => void;
+  /** Ask: stash the typed question without a re-render (keeps textarea focus). */
+  setAskQuestion: (q: string) => void;
+  /** Ask: run the two-pass vault Q&A. */
+  runAsk: (q: string) => void;
 }
 
 /**
@@ -53,6 +60,7 @@ export async function renderThink(
   // Sub-tab bar — Tier S/A/B + Custom + Qs (moved from top-level in v0.8.1).
   const subtabs = body.createDiv({ cls: "second-brain-subtabs" });
   const tabs: Array<{ id: ThinkSubtab; label: string; title: string }> = [
+    { id: "Ask", label: "Ask", title: "Ask anything about your vault" },
     { id: "S", label: "Tier S", title: "Real tools of thought" },
     { id: "A", label: "Tier A", title: "Useful synthesizers" },
     { id: "B", label: "Tier B", title: "Workflow utilities" },
@@ -72,6 +80,12 @@ export async function renderThink(
     cls: "second-brain-subtab-caption",
     text: subtabCaption(state.subtab),
   });
+
+  // Ask sub-tab: vault Q&A.
+  if (state.subtab === "Ask") {
+    renderAsk(body, state, cb);
+    return;
+  }
 
   // Qs sub-tab: defer to the existing Qs renderer.
   if (state.subtab === "Qs") {
@@ -142,8 +156,62 @@ export async function renderThink(
   }
 }
 
+function renderAsk(
+  body: HTMLElement,
+  state: ThinkTabState,
+  cb: ThinkTabCallbacks
+) {
+  const sec = body.createDiv({ cls: "second-brain-section" });
+  sec.createEl("p", {
+    cls: "second-brain-muted",
+    text: "Ask anything about your life. The AI reads only the files it needs (a planner picks them from a vault map), then answers with sources.",
+  });
+
+  const ta = sec.createEl("textarea", {
+    cls: "second-brain-review-textarea",
+    attr: {
+      placeholder:
+        "e.g. What have I been avoiding lately? · How's my exercise trending? · What did I decide about the plugin?",
+      rows: "3",
+    },
+  });
+  ta.value = state.ask.question;
+  ta.addEventListener("input", () => cb.setAskQuestion(ta.value));
+  ta.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      cb.runAsk(ta.value);
+    }
+  });
+
+  const askBtn = sec.createEl("button", {
+    text: state.ask.busy ? "Thinking…" : "Ask",
+    cls: "second-brain-button second-brain-button-primary",
+  });
+  if (state.ask.busy) askBtn.setAttribute("disabled", "true");
+  askBtn.addEventListener("click", () => cb.runAsk(ta.value));
+
+  if (state.ask.answer) {
+    const ans = body.createDiv({ cls: "second-brain-section" });
+    ans.createEl("h3", { text: "Answer" });
+    ans.createEl("div", {
+      cls: "second-brain-ask-answer",
+      text: state.ask.answer,
+    });
+    if (state.ask.sources.length) {
+      const src = ans.createDiv({ cls: "second-brain-muted" });
+      src.createSpan({ text: "Sources: " });
+      src.appendText(
+        state.ask.sources.map((p) => p.replace(/^.*\//, "")).join(", ")
+      );
+    }
+  }
+}
+
 function subtabCaption(t: ThinkSubtab): string {
   switch (t) {
+    case "Ask":
+      return "Ask anything about your vault. Reads only what it needs.";
     case "S":
       return "Real tools of thought. Surface things you can't easily see yourself.";
     case "A":
