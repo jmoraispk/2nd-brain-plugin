@@ -362,18 +362,9 @@ export class SecondBrainView extends ItemView {
    * Dashboard quick actions. Both target the *displayed* date so that capture
    * and review work for yesterday when the user clicked the back arrow.
    */
-  private async handleQuickAction(id: "capture" | "this-review" | "interview") {
+  private async handleQuickAction(id: "capture" | "this-review") {
     if (id === "capture") {
       new CaptureModal(
-        this.app,
-        this.plugin,
-        this.displayedDate,
-        () => this.render()
-      ).open();
-      return;
-    }
-    if (id === "interview") {
-      new InterviewModal(
         this.app,
         this.plugin,
         this.displayedDate,
@@ -734,6 +725,21 @@ class CaptureModal extends Modal {
       cls: "second-brain-modal-save",
     });
     saveBtn.addEventListener("click", () => this.saveAndClose());
+
+    const interviewBtn = actions.createEl("button", {
+      text: "🎙️ Interview",
+      cls: "second-brain-modal-cancel",
+      attr: { title: "Let the agent ask about your day; the answers become a richer capture." },
+    });
+    interviewBtn.addEventListener("click", () => {
+      this.close();
+      new InterviewModal(
+        this.app,
+        this.plugin,
+        this.targetDate,
+        this.onSaved
+      ).open();
+    });
 
     const cancelBtn = actions.createEl("button", {
       text: "Cancel",
