@@ -1481,3 +1481,52 @@
   color: var(--text-normal);
   margin-right: 6px;
 }
+
+/* ── v0.13: value controls (increment / mood / weight) ─────────────── */
+
+.second-brain-count-row,
+.second-brain-mood-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.second-brain-count-val {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  min-width: 34px;
+  text-align: center;
+}
+
+.second-brain-count-val.done {
+  color: var(--color-green, #4caf50);
+  font-weight: 700;
+}
+
+.second-brain-mood-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid var(--background-modifier-border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.second-brain-mood-btn.active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+.second-brain-value-input {
+  width: 70px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 13px;
+}

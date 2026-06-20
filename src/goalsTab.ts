@@ -12,7 +12,8 @@
 
 import { App, TFile, TFolder } from "obsidian";
 import SecondBrainPlugin from "../main";
-import { Habit, loadHabits, HABITS_FOLDER, isScheduledOn, elapsedSince, setQuitStart } from "./habits";
+import { Habit, loadHabits, HABITS_FOLDER, isScheduledOn, elapsedSince, setQuitStart, numericTarget } from "./habits";
+import { refreshHabitValues, valueFor, setHabitValue } from "./habitValues";
 import { Project, loadProjects, PROJECTS_FOLDER } from "./projects";
 import { ProjectCreateModal } from "./projectCreateModal";
 import { ProjectTalkCreateModal, ProjectEditModal } from "./projectAIModals";
@@ -94,8 +95,9 @@ export async function renderGoals(
 ): Promise<void> {
   const body = parent.createDiv({ cls: "second-brain-tab-body" });
 
-  // Load manual habit marks once per render so per-cell lookups stay sync.
+  // Load manual marks + per-day values once per render (sync lookups after).
   await refreshManualMarks(plugin.app);
+  await refreshHabitValues(plugin.app);
 
   // Coerce the shared subtab into one valid for this scope (the two tabs
   // share GoalsTabState; clicking between them may leave a foreign subtab).
@@ -196,6 +198,7 @@ async function renderHabitsList(
       const glyph = (st: string | undefined) =>
         st === "pass" ? "✅" : st === "fail" ? "❌" : st === "uncertain" ? "⚠️" : "—";
 
+      const numTarget = numericTarget(h);
       if (h.kind === "quit") {
         // Quit habits show a running abstinence clock + a relapse reset.
         const clock = statusCell.createSpan({
@@ -214,6 +217,52 @@ async function renderHabitsList(
           }
         });
         void clock;
+      } else if (h.kind === "mood") {
+        // Mood: 1–5 quick buttons; the picked value is the day's mood.
+        const cur = valueFor(today, h.id);
+        const wrap = statusCell.createDiv({ cls: "second-brain-mood-row" });
+        for (let n = 1; n <= 5; n++) {
+          const b = wrap.createEl("button", {
+            text: String(n),
+            cls: `second-brain-mood-btn${cur === n ? " active" : ""}`,
+          });
+          b.addEventListener("click", async () => {
+            await setHabitValue(plugin.app, today, h.id, cur === n ? null : n);
+            cb.onChanged();
+          });
+        }
+      } else if (h.kind === "weight") {
+        // Weight: a number input; saves on change.
+        const cur = valueFor(today, h.id);
+        const inp = statusCell.createEl("input", {
+          cls: "second-brain-value-input",
+          attr: { type: "number", step: "0.1", placeholder: "—", value: cur != null ? String(cur) : "" },
+        });
+        inp.addEventListener("change", async () => {
+          const v = parseFloat(inp.value);
+          await setHabitValue(plugin.app, today, h.id, Number.isFinite(v) ? v : null);
+          cb.onChanged();
+        });
+      } else if (numTarget != null && !h.auto) {
+        // Incrementable: value/target + a + (and − when >0).
+        const cur = valueFor(today, h.id) ?? 0;
+        const row = statusCell.createDiv({ cls: "second-brain-count-row" });
+        if (cur > 0) {
+          const minus = row.createEl("button", { text: "−", cls: "second-brain-tick" });
+          minus.addEventListener("click", async () => {
+            await setHabitValue(plugin.app, today, h.id, Math.max(0, cur - 1) || null);
+            cb.onChanged();
+          });
+        }
+        row.createSpan({
+          text: `${cur}/${numTarget}`,
+          cls: `second-brain-count-val${cur >= numTarget ? " done" : ""}`,
+        });
+        const plus = row.createEl("button", { text: "+", cls: "second-brain-tick" });
+        plus.addEventListener("click", async () => {
+          await setHabitValue(plugin.app, today, h.id, cur + 1);
+          cb.onChanged();
+        });
       } else if (h.auto) {
         // Auto-habits compute today's status deterministically — not tickable.
         statusCell.setText(glyph(await habitStatusOn(plugin, h, today)));
@@ -818,8 +867,9 @@ async function renderStats(
   cb: GoalsTabCallbacks
 ) {
   const sec = body.createDiv({ cls: "second-brain-section" });
-  // Quit habits aren't pass/fail heatmaps — they live as clocks in the list.
-  const active = habits.filter((h) => h.status === "active" && h.kind !== "quit");
+  // Only "do" habits are pass/fail heatmaps. Quit = clocks; mood/weight =
+  // value series — both live in the list with their own controls.
+  const active = habits.filter((h) => h.status === "active" && h.kind === "do");
 
   // ── Header: title + habit dropdown + period selector + arrows ────
   const headerRow = sec.createDiv({ cls: "second-brain-stats-header" });
@@ -1128,6 +1178,13 @@ export async function habitStatusOn(
   if (!habit.auto) {
     const mark = manualMarkFor(iso, habit.id);
     if (mark) return mark;
+    // Value-derived: an incrementable habit with a logged value ≥ target is a
+    // pass; partial (>0) is in-progress (uncertain); none falls through.
+    const target = numericTarget(habit);
+    if (target != null) {
+      const v = valueFor(iso, habit.id);
+      if (v != null) return v >= target ? "pass" : v > 0 ? "uncertain" : "missing";
+    }
   }
   if (habit.auto === "capture") return captureStatusOnDate(plugin, iso);
   if (habit.auto === "review" || habit.periodicity === "weekly") {
@@ -1281,6 +1338,11 @@ async function habitValuedOn(
         : await captureWordsOn(plugin, iso);
     return { status, value };
   }
+
+  // A logged per-day value (increment / mood / weight) is the truest count
+  // or magnitude when present.
+  const logged = valueFor(iso, habit.id);
+  if (logged != null) return { status, value: logged };
 
   // File-backed (and weekly/review auto) habits don't track sub-day instances.
   if (measure === "magnitude") {

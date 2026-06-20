@@ -93,9 +93,12 @@ export interface Habit {
   evidence?: string;
   /** The immediate celebration that wires the habit. */
   reward?: string;
-  // ── v0.12: quit habits + flexible scheduling ──
-  /** "do" (positive, default) or "quit" (negative — a running abstinence clock). */
-  kind: "do" | "quit";
+  // ── v0.12/v0.13: habit kinds ──
+  /**
+   * "do" (positive, default) · "quit" (abstinence clock) ·
+   * "mood" (log 1–5/day) · "weight" (log a body-weight value/day).
+   */
+  kind: "do" | "quit" | "mood" | "weight";
   /** For quit habits: ISO datetime the abstinence started (reset on relapse). */
   quitStart?: string;
   /** Specific weekdays this habit is scheduled (0=Sun..6=Sat). Empty = every day. */
@@ -199,11 +202,7 @@ async function parseHabit(app: App, file: TFile): Promise<Habit | null> {
     evidence: scalar(fm["evidence"]),
     reward: scalar(fm["reward"]),
     constraints: parseStringList(fm["constraints"]),
-    kind:
-      scalar(fm["kind"]) === "quit" ||
-      (scalar(fm["goal-type"]) ?? "").toLowerCase() === "negative"
-        ? "quit"
-        : "do",
+    kind: parseKind(scalar(fm["kind"]), scalar(fm["goal-type"])),
     quitStart: scalar(fm["quit-start"]),
     scheduleDays: parseWeekdays(fm["schedule-days"]),
     perWeek: numeric(fm["per-week"]),
@@ -244,6 +243,31 @@ function parseWeekdays(v: unknown): number[] | undefined {
     if (n != null && !out.includes(n)) out.push(n);
   }
   return out.length ? out.sort() : undefined;
+}
+
+function parseKind(
+  kind: string | undefined,
+  goalType: string | undefined
+): "do" | "quit" | "mood" | "weight" {
+  const k = (kind ?? "").toLowerCase();
+  if (k === "quit" || (goalType ?? "").toLowerCase() === "negative") return "quit";
+  if (k === "mood") return "mood";
+  if (k === "weight" || k === "body-weight") return "weight";
+  return "do";
+}
+
+/**
+ * The numeric daily target for a habit, if it has one (makes it
+ * increment-loggable). mood defaults to a 1–5 scale.
+ */
+export function numericTarget(habit: Habit): number | undefined {
+  if (habit.quantitative?.target != null) return habit.quantitative.target;
+  if (habit.kind === "mood") return 5;
+  if (habit.target) {
+    const m = habit.target.match(/-?\d+(?:\.\d+)?/);
+    if (m) return parseFloat(m[0]);
+  }
+  return undefined;
 }
 
 /** True if the habit is scheduled on the given ISO date (every day if no schedule). */
@@ -465,10 +489,12 @@ export async function createHabitFromDesigner(
     const items = cons.split(/[;]/).map((s) => s.trim()).filter(Boolean);
     if (items.length) fm.push(`constraints: [${items.map((s) => q(s)).join(", ")}]`);
   }
-  // v0.12: quit habits + flexible scheduling.
-  const kind = (fields.get("kind") || "do").toLowerCase() === "quit" ? "quit" : "do";
+  // v0.12/v0.13: habit kinds + flexible scheduling.
+  const rawKind = (fields.get("kind") || "do").toLowerCase();
+  const kind =
+    rawKind === "quit" ? "quit" : rawKind === "mood" ? "mood" : rawKind === "weight" || rawKind === "body-weight" ? "weight" : "do";
+  if (kind !== "do") fm.push(`kind: ${kind}`);
   if (kind === "quit") {
-    fm.push("kind: quit");
     fm.push(`quit-start: ${fields.get("quit-start") || new Date().toISOString()}`);
   }
   const sched = fields.get("schedule-days");

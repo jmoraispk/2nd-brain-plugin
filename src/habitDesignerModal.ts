@@ -34,7 +34,7 @@ Return EXACTLY this shape and nothing else:
 NAME: <a short, concrete habit name, 2-5 words>
 
 \`\`\`fields
-kind: <do | quit — use "quit" if they want to STOP/QUIT/abstain from something (smoking, drinking, doomscrolling); else "do">
+kind: <do | quit | mood | weight — "quit" to STOP/abstain (smoking, drinking, doomscrolling); "mood" to log a 1–5 daily mood; "weight" to log body weight; else "do">
 periodicity: <daily | weekdays | weekly | monthly>
 schedule-days: <only if they named specific days, e.g. "Mon, Wed, Fri"; omit otherwise>
 per-week: <only if they said "N days a week", e.g. 3; omit otherwise>
