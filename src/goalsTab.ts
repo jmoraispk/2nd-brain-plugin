@@ -18,6 +18,7 @@ import { Project, loadProjects, PROJECTS_FOLDER } from "./projects";
 import { ProjectCreateModal } from "./projectCreateModal";
 import { ProjectTalkCreateModal, ProjectEditModal } from "./projectAIModals";
 import { HabitDesignerModal } from "./habitDesignerModal";
+import { HabitSuggestionsModal } from "./habitSuggestions";
 import { Goal, loadGoals, goalProgress, GOALS_FOLDER } from "./goals";
 import { GoalCreateModal, GoalRecordModal, GoalDesignerModal } from "./goalModals";
 import { HabitDetailModal, GoalDetailModal } from "./detailModals";
@@ -310,6 +311,25 @@ async function renderHabitsList(
     new HabitDesignerModal(plugin.app, plugin, (file) => {
       cb.onChanged();
       plugin.app.workspace.getLeaf(false).openFile(file);
+    }).open();
+  });
+
+  const suggestBtn = actions.createEl("button", {
+    text: "💡 Suggestions",
+    cls: "second-brain-button",
+    attr: { title: "Browse a library of common habits; pick one to design it." },
+  });
+  suggestBtn.addEventListener("click", () => {
+    new HabitSuggestionsModal(plugin.app, (seed) => {
+      new HabitDesignerModal(
+        plugin.app,
+        plugin,
+        (file) => {
+          cb.onChanged();
+          plugin.app.workspace.getLeaf(false).openFile(file);
+        },
+        seed
+      ).open();
     }).open();
   });
 

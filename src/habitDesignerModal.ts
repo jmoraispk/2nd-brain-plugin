@@ -69,6 +69,7 @@ Rules:
 export class HabitDesignerModal extends Modal {
   private readonly plugin: SecondBrainPlugin;
   private readonly onCreated: (file: TFile) => void;
+  private readonly seed?: string;
   private textarea!: HTMLTextAreaElement;
   private areaSelect!: HTMLSelectElement;
   private projectSelect!: HTMLSelectElement;
@@ -77,11 +78,13 @@ export class HabitDesignerModal extends Modal {
   constructor(
     app: App,
     plugin: SecondBrainPlugin,
-    onCreated: (file: TFile) => void
+    onCreated: (file: TFile) => void,
+    seed?: string
   ) {
     super(app);
     this.plugin = plugin;
     this.onCreated = onCreated;
+    this.seed = seed;
     this.modalEl.addClass("second-brain-capture-modal");
   }
 
@@ -113,6 +116,7 @@ export class HabitDesignerModal extends Modal {
           "e.g. I want to exercise more — mornings ideally, I keep skipping it when work gets busy",
       },
     });
+    if (this.seed) this.textarea.value = this.seed;
     this.textarea.focus();
 
     const areaRow = contentEl.createDiv({ cls: "second-brain-capture-project-row" });
