@@ -1444,3 +1444,31 @@
   margin-top: 4px;
   flex-wrap: wrap;
 }
+
+/* ── v0.11.1: detail modals ────────────────────────────────────────── */
+
+.second-brain-detail-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 5px 0;
+}
+
+.second-brain-detail-key {
+  flex: 0 0 110px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.second-brain-detail-val {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text-normal);
+}
+
+.second-brain-detail-section {
+  margin-top: 14px;
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: 10px;
+}

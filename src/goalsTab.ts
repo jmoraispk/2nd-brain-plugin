@@ -19,6 +19,7 @@ import { ProjectTalkCreateModal, ProjectEditModal } from "./projectAIModals";
 import { HabitDesignerModal } from "./habitDesignerModal";
 import { Goal, loadGoals, goalProgress, GOALS_FOLDER } from "./goals";
 import { GoalCreateModal, GoalRecordModal } from "./goalModals";
+import { HabitDetailModal, GoalDetailModal } from "./detailModals";
 import { renderAreaChips, areaFor } from "./areas";
 import {
   refreshManualMarks,
@@ -171,9 +172,9 @@ async function renderHabitsList(
           text: h.name,
           cls: "second-brain-link",
         });
-        const file = h.file;
+        // Click → detail view (Overview/Boost/Stats), not the raw file.
         link.addEventListener("click", () =>
-          plugin.app.workspace.getLeaf(false).openFile(file)
+          new HabitDetailModal(plugin.app, plugin, h).open()
         );
       } else {
         // Auto-habit — no backing file. Mark it so the user knows it's built-in.
@@ -446,7 +447,10 @@ async function renderGoalRow(
   const top = wrap.createDiv({ cls: "second-brain-goal-top" });
   const link = top.createEl("a", { text: g.name, cls: "second-brain-link" });
   link.addEventListener("click", () =>
-    plugin.app.workspace.getLeaf(false).openFile(g.file)
+    new GoalDetailModal(plugin.app, plugin, g, async () => {
+      const fresh = (await loadGoals(plugin.app)).find((x) => x.id === g.id);
+      return fresh ?? null;
+    }).open()
   );
   if (g.areas.length) renderAreaChips(top, g.areas);
 
@@ -946,7 +950,7 @@ function numericTile(parent: HTMLElement, label: string, value: string) {
   tile.createEl("div", { cls: "second-brain-stats-tile-value", text: value });
 }
 
-function computeBestStreak(cells: HabitDayCell[]): number {
+export function computeBestStreak(cells: HabitDayCell[]): number {
   // Cells are oldest-first. A streak = consecutive run of pass OR uncertain.
   let best = 0;
   let cur = 0;
@@ -1079,7 +1083,7 @@ type CellStatus = "pass" | "uncertain" | "fail" | "missing";
  *   - auto "review" / weekly periodicity → evaluate the whole ISO week
  *   - daily file-backed → read the LLM's status from that day's review
  */
-async function habitStatusOn(
+export async function habitStatusOn(
   plugin: SecondBrainPlugin,
   habit: Habit,
   iso: string
@@ -1401,13 +1405,13 @@ async function renderStatsYear(
   }
 }
 
-interface HabitDayCell {
+export interface HabitDayCell {
   date: string;
   status: "pass" | "uncertain" | "fail" | "missing";
   evidence?: string;
 }
 
-async function collectHabitStrip(
+export async function collectHabitStrip(
   plugin: SecondBrainPlugin,
   habit: Habit,
   today: string,
@@ -1423,7 +1427,7 @@ async function collectHabitStrip(
   return out;
 }
 
-function cellClass(s: HabitDayCell["status"]): string {
+export function cellClass(s: HabitDayCell["status"]): string {
   switch (s) {
     case "pass":
       return "second-brain-habit-cell-pass";
@@ -1442,7 +1446,7 @@ function cellClass(s: HabitDayCell["status"]): string {
  * this habit. Uncertain counts as pass (optimistic default). A miss or
  * absence of review breaks the streak.
  */
-async function computeStreak(
+export async function computeStreak(
   plugin: SecondBrainPlugin,
   habit: Habit,
   today: string,
