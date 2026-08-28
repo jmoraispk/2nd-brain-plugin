@@ -540,6 +540,49 @@ Rules:
 - Be faithful. No fluff. No invented content.
 - Weekly = ISO Mon–Sun. You may only have Mon–today; that's fine.`;
 
+const DATE_RANGE_REVIEW_PROMPT = `You are producing a concise review of captures from a user-selected date range within one calendar month.
+
+The user message includes "Period range" with the exact inclusive start and end dates. Use that range in the title. You will receive only daily logs that exist inside that range; missing days mean there were no saved captures and should not be invented.
+
+Produce clean Markdown with this structure:
+
+# Capture Review — <start date> to <end date>
+
+## Summary
+A tight, faithful synthesis of what the user captured. Group related notes rather than reciting every line.
+
+## Recurring threads
+Themes, projects, questions, or concerns that appeared on more than one day. Cite the dates.
+
+## Decisions and commitments
+Things the user decided, promised, scheduled, or explicitly intended to do. Keep their wording where useful.
+
+## Lessons and observations
+Insights the user noticed or learned. Skip this section if there are none.
+
+## Open loops
+Unresolved questions or unfinished items actually present in the captures. Do not turn every sentence into a task.
+
+## Reflection prompts
+At most three specific questions that help the user review this exact range. Each must be grounded in the captures.
+
+Rules:
+- Be concise, factual, and faithful. No generic coaching or invented content.
+- Distinguish an idea from a commitment.
+- Mention source dates for important claims.
+- Skip empty sections instead of writing placeholders.`;
+
+/** Simplified dashboard command; range values are supplied by its calendar UI. */
+export const DATE_RANGE_REVIEW_COMMAND: Command = {
+  id: "review-date-range",
+  label: "Capture Review",
+  inputs: [
+    { kind: "date-range-logs", label: "Captures in the selected range" },
+  ],
+  outputPath: "🤖 AI/Reviews/Custom/{RANGE_START}--{RANGE_END}.md",
+  systemPrompt: DATE_RANGE_REVIEW_PROMPT,
+};
+
 export const BUILT_IN_COMMANDS: Command[] = [
   {
     id: "todays-review",

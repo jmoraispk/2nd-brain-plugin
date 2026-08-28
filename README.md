@@ -1,6 +1,6 @@
 # Second Brain — Obsidian plugin
 
-Big-button capture into today's log + one-tap synthesized reviews via the Claude / OpenAI API. Mobile-first.
+Capture notes into today's log and review any range within a one-month activity map via the Claude / OpenAI API. Mobile-first.
 
 This is the PWA-equivalent surface for the [2nd-brain](https://github.com/jmoraispk/2nd-brain) framework — same daily loop, running inside Obsidian on your phone.
 
@@ -32,10 +32,14 @@ Alongside Me / AI sit the PARA folders (knowledge organized by topic, not by aut
 
 ## The daily loop
 
-1. **Capture** throughout the day → appends `[HH:MM] ...` to `🧑 Me/Logs/<today>.md`.
-2. **Today's Review** at end of day → AI synthesizes the log into `🤖 AI/Reviews/Daily/<today>.md`.
-3. Edit the AI review with your own reflections → saved as a *separate* file at `🧑 Me/Reviews/Daily/<today>.md` (append-only, dated sections — AI never overwrites your text).
-4. **Plan Tomorrow** before bed → AI reads your edited review and writes a scaffold at `🤖 AI/Plans/Daily/<tomorrow>.md`.
+The default Simplified dashboard puts the whole loop on one screen:
+
+1. **Capture** a plain note → appends `[HH:MM] ...` to `🧑 Me/Logs/<today>.md`.
+2. Use the one-month activity map to see capture counts or word counts per day.
+3. Select any date range inside that month and press **Review selected captures**.
+4. Read the AI summary inline and save your own reflection without leaving the dashboard.
+
+Range summaries live at `🤖 AI/Reviews/Custom/<start>--<end>.md`; reflections remain separate under `🧑 Me/Reviews/Custom/`. Settings → Second Brain → Interface can restore the Complete dashboard with Habits, Projects, Review, Think, proposals, and TODOs.
 
 Weekly: **Week's Review** rolls up the seven daily logs and threads in the current Kepano yearly question. Monthly threads in the current Kepano decade question.
 
@@ -93,9 +97,10 @@ Reload Obsidian (Cmd/Ctrl-R) after each rebuild.
 
 | Setting                          | Default                                                                | Notes                                                          |
 | -------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Dashboard mode                   | `simplified`                                                           | Switch to `complete` to restore every advanced panel.           |
 | Provider                         | `openai`                                                               | `openai` or `anthropic`. Switching preserves both keys.        |
 | OpenAI / Anthropic API key       | _empty_                                                                | Sent only to the provider's API.                               |
-| Model                            | `gpt-5-mini` / `claude-opus-4-7`                                       | Dropdown of curated models; custom ids also accepted.          |
+| Model                            | `gpt-5` / `claude-opus-4-7`                                            | Dropdown of curated models; custom ids also accepted.          |
 | Logs folder                      | `🧑 Me/Logs`                                                           | Recursively searched for `<today>.md`.                         |
 | Daily log path template          | `🧑 Me/Logs/{ISO_YEAR}/Q{Q}/W{WW}/{YYYY-MM-DD}.md`                     | Used when today's file doesn't exist yet.                      |
 | Daily review path template       | `🤖 AI/Reviews/Daily/{ISO_YEAR}/Q{Q}/W{WW}/{YYYY-MM-DD}.md`            | Where Today's Review writes. Cache-busted on re-run.           |
@@ -139,6 +144,7 @@ frontmatter field.
 
 ## Release log
 
+- v0.16.0 — **Simplified Capture + Review dashboard.** The new default interface removes proposals, TODOs, interviews, and navigation tabs from the daily surface. Capture is now a plain inline note box. A strict one-month calendar shows daily capture or word counts, supports two-click date-range selection, and runs a cached range summary inline beside an append-only personal reflection. The previous Habits / Projects / Review / Think interface remains available as **Complete** mode in Settings.
 - v0.15.1 — **🐛 Mobile load fix.** v0.15.0 imported the Vapi voice SDK at startup, which crashed the **whole plugin on mobile** (the SDK touches desktop-only globals). The SDK now loads **lazily**, only when you start a voice call on desktop, and voice interview is explicitly **desktop-only** with a friendly note on mobile. Everything else works on the phone again.
 - v0.15.0 — **📞 Voice interview (Vapi).** Talk to the agent **out loud** about your day. Capture → **📞 Voice interview** starts a real WebRTC voice call (via [Vapi](https://vapi.ai)) to your assistant, injecting today's log as context; you get a **live transcript + call status** on a clean screen, and on hang-up it synthesizes an enriched capture into the day's log — same back-end as the text Interview, just spoken. **BYO Vapi public key + assistant id** in Settings → Voice (Vapi); configure the agent's persona in the Vapi dashboard (add a `{{dayLog}}` placeholder). **Desktop-first** — mobile mic may be unavailable; the text 🎙️ Interview stays as the fallback. (Path 2 of `docs/voice-call.md`, no Twilio/server.)
 - v0.14.3 — **Interview moved into Capture.** The 🎙️ Interview action now lives inside the Capture modal (tap Capture → 🎙️ Interview) instead of the Dashboard, keeping the day-header to Capture + Summarize.

@@ -49,6 +49,18 @@ export default class SecondBrainPlugin extends Plugin {
     await this.saveData(this.settings);
   }
 
+  /** Re-render every open Second Brain leaf after a live setting changes. */
+  async refreshOpenViews() {
+    const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_SECOND_BRAIN);
+    await Promise.all(
+      leaves.map(async (leaf) => {
+        if (leaf.view instanceof SecondBrainView) {
+          await leaf.view.render();
+        }
+      })
+    );
+  }
+
   /**
    * Idempotent forward-migrations of saved settings between plugin versions.
    * Runs once per load after the data file is read.

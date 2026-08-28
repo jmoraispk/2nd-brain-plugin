@@ -1,9 +1,9 @@
 {
   "id": "obsidian-second-brain",
   "name": "Second Brain",
-  "version": "0.15.1",
+  "version": "0.16.0",
   "minAppVersion": "1.5.0",
-  "description": "Big-button capture into today's log and one-tap daily review with Claude. Mobile-first.",
+  "description": "Capture notes and review any date range from a one-month activity map. Mobile-first.",
   "author": "João Morais",
   "isDesktopOnly": false
 }

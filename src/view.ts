@@ -2,7 +2,11 @@ import { ItemView, WorkspaceLeaf, Notice, Modal, App, TFile } from "obsidian";
 import SecondBrainPlugin from "../main";
 import { appendCapture } from "./capture";
 import { runCommand, RunResult } from "./runner";
-import { getEffectiveCommands, getBuiltInCommand } from "./commands";
+import {
+  DATE_RANGE_REVIEW_COMMAND,
+  getEffectiveCommands,
+  getBuiltInCommand,
+} from "./commands";
 import { stripSBFrontmatter } from "./reviewMeta";
 import {
   anchorForInputKind as anchorForInputKindLocal,
@@ -39,6 +43,12 @@ import { VoiceInterviewModal } from "./voiceInterviewModal";
 import { loadProjects } from "./projects";
 import { completeTodoInProject } from "./projectMutate";
 import { todayISO } from "./paths";
+import {
+  ActivityMetric,
+  defaultSimplifiedDashboardState,
+  renderSimplifiedDashboard,
+  SimplifiedDashboardState,
+} from "./simplifiedDashboard";
 
 export const VIEW_TYPE_SECOND_BRAIN = "second-brain-view";
 
@@ -59,6 +69,7 @@ export class SecondBrainView extends ItemView {
   reviewState: ReviewTabState = defaultReviewTabState();
   thinkState: ThinkTabState = defaultThinkTabState();
   lifeState: GoalsTabState = defaultGoalsTabState();
+  simplifiedState: SimplifiedDashboardState = defaultSimplifiedDashboardState();
   pendingReviewsCollapsed: boolean = true;
   /** Whether the tab's ⓘ description is expanded. */
   tabInfoOpen: boolean = false;
@@ -90,6 +101,37 @@ export class SecondBrainView extends ItemView {
     const container = this.containerEl.children[1] as HTMLElement;
     container.empty();
     container.addClass("second-brain-container");
+
+    if (this.plugin.settings.dashboardMode === "simplified") {
+      this.renderSimplifiedTopBar(container);
+      await renderSimplifiedDashboard(
+        container,
+        this.plugin,
+        this.simplifiedState,
+        this.reviewState,
+        {
+          setCaptureDraft: (value) => {
+            this.simplifiedState.captureDraft = value;
+          },
+          saveCapture: (value) => this.saveSimplifiedCapture(value),
+          changeMonth: (month) => this.changeSimplifiedMonth(month),
+          selectCalendarDate: (date) => this.selectSimplifiedDate(date),
+          setRangeStart: (date) => this.setSimplifiedRangeStart(date),
+          setRangeEnd: (date) => this.setSimplifiedRangeEnd(date),
+          setMetric: (metric) => this.setSimplifiedMetric(metric),
+          runReview: () => this.runSimplifiedReview(),
+          setUserReview: (value) => {
+            this.reviewState.userReview = value;
+          },
+          finishReview: () => this.finishReview(),
+          openResult: (file) => {
+            void this.app.workspace.getLeaf(false).openFile(file);
+          },
+        },
+        this
+      );
+      return;
+    }
 
     this.renderTopBar(container);
     this.renderVerbRow(container);
@@ -350,13 +392,167 @@ export class SecondBrainView extends ItemView {
       attr: { title: "Settings" },
     });
     settingsBtn.addEventListener("click", () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const setting = (this.app as any).setting;
-      if (setting) {
-        setting.open();
-        setting.openTabById?.(this.plugin.manifest.id);
-      }
+      this.openSettings();
     });
+  }
+
+  private renderSimplifiedTopBar(container: HTMLElement) {
+    const topbar = container.createDiv({
+      cls: "second-brain-topbar second-brain-simple-topbar",
+    });
+    const title = topbar.createDiv({ cls: "second-brain-simple-title" });
+    title.createEl("span", { text: "Second Brain" });
+    title.createEl("small", { text: "Capture · Review" });
+
+    const right = topbar.createDiv({ cls: "second-brain-topbar-right" });
+    const refresh = right.createEl("button", {
+      text: "↻",
+      cls: "second-brain-iconbtn",
+      attr: { title: "Refresh" },
+    });
+    refresh.addEventListener("click", () => void this.render());
+
+    const settings = right.createEl("button", {
+      text: "⚙",
+      cls: "second-brain-iconbtn",
+      attr: { title: "Settings" },
+    });
+    settings.addEventListener("click", () => this.openSettings());
+  }
+
+  private openSettings() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const setting = (this.app as any).setting;
+    if (setting) {
+      setting.open();
+      setting.openTabById?.(this.plugin.manifest.id);
+    }
+  }
+
+  private async saveSimplifiedCapture(content: string): Promise<void> {
+    try {
+      const path = await appendCapture(
+        this.app,
+        this.plugin.settings,
+        content,
+        todayISO()
+      );
+      this.simplifiedState.captureDraft = "";
+      new Notice(`Captured → ${path}`);
+      await this.render();
+    } catch (err) {
+      this.plugin.errorLog.push("simple-capture", err);
+      new Notice(
+        `Capture failed: ${(err as Error).message}\nSee Settings → Logs for details.`,
+        8000
+      );
+    }
+  }
+
+  private changeSimplifiedMonth(month: string) {
+    const currentMonth = todayISO().slice(0, 7);
+    this.simplifiedState.month = month > currentMonth ? currentMonth : month;
+    const start = `${this.simplifiedState.month}-01`;
+    const end =
+      this.simplifiedState.month === currentMonth
+        ? todayISO()
+        : this.lastDateOfMonth(this.simplifiedState.month);
+    this.simplifiedState.rangeStart = start;
+    this.simplifiedState.rangeEnd = end;
+    this.simplifiedState.rangeAnchor = undefined;
+    this.clearSimplifiedReview();
+    void this.render();
+  }
+
+  private selectSimplifiedDate(date: string) {
+    const anchor = this.simplifiedState.rangeAnchor;
+    if (!anchor) {
+      this.simplifiedState.rangeStart = date;
+      this.simplifiedState.rangeEnd = date;
+      this.simplifiedState.rangeAnchor = date;
+    } else {
+      this.simplifiedState.rangeStart = anchor < date ? anchor : date;
+      this.simplifiedState.rangeEnd = anchor < date ? date : anchor;
+      this.simplifiedState.rangeAnchor = undefined;
+    }
+    this.clearSimplifiedReview();
+    void this.render();
+  }
+
+  private setSimplifiedRangeStart(date: string) {
+    if (!date) return;
+    this.simplifiedState.rangeStart = date;
+    if (date > this.simplifiedState.rangeEnd) {
+      this.simplifiedState.rangeEnd = date;
+    }
+    this.simplifiedState.rangeAnchor = undefined;
+    this.clearSimplifiedReview();
+    void this.render();
+  }
+
+  private setSimplifiedRangeEnd(date: string) {
+    if (!date) return;
+    this.simplifiedState.rangeEnd = date;
+    if (date < this.simplifiedState.rangeStart) {
+      this.simplifiedState.rangeStart = date;
+    }
+    this.simplifiedState.rangeAnchor = undefined;
+    this.clearSimplifiedReview();
+    void this.render();
+  }
+
+  private setSimplifiedMetric(metric: ActivityMetric) {
+    this.simplifiedState.metric = metric;
+    void this.render();
+  }
+
+  private clearSimplifiedReview() {
+    this.reviewState.resultFile = undefined;
+    this.reviewState.resultContent = undefined;
+    this.reviewState.userReview = "";
+  }
+
+  private lastDateOfMonth(month: string): string {
+    const [year, monthNumber] = month.split("-").map(Number);
+    const day = new Date(year, monthNumber, 0).getDate();
+    return `${month}-${String(day).padStart(2, "0")}`;
+  }
+
+  private async runSimplifiedReview(): Promise<void> {
+    const { rangeStart: start, rangeEnd: end } = this.simplifiedState;
+    this.simplifiedState.rangeAnchor = undefined;
+    const progress = new Notice(`Reviewing ${start} to ${end}…`, 0);
+    try {
+      const result = await runCommand(
+        this.app,
+        this.plugin.settings,
+        DATE_RANGE_REVIEW_COMMAND,
+        this.plugin.manifest.version,
+        start,
+        undefined,
+        { start, end }
+      );
+      const content = await this.app.vault.read(result.file);
+      const display = stripSBFrontmatter(content).trimEnd();
+      this.reviewState = {
+        ...defaultReviewTabState(),
+        period: "specific",
+        specificDate: start,
+        resultFile: result.file,
+        resultContent: display,
+        userReview: "",
+      };
+      await this.render();
+      this.notifyRunResult(DATE_RANGE_REVIEW_COMMAND.label, result);
+    } catch (err) {
+      this.plugin.errorLog.push("run:review-date-range", err);
+      new Notice(
+        `Review failed: ${(err as Error).message}\nSee Settings → Logs for details.`,
+        8000
+      );
+    } finally {
+      progress.hide();
+    }
   }
 
   /**
@@ -491,8 +687,11 @@ export class SecondBrainView extends ItemView {
       // Derive the period anchor from the AI file path so we can stamp it
       // on the user-review file frontmatter.
       const anchor =
-        this.reviewState.specificDate ||
-        this.deriveAnchorFromAIPath(resultFile.path);
+        this.plugin.settings.dashboardMode === "simplified" &&
+        resultFile.path.startsWith("🤖 AI/Reviews/Custom/")
+          ? `${this.simplifiedState.rangeStart} to ${this.simplifiedState.rangeEnd}`
+          : this.reviewState.specificDate ||
+            this.deriveAnchorFromAIPath(resultFile.path);
       const today = (() => {
         const d = new Date();
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
@@ -507,9 +706,11 @@ export class SecondBrainView extends ItemView {
         anchor,
         today
       );
-      await this.app.workspace.getLeaf(false).openFile(userFile);
       new Notice(`Saved your review to ${userFile.path}`);
       this.reviewState = defaultReviewTabState();
+      if (this.plugin.settings.dashboardMode === "complete") {
+        await this.app.workspace.getLeaf(false).openFile(userFile);
+      }
       await this.render();
     } catch (err) {
       this.plugin.errorLog.push("finishReview", err);

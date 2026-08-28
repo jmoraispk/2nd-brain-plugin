@@ -49,13 +49,19 @@ export type RunResult =
   | { kind: "fresh"; file: TFile; drift?: string[] }
   | { kind: "cache-hit"; file: TFile };
 
+export interface DateRangeOverride {
+  start: string;
+  end: string;
+}
+
 export async function runCommand(
   app: App,
   settings: SecondBrainSettings,
   command: Command,
   pluginVersion: string,
   anchorOverride?: string,
-  topicInput?: string
+  topicInput?: string,
+  dateRange?: DateRangeOverride
 ): Promise<RunResult> {
   const today = todayISO();
 
@@ -87,16 +93,22 @@ export async function runCommand(
   // day's review) takes precedence.
   const anchor =
     anchorOverride ??
+    dateRange?.start ??
     (command.inputs.length > 0
       ? anchorForInputKind(command.inputs[0].kind)
       : today);
 
   const inputs: InputContent[] = [];
   for (const spec of command.inputs) {
-    inputs.push(await readInput(app, settings, spec, anchor));
+    inputs.push(await readInput(app, settings, spec, anchor, dateRange));
   }
 
-  const outputPath = resolveOutputPath(command.outputPath, settings, anchor);
+  const outputPath = resolveOutputPath(
+    command.outputPath,
+    settings,
+    anchor,
+    dateRange
+  );
 
   // Cache check: if the target file already exists with matching fingerprint,
   // skip the LLM call entirely.
@@ -129,6 +141,9 @@ export async function runCommand(
     `Today's date: ${today}`,
     `Period anchor: ${anchor}`,
   ];
+  if (dateRange) {
+    userMsgParts.push(`Period range: ${dateRange.start} through ${dateRange.end}`);
+  }
   if (topicInput && topicInput.trim()) {
     userMsgParts.push("", `## Topic / focus\n\n${topicInput.trim()}`);
   }
@@ -248,7 +263,8 @@ async function readInput(
   app: App,
   settings: SecondBrainSettings,
   input: CommandInput,
-  anchor: string
+  anchor: string,
+  dateRange?: DateRangeOverride
 ): Promise<InputContent> {
   const labelDefaults: Record<CommandInput["kind"], string> = {
     "today-log": "Today's log",
@@ -267,6 +283,7 @@ async function readInput(
     "anchor-month-logs": "Daily logs for the specified month",
     "anchor-quarter-logs": "Daily logs for the specified quarter",
     "anchor-year-logs": "Daily logs for the specified year",
+    "date-range-logs": "Daily captures for the selected date range",
   };
   const label = input.label ?? labelDefaults[input.kind];
 
@@ -308,6 +325,12 @@ async function readInput(
       break;
     case "anchor-year-logs":
       multiDayDates = anchorYearDates(anchor);
+      break;
+    case "date-range-logs":
+      if (!dateRange) {
+        throw new Error("A start and end date are required for a date-range review.");
+      }
+      multiDayDates = datesForRange(dateRange);
       break;
   }
 
@@ -402,14 +425,43 @@ async function readInput(
 function resolveOutputPath(
   template: string,
   settings: SecondBrainSettings,
-  anchor: string
+  anchor: string,
+  dateRange?: DateRangeOverride
 ): string {
   // Inline {REVIEWS_TEMPLATE} first, then resolve date placeholders against the anchor.
-  const inlined = template.replace(
-    "{REVIEWS_TEMPLATE}",
-    settings.reviewsPathTemplate
-  );
+  const inlined = template
+    .replace("{REVIEWS_TEMPLATE}", settings.reviewsPathTemplate)
+    .replace(/\{RANGE_START\}/g, dateRange?.start ?? anchor)
+    .replace(/\{RANGE_END\}/g, dateRange?.end ?? anchor);
   return applyDatePlaceholders(inlined, anchor);
+}
+
+function datesForRange(range: DateRangeOverride): string[] {
+  const iso = /^\d{4}-\d{2}-\d{2}$/;
+  if (!iso.test(range.start) || !iso.test(range.end)) {
+    throw new Error("Review dates must use YYYY-MM-DD format.");
+  }
+  if (range.start > range.end) {
+    throw new Error("The review start date must be before the end date.");
+  }
+  if (range.start.slice(0, 7) !== range.end.slice(0, 7)) {
+    throw new Error("Simplified reviews must stay within one calendar month.");
+  }
+
+  const start = new Date(`${range.start}T00:00:00`);
+  const end = new Date(`${range.end}T00:00:00`);
+  const dates: string[] = [];
+  const cursor = new Date(start.valueOf());
+  while (cursor <= end) {
+    dates.push(
+      `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(
+        2,
+        "0"
+      )}-${String(cursor.getDate()).padStart(2, "0")}`
+    );
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return dates;
 }
 
 async function ensureFolderExists(app: App, filePath: string) {

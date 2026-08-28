@@ -13,6 +13,7 @@ import {
 } from "./modelRoutes";
 
 export type LLMProvider = "anthropic" | "openai";
+export type DashboardMode = "simplified" | "complete";
 
 /** Curated model lists per provider, ordered roughly quality-first.
  *  Prices as of May 2026 — flagship to cheap. */
@@ -31,6 +32,8 @@ const ANTHROPIC_MODELS: Array<{ id: string; label: string }> = [
 ];
 
 export interface SecondBrainSettings {
+  /** Main plugin surface. Simplified keeps capture + review in one view. */
+  dashboardMode: DashboardMode;
   provider: LLMProvider;
   anthropicApiKey: string;
   anthropicModel: string;
@@ -56,6 +59,7 @@ export interface SecondBrainSettings {
 }
 
 export const DEFAULT_SETTINGS: SecondBrainSettings = {
+  dashboardMode: "simplified",
   provider: "openai",
   anthropicApiKey: "",
   anthropicModel: "claude-opus-4-7",
@@ -80,7 +84,11 @@ export class SecondBrainSettingTab extends PluginSettingTab {
     containerEl.empty();
     containerEl.addClass("second-brain-settings");
 
-    this.collapsible(containerEl, "LLM provider", true, (body) =>
+    this.collapsible(containerEl, "Interface", true, (body) =>
+      this.renderInterface(body)
+    );
+
+    this.collapsible(containerEl, "LLM provider", false, (body) =>
       this.renderProvider(body)
     );
     this.collapsible(containerEl, "Task routing", false, (body) =>
@@ -101,6 +109,25 @@ export class SecondBrainSettingTab extends PluginSettingTab {
     this.collapsible(containerEl, "Logs", false, (body) =>
       this.renderLogs(body)
     );
+  }
+
+  private renderInterface(containerEl: HTMLElement) {
+    new Setting(containerEl)
+      .setName("Dashboard mode")
+      .setDesc(
+        "Simplified keeps capture, a one-month activity map, and date-range review together. Complete restores Habits, Projects, Review, Think, proposals, and TODOs."
+      )
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("simplified", "Simplified — Capture + Review")
+          .addOption("complete", "Complete — all features")
+          .setValue(this.plugin.settings.dashboardMode)
+          .onChange(async (value) => {
+            this.plugin.settings.dashboardMode = value as DashboardMode;
+            await this.plugin.saveSettings();
+            await this.plugin.refreshOpenViews();
+          })
+      );
   }
 
   /**
