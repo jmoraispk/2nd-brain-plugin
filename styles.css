@@ -157,29 +157,53 @@
 
 .second-brain-month-header {
   display: grid;
-  grid-template-columns: 40px 1fr 40px;
+  grid-template-columns: 28px auto minmax(92px, 1fr) 28px;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .second-brain-month-header h2 {
-  text-align: center;
+  font-size: 16px;
+  white-space: nowrap;
 }
 
-.second-brain-month-metric-row {
-  display: flex;
+.second-brain-month-arrow {
+  display: inline-flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
+  justify-content: center;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.second-brain-month-arrow:hover:not([disabled]) {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.second-brain-month-arrow[disabled] {
+  opacity: 0.3;
+  cursor: default;
 }
 
 .second-brain-simple-metric {
-  min-width: 110px;
-  padding: 5px 8px;
+  justify-self: end;
+  width: auto;
+  min-width: 92px;
+  padding: 4px 7px;
   border: 1px solid var(--background-modifier-border);
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--background-primary);
   color: var(--text-normal);
+  font-size: 12px;
 }
 
 .second-brain-month-grid {
@@ -224,20 +248,30 @@ button.second-brain-month-day:hover:not([disabled]) {
 }
 
 button.second-brain-month-day.level-1 {
-  background: color-mix(in srgb, var(--interactive-accent) 16%, var(--background-primary));
+  background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-primary));
 }
 
 button.second-brain-month-day.level-2 {
-  background: color-mix(in srgb, var(--interactive-accent) 30%, var(--background-primary));
+  background: color-mix(in srgb, var(--interactive-accent) 22%, var(--background-primary));
 }
 
 button.second-brain-month-day.level-3 {
-  background: color-mix(in srgb, var(--interactive-accent) 48%, var(--background-primary));
+  background: color-mix(in srgb, var(--interactive-accent) 36%, var(--background-primary));
   color: var(--text-normal);
 }
 
 button.second-brain-month-day.level-4 {
-  background: color-mix(in srgb, var(--interactive-accent) 72%, var(--background-primary));
+  background: color-mix(in srgb, var(--interactive-accent) 52%, var(--background-primary));
+  color: var(--text-normal);
+}
+
+button.second-brain-month-day.level-5 {
+  background: color-mix(in srgb, var(--interactive-accent) 70%, var(--background-primary));
+  color: var(--text-on-accent);
+}
+
+button.second-brain-month-day.level-6 {
+  background: color-mix(in srgb, var(--interactive-accent) 88%, var(--background-primary));
   color: var(--text-on-accent);
 }
 
@@ -257,7 +291,8 @@ button.second-brain-month-day.is-today::after {
   background: var(--interactive-accent);
 }
 
-button.second-brain-month-day.level-4.is-today::after {
+button.second-brain-month-day.level-5.is-today::after,
+button.second-brain-month-day.level-6.is-today::after {
   background: var(--text-on-accent);
 }
 
@@ -276,12 +311,6 @@ button.second-brain-month-day[disabled] {
   font-size: 11px;
   line-height: 1;
   opacity: 0.82;
-}
-
-.second-brain-month-help {
-  color: var(--text-muted);
-  font-size: 12px;
-  text-align: center;
 }
 
 .second-brain-simple-range {

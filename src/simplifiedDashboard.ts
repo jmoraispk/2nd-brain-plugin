@@ -71,10 +71,6 @@ function renderCapture(
     cls: "second-brain-simple-card second-brain-simple-capture",
   });
   section.createEl("h2", { text: "Capture" });
-  section.createEl("p", {
-    cls: "second-brain-muted",
-    text: "A note for today. Save with the button or Ctrl/⌘ + Enter.",
-  });
 
   const textarea = section.createEl("textarea", {
     cls: "second-brain-simple-capture-input",
@@ -126,16 +122,30 @@ function renderMonthMap(
   const header = section.createDiv({ cls: "second-brain-month-header" });
   const previous = header.createEl("button", {
     text: "‹",
-    cls: "second-brain-iconbtn",
+    cls: "second-brain-month-arrow",
     attr: { title: "Previous month", "aria-label": "Previous month" },
   });
   previous.addEventListener("click", () => cb.changeMonth(shiftMonth(state.month, -1)));
 
   header.createEl("h2", { text: monthLabel(state.month) });
 
+  const metric = header.createEl("select", {
+    cls: "second-brain-simple-metric",
+    attr: {
+      title: "Calendar activity metric",
+      "aria-label": "Calendar activity metric",
+    },
+  });
+  const capturesOption = metric.createEl("option", { text: "Captures" });
+  capturesOption.value = "captures";
+  const wordsOption = metric.createEl("option", { text: "Words" });
+  wordsOption.value = "words";
+  metric.value = state.metric;
+  metric.addEventListener("change", () => cb.setMetric(metric.value as ActivityMetric));
+
   const next = header.createEl("button", {
     text: "›",
-    cls: "second-brain-iconbtn",
+    cls: "second-brain-month-arrow",
     attr: { title: "Next month", "aria-label": "Next month" },
   });
   const currentMonth = todayISO().slice(0, 7);
@@ -144,19 +154,6 @@ function renderMonthMap(
   } else {
     next.addEventListener("click", () => cb.changeMonth(shiftMonth(state.month, 1)));
   }
-
-  const metricRow = section.createDiv({ cls: "second-brain-month-metric-row" });
-  metricRow.createSpan({ text: "Activity", cls: "second-brain-muted" });
-  const metric = metricRow.createEl("select", {
-    cls: "second-brain-simple-metric",
-    attr: { "aria-label": "Calendar activity metric" },
-  });
-  const capturesOption = metric.createEl("option", { text: "Captures" });
-  capturesOption.value = "captures";
-  const wordsOption = metric.createEl("option", { text: "Words" });
-  wordsOption.value = "words";
-  metric.value = state.metric;
-  metric.addEventListener("change", () => cb.setMetric(metric.value as ActivityMetric));
 
   const grid = section.createDiv({ cls: "second-brain-month-grid" });
   for (const label of ["M", "T", "W", "T", "F", "S", "S"]) {
@@ -173,7 +170,7 @@ function renderMonthMap(
   const today = todayISO();
   for (const day of activity) {
     const value = day[state.metric];
-    const level = value === 0 ? 0 : Math.max(1, Math.ceil((value / maxValue) * 4));
+    const level = value === 0 ? 0 : Math.max(1, Math.ceil((value / maxValue) * 6));
     const inRange = day.date >= state.rangeStart && day.date <= state.rangeEnd;
     const cell = grid.createEl("button", {
       cls: [
@@ -199,13 +196,6 @@ function renderMonthMap(
       cell.addEventListener("click", () => cb.selectCalendarDate(day.date));
     }
   }
-
-  section.createEl("p", {
-    cls: "second-brain-month-help",
-    text: state.rangeAnchor
-      ? "Choose the last day of the range."
-      : "Tap one day, then another, to select a range.",
-  });
 }
 
 function renderRangeReview(
@@ -386,10 +376,11 @@ function monthEnd(month: string): string {
 
 function monthLabel(month: string): string {
   const [year, monthNumber] = month.split("-").map(Number);
-  return new Date(year, monthNumber - 1, 1).toLocaleDateString("en-US", {
-    month: "long",
-    year: "numeric",
-  });
+  const shortMonth = new Date(year, monthNumber - 1, 1).toLocaleDateString(
+    "en-US",
+    { month: "short" }
+  );
+  return `${shortMonth} ’${String(year).slice(-2)}`;
 }
 
 function longDateLabel(date: string): string {
