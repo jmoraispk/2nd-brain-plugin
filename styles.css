@@ -1036,6 +1036,30 @@ button.second-brain-month-day[disabled] {
   padding-bottom: 12px;
 }
 
+.second-brain-prompt-setting {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.second-brain-prompt-setting .setting-item-info,
+.second-brain-prompt-setting .setting-item-control,
+.second-brain-prompt-setting textarea {
+  width: 100%;
+}
+
+.second-brain-prompt-setting .setting-item-control {
+  margin-top: 10px;
+}
+
+.second-brain-prompt-setting textarea {
+  box-sizing: border-box;
+  min-height: 320px;
+  font-family: var(--font-monospace);
+  font-size: 13px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
 .second-brain-troubleshoot-item {
   margin: 6px 0;
   padding: 8px 0;

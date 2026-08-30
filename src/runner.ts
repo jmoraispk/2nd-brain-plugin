@@ -121,6 +121,7 @@ export async function runCommand(
       settings.provider === "anthropic"
         ? settings.anthropicModel
         : settings.openaiModel,
+    promptSha1: await sha1Hex(command.systemPrompt),
     inputs: inputFingerprints,
   };
 

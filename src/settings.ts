@@ -1,7 +1,11 @@
 import { App, PluginSettingTab, Setting, Notice } from "obsidian";
 import SecondBrainPlugin from "../main";
 import { Command } from "./types";
-import { BUILT_IN_COMMANDS, getEffectiveCommands } from "./commands";
+import {
+  BUILT_IN_COMMANDS,
+  DATE_RANGE_REVIEW_COMMAND,
+  getEffectiveCommands,
+} from "./commands";
 import { CommandEditModal } from "./commandEditModal";
 import { testConnection } from "./llm";
 import { LogsModal } from "./errorLog";
@@ -42,6 +46,8 @@ export interface SecondBrainSettings {
   logsFolder: string;
   dailyLogPathTemplate: string;
   reviewsPathTemplate: string;
+  /** Custom system prompt for the simplified dashboard's date-range review. */
+  simplifiedReviewPrompt?: string;
   /** @deprecated as of v0.2.0 — migrated into customCommands. Kept for read-time migration only. */
   reviewPromptOverride?: string;
   customCommands: Command[];
@@ -94,6 +100,9 @@ export class SecondBrainSettingTab extends PluginSettingTab {
     this.collapsible(containerEl, "Task routing", false, (body) =>
       this.renderTaskRouting(body)
     );
+    this.collapsible(containerEl, "Prompts", false, (body) =>
+      this.renderPrompts(body)
+    );
     this.collapsible(containerEl, "Paths", false, (body) =>
       this.renderPaths(body)
     );
@@ -127,6 +136,43 @@ export class SecondBrainSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
             await this.plugin.refreshOpenViews();
           })
+      );
+  }
+
+  private renderPrompts(containerEl: HTMLElement) {
+    containerEl.createEl("p", {
+      cls: "second-brain-muted",
+      text: "These are the instructions sent to the model. Changes apply the next time you press Review, including for a date range you already reviewed.",
+    });
+
+    const effectivePrompt =
+      this.plugin.settings.simplifiedReviewPrompt?.trim() ||
+      DATE_RANGE_REVIEW_COMMAND.systemPrompt;
+    const promptSetting = new Setting(containerEl)
+      .setName("Simplified review")
+      .setDesc(
+        "The exact system prompt used by the Review button on the simplified dashboard. Your selected captures are sent separately."
+      )
+      .addTextArea((text) => {
+        text.setValue(effectivePrompt).onChange(async (value) => {
+          this.plugin.settings.simplifiedReviewPrompt = value;
+          await this.plugin.saveSettings();
+        });
+        text.inputEl.rows = 20;
+        text.inputEl.setAttribute("aria-label", "Simplified review prompt");
+      });
+    promptSetting.settingEl.addClass("second-brain-prompt-setting");
+
+    new Setting(containerEl)
+      .setName("Restore review prompt")
+      .setDesc("Replace your edited prompt with the built-in facts-first prompt.")
+      .addButton((button) =>
+        button.setButtonText("Reset to default").onClick(async () => {
+          this.plugin.settings.simplifiedReviewPrompt = undefined;
+          await this.plugin.saveSettings();
+          new Notice("Reset the simplified review prompt.");
+          this.display();
+        })
       );
   }
 

@@ -23,6 +23,7 @@ export interface ReviewMetadata {
   command: string;
   provider: string;
   model: string;
+  promptSha1?: string;
   generatedAt: string;
   inputs: InputFingerprint[];
 }
@@ -46,6 +47,7 @@ export function buildFrontmatter(meta: ReviewMetadata): string {
   lines.push(`sb-command: ${meta.command}`);
   lines.push(`sb-provider: ${meta.provider}`);
   lines.push(`sb-model: ${meta.model}`);
+  if (meta.promptSha1) lines.push(`sb-prompt-sha1: ${meta.promptSha1}`);
   lines.push(`sb-generated-at: ${meta.generatedAt}`);
   if (meta.inputs.length === 0) {
     lines.push("sb-inputs: []");
@@ -114,6 +116,11 @@ export function parseReviewMetadata(content: string): ReviewMetadata | null {
       out.model = mod[1];
       continue;
     }
+    const prompt = line.match(/^sb-prompt-sha1:\s*([0-9a-f]+)\s*$/);
+    if (prompt) {
+      out.promptSha1 = prompt[1];
+      continue;
+    }
     const gen = line.match(/^sb-generated-at:\s*(.+?)\s*$/);
     if (gen) {
       out.generatedAt = gen[1];
@@ -153,6 +160,7 @@ export function metadataMatches(
   if (existing.command !== current.command) return false;
   if (existing.provider !== current.provider) return false;
   if (existing.model !== current.model) return false;
+  if (existing.promptSha1 !== current.promptSha1) return false;
   // Bumping plugin version invalidates the cache so prompt edits take effect.
   if (existing.sbVersion !== current.sbVersion) return false;
   if (existing.inputs.length !== current.inputs.length) return false;
@@ -178,6 +186,7 @@ export function describeDrift(
     out.push(`provider: ${existing.provider} → ${current.provider}`);
   if (existing.model !== current.model)
     out.push(`model: ${existing.model} → ${current.model}`);
+  if (existing.promptSha1 !== current.promptSha1) out.push("prompt changed");
   if (existing.sbVersion !== current.sbVersion)
     out.push(`plugin: v${existing.sbVersion} → v${current.sbVersion}`);
 

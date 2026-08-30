@@ -524,13 +524,19 @@ export class SecondBrainView extends ItemView {
 
   private async runSimplifiedReview(): Promise<void> {
     const { rangeStart: start, rangeEnd: end } = this.simplifiedState;
+    const reviewCommand: Command = {
+      ...DATE_RANGE_REVIEW_COMMAND,
+      systemPrompt:
+        this.plugin.settings.simplifiedReviewPrompt?.trim() ||
+        DATE_RANGE_REVIEW_COMMAND.systemPrompt,
+    };
     this.simplifiedState.rangeAnchor = undefined;
     const progress = new Notice(`Reviewing ${start} to ${end}…`, 0);
     try {
       const result = await runCommand(
         this.app,
         this.plugin.settings,
-        DATE_RANGE_REVIEW_COMMAND,
+        reviewCommand,
         this.plugin.manifest.version,
         start,
         undefined,
@@ -547,7 +553,7 @@ export class SecondBrainView extends ItemView {
         userReview: "",
       };
       await this.render();
-      this.notifyRunResult(DATE_RANGE_REVIEW_COMMAND.label, result);
+      this.notifyRunResult(reviewCommand.label, result);
     } catch (err) {
       this.plugin.errorLog.push("run:review-date-range", err);
       new Notice(
