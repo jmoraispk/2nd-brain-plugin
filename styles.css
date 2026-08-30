@@ -99,6 +99,17 @@
   margin: 0 auto;
 }
 
+/* A real final flex item keeps the last card above fixed Obsidian chrome. */
+.second-brain-container.second-brain-container-simple {
+  padding-bottom: 16px;
+}
+
+.second-brain-simple-bottom-gap {
+  flex: 0 0 calc(130px + env(safe-area-inset-bottom, 0px));
+  width: 100%;
+  pointer-events: none;
+}
+
 .second-brain-simple-card {
   display: flex;
   flex-direction: column;
@@ -208,14 +219,14 @@
 }
 
 .second-brain-simple-metric {
-  width: 86px;
-  min-width: 86px;
+  width: 90px;
+  min-width: 90px;
   padding: 4px 7px;
   border: 1px solid var(--background-modifier-border);
   border-radius: 6px;
   background: var(--background-primary);
   color: var(--text-normal);
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .second-brain-month-grid {
@@ -389,6 +400,14 @@ button.second-brain-month-day[disabled] {
     /* `padding` shorthand used to erase the global mobile-toolbar clearance. */
     padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px));
     scroll-padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .second-brain-container.second-brain-container-simple {
+    padding-bottom: 12px;
+  }
+
+  .second-brain-simple-bottom-gap {
+    flex-basis: calc(150px + env(safe-area-inset-bottom, 0px));
   }
 
   .second-brain-simple-card {

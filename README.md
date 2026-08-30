@@ -144,6 +144,7 @@ frontmatter field.
 
 ## Release log
 
+- v0.16.4 — **Full month label + explicit bottom gap.** Calendar navigation now reads `‹ August 2026 ›`; the Captures / Words selector uses a 15px font in a compact 90px box. Simplified mode ends with a real 150px mobile spacer after Review so fixed Obsidian navigation cannot cover the panel.
 - v0.16.3 — **Calendar header alignment.** The month navigation is grouped as `‹ Aug ’26 ›`, with the Captures / Words selector moved outside the arrows. The selector is slightly narrower with a 1px larger font.
 - v0.16.2 — **Facts-first reviews + mobile clearance.** Simplified Capture and Review headings are centered. Mobile keeps a real 150px bottom safe area instead of accidentally resetting it to 12px, so Obsidian/browser navigation no longer covers the final action. Range reviews now output only factual bullets for Key progress, Main lessons, Unique events that mattered, and optional evidence-based Health statistics.
 - v0.16.1 — **Compact activity calendar.** Capture and calendar helper copy is removed to save vertical space. The month header is now one line with small arrows, an abbreviated date (`Aug ’26`), and the Captures / Words selector. Daily frequency uses a broader six-level color scale.

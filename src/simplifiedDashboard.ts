@@ -60,6 +60,10 @@ export async function renderSimplifiedDashboard(
   const activity = await loadMonthActivity(plugin, state.month);
   renderMonthMap(body, state, activity, cb);
   renderRangeReview(body, state, activity, reviewState, cb, plugin, viewComponent);
+  body.createDiv({
+    cls: "second-brain-simple-bottom-gap",
+    attr: { "aria-hidden": "true" },
+  });
 }
 
 function renderCapture(
@@ -377,11 +381,10 @@ function monthEnd(month: string): string {
 
 function monthLabel(month: string): string {
   const [year, monthNumber] = month.split("-").map(Number);
-  const shortMonth = new Date(year, monthNumber - 1, 1).toLocaleDateString(
-    "en-US",
-    { month: "short" }
-  );
-  return `${shortMonth} ’${String(year).slice(-2)}`;
+  return new Date(year, monthNumber - 1, 1).toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
 }
 
 function longDateLabel(date: string): string {

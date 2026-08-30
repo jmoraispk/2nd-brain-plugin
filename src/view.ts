@@ -101,6 +101,10 @@ export class SecondBrainView extends ItemView {
     const container = this.containerEl.children[1] as HTMLElement;
     container.empty();
     container.addClass("second-brain-container");
+    container.classList.toggle(
+      "second-brain-container-simple",
+      this.plugin.settings.dashboardMode === "simplified"
+    );
 
     if (this.plugin.settings.dashboardMode === "simplified") {
       this.renderSimplifiedTopBar(container);
