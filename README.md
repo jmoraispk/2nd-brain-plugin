@@ -144,6 +144,7 @@ frontmatter field.
 
 ## Release log
 
+- v0.16.8 — **Full-width simplified actions.** Capture, Review, and Save reflection now span their card width on laptop as well as mobile while retaining the compact 44px action height.
 - v0.16.7 — **Consistent compact actions.** Review now has the same 44px height as Capture despite Obsidian's generic button styling, the reflection action reads `Save reflection`, and the full month label has a little horizontal breathing room.
 - v0.16.6 — **Editable simplified review prompt.** Settings → Prompts shows the exact system prompt used by the simplified Review button, supports live editing and reset to the built-in default, and invalidates cached reviews whenever the prompt changes.
 - v0.16.5 — **Matching Capture and Review actions.** The simplified dashboard's Review button now matches Capture's responsive dimensions and uses the shorter `Review` label.

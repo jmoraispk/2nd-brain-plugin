@@ -1,10 +1,11 @@
 {
   "name": "obsidian-second-brain",
-  "version": "0.16.7",
+  "version": "0.16.8",
   "description": "Second Brain plugin for Obsidian — capture + daily review with Claude",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
+    "test": "node --test tests/*.test.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production"
   },
   "author": "João Morais",
