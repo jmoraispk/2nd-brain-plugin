@@ -238,8 +238,8 @@ function renderRangeReview(
   });
 
   const run = section.createEl("button", {
-    text: "Review selected captures",
-    cls: "second-brain-button second-brain-button-primary second-brain-simple-review-button",
+    text: "Review",
+    cls: "second-brain-button second-brain-button-primary second-brain-simple-review-button second-brain-simple-review-run",
   });
   if (captures === 0) run.setAttribute("disabled", "true");
   run.addEventListener("click", async () => {
@@ -250,7 +250,7 @@ function renderRangeReview(
       await cb.runReview();
     } finally {
       run.removeAttribute("disabled");
-      run.setText("Review selected captures");
+      run.setText("Review");
     }
   });
 

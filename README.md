@@ -36,7 +36,7 @@ The default Simplified dashboard puts the whole loop on one screen:
 
 1. **Capture** a plain note → appends `[HH:MM] ...` to `🧑 Me/Logs/<today>.md`.
 2. Use the one-month activity map to see capture counts or word counts per day.
-3. Select any date range inside that month and press **Review selected captures**.
+3. Select any date range inside that month and press **Review**.
 4. Read the AI summary inline and save your own reflection without leaving the dashboard.
 
 Range summaries live at `🤖 AI/Reviews/Custom/<start>--<end>.md`; reflections remain separate under `🧑 Me/Reviews/Custom/`. Settings → Second Brain → Interface can restore the Complete dashboard with Habits, Projects, Review, Think, proposals, and TODOs.
@@ -144,6 +144,7 @@ frontmatter field.
 
 ## Release log
 
+- v0.16.5 — **Matching Capture and Review actions.** The simplified dashboard's Review button now matches Capture's responsive dimensions and uses the shorter `Review` label.
 - v0.16.4 — **Full month label + explicit bottom gap.** Calendar navigation now reads `‹ August 2026 ›`; the Captures / Words selector uses a 15px font in a compact 90px box. Simplified mode ends with a real 150px mobile spacer after Review so fixed Obsidian navigation cannot cover the panel.
 - v0.16.3 — **Calendar header alignment.** The month navigation is grouped as `‹ Aug ’26 ›`, with the Captures / Words selector moved outside the arrows. The selector is slightly narrower with a 1px larger font.
 - v0.16.2 — **Facts-first reviews + mobile clearance.** Simplified Capture and Review headings are centered. Mobile keeps a real 150px bottom safe area instead of accidentally resetting it to 12px, so Obsidian/browser navigation no longer covers the final action. Range reviews now output only factual bullets for Key progress, Main lessons, Unique events that mattered, and optional evidence-based Health statistics.

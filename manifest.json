@@ -1,7 +1,7 @@
 {
   "id": "obsidian-second-brain",
   "name": "Second Brain",
-  "version": "0.16.4",
+  "version": "0.16.5",
   "minAppVersion": "1.5.0",
   "description": "Capture notes and review any date range from a one-month activity map. Mobile-first.",
   "author": "João Morais",

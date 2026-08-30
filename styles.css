@@ -173,6 +173,11 @@
   width: min(220px, 100%);
 }
 
+.second-brain-simple-review-run {
+  align-self: flex-end;
+  width: min(220px, 100%);
+}
+
 .second-brain-month-header {
   display: flex;
   align-items: center;
@@ -424,7 +429,8 @@ button.second-brain-month-day[disabled] {
     border-radius: 7px;
   }
 
-  .second-brain-simple-actions .second-brain-button {
+  .second-brain-simple-actions .second-brain-button,
+  .second-brain-simple-review-run {
     width: 100%;
   }
 }
