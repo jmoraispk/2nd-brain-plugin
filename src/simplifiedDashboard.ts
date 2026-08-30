@@ -120,14 +120,27 @@ function renderMonthMap(
   });
 
   const header = section.createDiv({ cls: "second-brain-month-header" });
-  const previous = header.createEl("button", {
+  const monthNav = header.createDiv({ cls: "second-brain-month-nav" });
+  const previous = monthNav.createEl("button", {
     text: "‹",
     cls: "second-brain-month-arrow",
     attr: { title: "Previous month", "aria-label": "Previous month" },
   });
   previous.addEventListener("click", () => cb.changeMonth(shiftMonth(state.month, -1)));
 
-  header.createEl("h2", { text: monthLabel(state.month) });
+  monthNav.createEl("h2", { text: monthLabel(state.month) });
+
+  const next = monthNav.createEl("button", {
+    text: "›",
+    cls: "second-brain-month-arrow",
+    attr: { title: "Next month", "aria-label": "Next month" },
+  });
+  const currentMonth = todayISO().slice(0, 7);
+  if (state.month >= currentMonth) {
+    next.setAttribute("disabled", "true");
+  } else {
+    next.addEventListener("click", () => cb.changeMonth(shiftMonth(state.month, 1)));
+  }
 
   const metric = header.createEl("select", {
     cls: "second-brain-simple-metric",
@@ -142,18 +155,6 @@ function renderMonthMap(
   wordsOption.value = "words";
   metric.value = state.metric;
   metric.addEventListener("change", () => cb.setMetric(metric.value as ActivityMetric));
-
-  const next = header.createEl("button", {
-    text: "›",
-    cls: "second-brain-month-arrow",
-    attr: { title: "Next month", "aria-label": "Next month" },
-  });
-  const currentMonth = todayISO().slice(0, 7);
-  if (state.month >= currentMonth) {
-    next.setAttribute("disabled", "true");
-  } else {
-    next.addEventListener("click", () => cb.changeMonth(shiftMonth(state.month, 1)));
-  }
 
   const grid = section.createDiv({ cls: "second-brain-month-grid" });
   for (const label of ["M", "T", "W", "T", "F", "S", "S"]) {

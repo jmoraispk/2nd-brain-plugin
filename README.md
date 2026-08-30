@@ -144,6 +144,7 @@ frontmatter field.
 
 ## Release log
 
+- v0.16.3 — **Calendar header alignment.** The month navigation is grouped as `‹ Aug ’26 ›`, with the Captures / Words selector moved outside the arrows. The selector is slightly narrower with a 1px larger font.
 - v0.16.2 — **Facts-first reviews + mobile clearance.** Simplified Capture and Review headings are centered. Mobile keeps a real 150px bottom safe area instead of accidentally resetting it to 12px, so Obsidian/browser navigation no longer covers the final action. Range reviews now output only factual bullets for Key progress, Main lessons, Unique events that mattered, and optional evidence-based Health statistics.
 - v0.16.1 — **Compact activity calendar.** Capture and calendar helper copy is removed to save vertical space. The month header is now one line with small arrows, an abbreviated date (`Aug ’26`), and the Captures / Words selector. Daily frequency uses a broader six-level color scale.
 - v0.16.0 — **Simplified Capture + Review dashboard.** The new default interface removes proposals, TODOs, interviews, and navigation tabs from the daily surface. Capture is now a plain inline note box. A strict one-month calendar shows daily capture or word counts, supports two-click date-range selection, and runs a cached range summary inline beside an append-only personal reflection. The previous Habits / Projects / Review / Think interface remains available as **Complete** mode in Settings.

@@ -163,10 +163,16 @@
 }
 
 .second-brain-month-header {
-  display: grid;
-  grid-template-columns: 28px auto minmax(92px, 1fr) 28px;
+  display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.second-brain-month-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .second-brain-month-header h2 {
@@ -202,15 +208,14 @@
 }
 
 .second-brain-simple-metric {
-  justify-self: end;
-  width: auto;
-  min-width: 92px;
+  width: 86px;
+  min-width: 86px;
   padding: 4px 7px;
   border: 1px solid var(--background-modifier-border);
   border-radius: 6px;
   background: var(--background-primary);
   color: var(--text-normal);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .second-brain-month-grid {
