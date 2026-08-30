@@ -540,37 +540,38 @@ Rules:
 - Be faithful. No fluff. No invented content.
 - Weekly = ISO Mon–Sun. You may only have Mon–today; that's fine.`;
 
-const DATE_RANGE_REVIEW_PROMPT = `You are producing a concise review of captures from a user-selected date range within one calendar month.
+const DATE_RANGE_REVIEW_PROMPT = `You are producing a FACTUAL review of captures from a user-selected date range within one calendar month. This is a record of what actually happened, not coaching, planning, or reflection.
 
-The user message includes "Period range" with the exact inclusive start and end dates. Use that range in the title. You will receive only daily logs that exist inside that range; missing days mean there were no saved captures and should not be invented.
+The user message includes "Period range" with the exact inclusive start and end dates. Use that range in the title. You will receive only daily logs that exist inside the range. A missing day means "no capture available," not that nothing happened.
 
-Produce clean Markdown with this structure:
+Output ONLY this Markdown structure:
 
-# Capture Review — <start date> to <end date>
+# Review — <start date> to <end date>
 
-## Summary
-A tight, faithful synthesis of what the user captured. Group related notes rather than reciting every line.
+## Key progress
+- The most important things completed, advanced, decided, resolved, or materially changed.
 
-## Recurring threads
-Themes, projects, questions, or concerns that appeared on more than one day. Cite the dates.
+## Main lessons
+- Lessons or conclusions the user explicitly stated, or that are directly and strongly supported by multiple factual entries.
 
-## Decisions and commitments
-Things the user decided, promised, scheduled, or explicitly intended to do. Keep their wording where useful.
+## Unique events that mattered
+- Specific non-routine events, milestones, conversations, decisions, setbacks, or experiences that were important in this period.
 
-## Lessons and observations
-Insights the user noticed or learned. Skip this section if there are none.
-
-## Open loops
-Unresolved questions or unfinished items actually present in the captures. Do not turn every sentence into a task.
-
-## Reflection prompts
-At most three specific questions that help the user review this exact range. Each must be grounded in the captures.
+## Health statistics
+- OPTIONAL. Include only when the captures contain enough explicit evidence to count or summarize: exercise sessions, sleep duration/quality, illness, recovery, weight, or similarly concrete health facts.
 
 Rules:
-- Be concise, factual, and faithful. No generic coaching or invented content.
-- Distinguish an idea from a commitment.
-- Mention source dates for important claims.
-- Skip empty sections instead of writing placeholders.`;
+- Bullets only under the section headings. No introductory or closing prose.
+- Use 3–7 bullets per required section when the evidence supports them; use fewer rather than padding.
+- Every bullet must state a fact and end with its supporting date or dates in parentheses, using YYYY-MM-DD.
+- Prioritize significance over frequency. Omit routine details unless they changed the period's outcome.
+- Key progress requires evidence of movement or a decision, not merely an intention or TODO.
+- Main lessons must be the user's actual lesson or a conservative synthesis of repeated evidence. Do not invent advice.
+- Unique events should not duplicate Key progress unless the event itself is independently important.
+- For Health statistics, count only explicit evidence. Say "mentioned on N captured days" when a true session count is uncertain. Never treat a missing capture as a negative result.
+- Omit Health statistics entirely when there is not enough concrete health evidence.
+- Do not add themes, open loops, recommendations, plans, reflection questions, sentiment, or generic coaching.
+- Do not invent, embellish, or infer beyond the captures.`;
 
 /** Simplified dashboard command; range values are supplied by its calendar UI. */
 export const DATE_RANGE_REVIEW_COMMAND: Command = {
