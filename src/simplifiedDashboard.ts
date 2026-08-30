@@ -289,7 +289,7 @@ function renderRangeReview(
   reflection.addEventListener("input", () => cb.setUserReview(reflection.value));
 
   const finish = section.createEl("button", {
-    text: "Finish & save reflection",
+    text: "Save reflection",
     cls: "second-brain-button second-brain-button-primary second-brain-simple-review-button",
   });
   finish.addEventListener("click", () => void cb.finishReview());
