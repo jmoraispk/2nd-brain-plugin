@@ -118,6 +118,11 @@ export class SecondBrainSettingTab extends PluginSettingTab {
     this.collapsible(containerEl, "Logs", false, (body) =>
       this.renderLogs(body)
     );
+
+    containerEl.createEl("p", {
+      cls: "second-brain-settings-version",
+      text: `Second Brain · v${this.plugin.manifest.version}`,
+    });
   }
 
   private renderInterface(containerEl: HTMLElement) {

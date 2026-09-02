@@ -1063,6 +1063,14 @@ button.second-brain-month-day[disabled] {
   padding-bottom: 12px;
 }
 
+.second-brain-settings-version {
+  margin: 16px 0 4px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+  text-align: center;
+}
+
 .second-brain-prompt-setting {
   flex-direction: column;
   align-items: stretch;

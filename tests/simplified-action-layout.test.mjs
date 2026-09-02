@@ -10,7 +10,7 @@ import { build } from "esbuild";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 
-test("simplified controls retain their intended laptop geometry", async () => {
+test("controls and settings footer retain their intended geometry", async () => {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "second-brain-layout-"));
   const profileDir = path.join(tempDir, "edge-profile");
   const debugPort = 9300 + Math.floor(Math.random() * 500);
@@ -24,6 +24,11 @@ test("simplified controls retain their intended laptop geometry", async () => {
       `<!doctype html>
 <style>
   * { box-sizing: border-box; }
+  :root {
+    --font-ui-smaller: 12px;
+    --text-faint: rgb(100, 100, 100);
+    --text-muted: rgb(70, 70, 70);
+  }
   body { margin: 0; }
   .fixture { width: 1000px; }
   ${css}
@@ -41,6 +46,7 @@ test("simplified controls retain their intended laptop geometry", async () => {
     <button class="second-brain-button second-brain-button-primary second-brain-simple-review-button" data-action="reflection">Save reflection</button>
   </section>
   <button class="second-brain-simple-metric" data-control="metric">Captures</button>
+  <p class="second-brain-settings-version" data-control="settings-version">Second Brain · v9.8.7</p>
 </main>
 <script>
   const width = (selector) => document.querySelector(selector).getBoundingClientRect().width;
@@ -54,6 +60,9 @@ test("simplified controls retain their intended laptop geometry", async () => {
   metricText.selectNodeContents(metric);
   const metricBounds = metric.getBoundingClientRect();
   const metricTextBounds = metricText.getBoundingClientRect();
+  const settingsVersionStyle = getComputedStyle(
+    document.querySelector('[data-control="settings-version"]')
+  );
   const measurements = {
     capture: width('[data-action="capture"]'),
     captureContainer: width('[data-container="capture"]'),
@@ -65,7 +74,10 @@ test("simplified controls retain their intended laptop geometry", async () => {
       metricBounds.left + metricBounds.width / 2 -
       (metricTextBounds.left + metricTextBounds.width / 2)
     ),
-    metricTextAlign: getComputedStyle(metric).textAlign
+    metricTextAlign: getComputedStyle(metric).textAlign,
+    settingsVersionColor: settingsVersionStyle.color,
+    settingsVersionFontSize: settingsVersionStyle.fontSize,
+    settingsVersionTextAlign: settingsVersionStyle.textAlign
   };
   const mobileFrame = document.createElement('iframe');
   mobileFrame.style.width = '390px';
@@ -105,6 +117,13 @@ test("simplified controls retain their intended laptop geometry", async () => {
     assert.equal(widths.metricTextAlign, "center", "Metric label should be centered");
     assert.ok(widths.metricCenterOffset < 0.5, "Metric text should be geometrically centered");
     assert.equal(widths.metricMobileHeight, 44, "Mobile metric target should be 44px high");
+    assert.equal(widths.settingsVersionTextAlign, "center", "Version should be centered");
+    assert.equal(widths.settingsVersionFontSize, "12px", "Version should use smaller UI text");
+    assert.equal(
+      widths.settingsVersionColor,
+      "rgb(70, 70, 70)",
+      "Version should use the readable muted Obsidian text token"
+    );
   } finally {
     await cleanupBrowser(browser, debugPort, profileDir, tempDir);
   }
