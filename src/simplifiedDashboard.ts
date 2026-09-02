@@ -1,9 +1,58 @@
-import { Component, MarkdownRenderer, TFile, TFolder } from "obsidian";
+import { Component, MarkdownRenderer, Menu, TFile, TFolder } from "obsidian";
 import SecondBrainPlugin from "../main";
 import { applyDatePlaceholders, todayISO } from "./paths";
 import { ReviewTabState } from "./reviewTab";
 
 export type ActivityMetric = "captures" | "words";
+
+export function nextActivityMetric(metric: ActivityMetric): ActivityMetric {
+  return metric === "captures" ? "words" : "captures";
+}
+
+export type MetricPressResult = "short" | "long" | "none";
+
+export interface LongPressController {
+  start: () => void;
+  finish: () => MetricPressResult;
+  cancel: () => void;
+}
+
+export function createLongPressController(
+  onLongPress: () => void,
+  delay = 500
+): LongPressController {
+  let state: "idle" | "pressing" | "long" = "idle";
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const clearTimer = () => {
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    timer = undefined;
+  };
+
+  return {
+    start: () => {
+      clearTimer();
+      state = "pressing";
+      timer = setTimeout(() => {
+        timer = undefined;
+        state = "long";
+        onLongPress();
+      }, delay);
+    },
+    finish: () => {
+      if (state === "idle") return "none";
+      const result = state === "long" ? "long" : "short";
+      clearTimer();
+      state = "idle";
+      return result;
+    },
+    cancel: () => {
+      clearTimer();
+      state = "idle";
+    },
+  };
+}
 
 export interface SimplifiedDashboardState {
   captureDraft: string;
@@ -146,19 +195,7 @@ function renderMonthMap(
     next.addEventListener("click", () => cb.changeMonth(shiftMonth(state.month, 1)));
   }
 
-  const metric = header.createEl("select", {
-    cls: "second-brain-simple-metric",
-    attr: {
-      title: "Calendar activity metric",
-      "aria-label": "Calendar activity metric",
-    },
-  });
-  const capturesOption = metric.createEl("option", { text: "Captures" });
-  capturesOption.value = "captures";
-  const wordsOption = metric.createEl("option", { text: "Words" });
-  wordsOption.value = "words";
-  metric.value = state.metric;
-  metric.addEventListener("change", () => cb.setMetric(metric.value as ActivityMetric));
+  renderActivityMetricControl(header, state.metric, cb.setMetric);
 
   const grid = section.createDiv({ cls: "second-brain-month-grid" });
   for (const label of ["M", "T", "W", "T", "F", "S", "S"]) {
@@ -201,6 +238,141 @@ function renderMonthMap(
       cell.addEventListener("click", () => cb.selectCalendarDate(day.date));
     }
   }
+}
+
+export function renderActivityMetricControl(
+  parent: HTMLElement,
+  currentMetric: ActivityMetric,
+  setMetric: (metric: ActivityMetric) => void
+): HTMLButtonElement {
+  const metric = parent.createEl("button", {
+    text: currentMetric === "captures" ? "Captures" : "Words",
+    cls: "second-brain-simple-metric",
+    attr: {
+      type: "button",
+      title: "Click to switch metric. Hold to choose.",
+      "aria-label": `Calendar activity metric: ${
+        currentMetric === "captures" ? "Captures" : "Words"
+      }. Press Enter or Space to switch; press Arrow Down to choose.`,
+      "aria-haspopup": "menu",
+      "aria-expanded": "false",
+    },
+  });
+
+  const showMetricMenu = () => {
+    if (metric.getAttribute("aria-expanded") === "true") return;
+    metric.setAttribute("aria-expanded", "true");
+
+    const menu = new Menu().setNoIcon();
+    for (const [value, label] of [
+      ["captures", "Captures"],
+      ["words", "Words"],
+    ] as const) {
+      menu.addItem((item) =>
+        item
+          .setTitle(label)
+          .setChecked(value === currentMetric)
+          .onClick(() => setMetric(value))
+      );
+    }
+    menu.onHide(() => {
+      if (!metric.isConnected) return;
+      metric.setAttribute("aria-expanded", "false");
+      metric.focus();
+    });
+
+    const bounds = metric.getBoundingClientRect();
+    menu.showAtPosition(
+      { x: bounds.left, y: bounds.bottom + 4, width: bounds.width, overlap: true },
+      metric.ownerDocument
+    );
+  };
+
+  const press = createLongPressController(showMetricMenu);
+  let activePointerId: number | undefined;
+  let pressOrigin: { x: number; y: number } | undefined;
+  let suppressPostLongPressClick = false;
+
+  const cancelPress = () => {
+    activePointerId = undefined;
+    pressOrigin = undefined;
+    press.cancel();
+  };
+
+  metric.addEventListener("pointerdown", (event) => {
+    if (!event.isPrimary || event.button !== 0) return;
+    activePointerId = event.pointerId;
+    pressOrigin = { x: event.clientX, y: event.clientY };
+    metric.setPointerCapture(event.pointerId);
+    press.start();
+  });
+  metric.addEventListener("pointermove", (event) => {
+    if (event.pointerId !== activePointerId || !pressOrigin) return;
+    if (Math.hypot(event.clientX - pressOrigin.x, event.clientY - pressOrigin.y) <= 10) {
+      return;
+    }
+    const pointerId = activePointerId;
+    cancelPress();
+    if (pointerId !== undefined && metric.hasPointerCapture(pointerId)) {
+      metric.releasePointerCapture(pointerId);
+    }
+  });
+  metric.addEventListener("pointerup", (event) => {
+    if (event.pointerId !== activePointerId) return;
+    const bounds = metric.getBoundingClientRect();
+    const releasedInside =
+      event.clientX >= bounds.left &&
+      event.clientX <= bounds.right &&
+      event.clientY >= bounds.top &&
+      event.clientY <= bounds.bottom;
+    activePointerId = undefined;
+    pressOrigin = undefined;
+    if (metric.hasPointerCapture(event.pointerId)) {
+      metric.releasePointerCapture(event.pointerId);
+    }
+    if (!releasedInside) {
+      press.cancel();
+      return;
+    }
+    const result = press.finish();
+    if (result === "long") {
+      suppressPostLongPressClick = true;
+      setTimeout(() => {
+        suppressPostLongPressClick = false;
+      }, 0);
+    } else if (result === "short") {
+      setMetric(nextActivityMetric(currentMetric));
+    }
+  });
+  metric.addEventListener("pointercancel", (event) => {
+    if (event.pointerId !== activePointerId) return;
+    cancelPress();
+  });
+  metric.addEventListener("lostpointercapture", (event) => {
+    if (event.pointerId !== activePointerId) return;
+    cancelPress();
+  });
+  metric.addEventListener("click", (event) => {
+    if (suppressPostLongPressClick) {
+      suppressPostLongPressClick = false;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    if (event.detail === 0) {
+      setMetric(nextActivityMetric(currentMetric));
+    }
+  });
+  metric.addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowDown") return;
+    event.preventDefault();
+    showMetricMenu();
+  });
+  metric.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  });
+  return metric;
 }
 
 function renderRangeReview(

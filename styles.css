@@ -219,14 +219,38 @@
 }
 
 .second-brain-simple-metric {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 90px;
   min-width: 90px;
+  height: 30px;
+  min-height: 30px;
   padding: 4px 7px;
   border: 1px solid var(--background-modifier-border);
   border-radius: 6px;
   background: var(--background-primary);
   color: var(--text-normal);
+  box-shadow: none;
+  font-family: inherit;
   font-size: 15px;
+  line-height: 1;
+  text-align: center;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.second-brain-simple-metric:hover,
+.second-brain-simple-metric[aria-expanded="true"] {
+  border-color: var(--background-modifier-border-hover);
+  background: var(--background-modifier-hover);
+}
+
+.second-brain-simple-metric:focus-visible {
+  outline: 2px solid var(--background-modifier-border-focus);
+  outline-offset: 2px;
 }
 
 .second-brain-month-grid {
@@ -394,6 +418,13 @@ button.second-brain-month-day[disabled] {
   background: var(--background-primary);
 }
 
+@media (pointer: coarse) {
+  .second-brain-simple-metric {
+    height: 44px;
+    min-height: 44px;
+  }
+}
+
 @media (max-width: 520px) {
   .second-brain-container {
     padding: 12px;
@@ -422,6 +453,11 @@ button.second-brain-month-day[disabled] {
   button.second-brain-month-day {
     min-height: 48px;
     border-radius: 7px;
+  }
+
+  .second-brain-simple-metric {
+    height: 44px;
+    min-height: 44px;
   }
 
 }

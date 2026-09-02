@@ -505,9 +505,21 @@ export class SecondBrainView extends ItemView {
     void this.render();
   }
 
-  private setSimplifiedMetric(metric: ActivityMetric) {
+  private async setSimplifiedMetric(metric: ActivityMetric) {
     this.simplifiedState.metric = metric;
-    void this.render();
+    await this.render();
+    const container = this.containerEl.children[1] as HTMLElement;
+    const active = container.ownerDocument.activeElement;
+    if (
+      active?.isConnected &&
+      active !== container.ownerDocument.body &&
+      active !== container
+    ) {
+      return;
+    }
+    container
+      .querySelector<HTMLButtonElement>(".second-brain-simple-metric")
+      ?.focus({ preventScroll: true });
   }
 
   private clearSimplifiedReview() {
