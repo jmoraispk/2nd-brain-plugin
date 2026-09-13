@@ -144,6 +144,7 @@ frontmatter field.
 
 ## Release log
 
+- v0.16.11 — **Open created files from notifications.** Successful capture, interview, project, goal, habit, saved-review, and generated-review notices now end with a clickable `· Open file` action that opens the exact vault file.
 - v0.16.10 — **Visible installed version.** Settings now ends with a quiet footer that reads the running plugin version from its manifest, making update status easy to confirm.
 - v0.16.9 — **Tap-to-cycle activity metric.** The centered Captures / Words control advances on a short click or tap; holding it opens the full metric menu.
 - v0.16.8 — **Full-width simplified actions.** Capture, Review, and Save reflection now span their card width on laptop as well as mobile while retaining the compact 44px action height.

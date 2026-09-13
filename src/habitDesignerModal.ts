@@ -19,6 +19,7 @@ import { resolveRoute } from "./modelRoutes";
 import { createHabitFromDesigner } from "./habits";
 import { WHEEL_AREAS, loadProjects } from "./projects";
 import { loadGoals } from "./goals";
+import { showFileNotice } from "./fileNotice";
 
 const DESIGNER_SYSTEM = `You are a habit DESIGNER. Turn the user's rough description of a habit they want into a habit that actually sticks, using established habit science:
 
@@ -209,7 +210,7 @@ export class HabitDesignerModal extends Modal {
       );
       this.onCreated(file);
       this.close();
-      new Notice(`Designed habit: ${file.path}`);
+      showFileNotice(this.app, "Designed habit", file);
     } catch (err) {
       this.plugin.errorLog.push("habitDesigner", err);
       new Notice(

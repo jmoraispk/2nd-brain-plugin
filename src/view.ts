@@ -49,6 +49,7 @@ import {
   renderSimplifiedDashboard,
   SimplifiedDashboardState,
 } from "./simplifiedDashboard";
+import { showFileNotice } from "./fileNotice";
 
 export const VIEW_TYPE_SECOND_BRAIN = "second-brain-view";
 
@@ -442,7 +443,7 @@ export class SecondBrainView extends ItemView {
         todayISO()
       );
       this.simplifiedState.captureDraft = "";
-      new Notice(`Captured → ${path}`);
+      showFileNotice(this.app, "Captured", path);
       await this.render();
     } catch (err) {
       this.plugin.errorLog.push("simple-capture", err);
@@ -728,7 +729,7 @@ export class SecondBrainView extends ItemView {
         anchor,
         today
       );
-      new Notice(`Saved your review to ${userFile.path}`);
+      showFileNotice(this.app, "Saved your review", userFile);
       this.reviewState = defaultReviewTabState();
       if (this.plugin.settings.dashboardMode === "complete") {
         await this.app.workspace.getLeaf(false).openFile(userFile);
@@ -762,8 +763,10 @@ export class SecondBrainView extends ItemView {
    */
   private notifyRunResult(label: string, result: RunResult) {
     if (result.kind === "cache-hit") {
-      new Notice(
-        `${label}: ✅ inputs unchanged since last run — opened existing review`,
+      showFileNotice(
+        this.app,
+        `${label}: ✅ inputs unchanged since last run`,
+        result.file,
         5000
       );
       return;
@@ -772,13 +775,15 @@ export class SecondBrainView extends ItemView {
       const reason = result.drift.slice(0, 3).join(", ");
       const more =
         result.drift.length > 3 ? ` (+${result.drift.length - 3} more)` : "";
-      new Notice(
+      showFileNotice(
+        this.app,
         `${label}: 🔄 regenerated — ${reason}${more}`,
+        result.file,
         7000
       );
       return;
     }
-    new Notice(`${label}: wrote ${result.file.path}`);
+    showFileNotice(this.app, `${label}: wrote file`, result.file);
   }
 
   /** Ask sub-tab: two-pass vault Q&A with a busy state + re-render. */
@@ -1032,7 +1037,7 @@ class CaptureModal extends Modal {
           content,
           this.targetDate
         );
-        new Notice(`Captured → ${path}`);
+        showFileNotice(this.app, "Captured", path);
       }
       this.onSaved?.();
     } catch (err) {

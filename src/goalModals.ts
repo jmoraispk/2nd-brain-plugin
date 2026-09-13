@@ -9,6 +9,7 @@ import { WHEEL_AREAS, loadProjects } from "./projects";
 import { createGoal, createGoalFromDesigner, addGoalRecord, GoalMeasure, Goal } from "./goals";
 import { callLLM } from "./llm";
 import { resolveRoute } from "./modelRoutes";
+import { showFileNotice } from "./fileNotice";
 
 const GOAL_DESIGNER_SYSTEM = `You are a GOAL designer. Turn a spoken description into a well-formed, BOOSTED goal — one that's clear, measurable, and motivating. A goal is a desired OUTCOME or capability ("bench 200 lbs", "read 24 books this year"), NOT a recurring habit.
 
@@ -153,7 +154,7 @@ export class GoalDesignerModal extends Modal {
       );
       this.onCreated(file);
       this.close();
-      new Notice(`Created goal: ${file.path}`);
+      showFileNotice(this.app, "Created goal", file);
     } catch (err) {
       this.plugin.errorLog.push("goalDesigner", err);
       new Notice(
@@ -316,7 +317,7 @@ export class GoalCreateModal extends Modal {
       });
       this.onCreated(file);
       this.close();
-      new Notice(`Created goal: ${file.path}`);
+      showFileNotice(this.app, "Created goal", file);
     } catch (err) {
       new Notice(`Create failed: ${(err as Error).message}`);
     }

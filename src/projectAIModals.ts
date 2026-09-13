@@ -12,6 +12,7 @@ import { callLLM } from "./llm";
 import { resolveRoute } from "./modelRoutes";
 import { WHEEL_AREAS, Project, createProjectWithBody } from "./projects";
 import { replaceSection } from "./projectMutate";
+import { showFileNotice } from "./fileNotice";
 
 const EDITABLE_SECTIONS = ["Current state", "Active TODOs", "History"] as const;
 
@@ -163,7 +164,7 @@ export class ProjectTalkCreateModal extends Modal {
       );
       this.onCreated(file);
       this.close();
-      new Notice(`Created project: ${file.path}`);
+      showFileNotice(this.app, "Created project", file);
     } catch (err) {
       this.plugin.errorLog.push("projectTalkCreate", err);
       new Notice(

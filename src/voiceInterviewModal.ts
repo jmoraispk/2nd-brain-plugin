@@ -13,6 +13,7 @@ import { callLLM } from "./llm";
 import { resolveRoute } from "./modelRoutes";
 import { appendCapture } from "./capture";
 import { resolveDailyLogPath, todayISO } from "./paths";
+import { showFileNotice } from "./fileNotice";
 
 const SYNTH_SYSTEM = `From this voice interview about the user's day, write a concise first-person journal capture in THEIR voice — 2–5 sentences or tight bullets covering what they shared. Faithful, no fluff, no advice. Output only the capture text.`;
 
@@ -249,7 +250,7 @@ export class VoiceInterviewModal extends Modal {
         entry,
         this.targetDate
       );
-      new Notice(`Captured your voice interview → ${path}`);
+      showFileNotice(this.app, "Captured your voice interview", path);
       this.onSaved?.();
       this.close();
     } catch (err) {

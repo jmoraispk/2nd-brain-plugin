@@ -15,6 +15,7 @@ import { resolveRoute } from "./modelRoutes";
 import { appendCapture } from "./capture";
 import { resolveDailyLogPath, todayISO } from "./paths";
 import { TFile } from "obsidian";
+import { showFileNotice } from "./fileNotice";
 
 const MAX_QUESTIONS = 6;
 
@@ -194,7 +195,7 @@ export class InterviewModal extends Modal {
         entry,
         this.targetDate
       );
-      new Notice(`Captured your interview → ${path}`);
+      showFileNotice(this.app, "Captured your interview", path);
       this.onSaved?.();
       this.close();
     } catch (err) {

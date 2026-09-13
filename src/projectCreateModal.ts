@@ -1,5 +1,6 @@
 import { App, Modal, Notice, TFile } from "obsidian";
 import { createProject, WHEEL_AREAS } from "./projects";
+import { showFileNotice } from "./fileNotice";
 
 /**
  * "+ New Project" modal. Inherits the capture-modal chrome (anchored near
@@ -117,7 +118,7 @@ export class ProjectCreateModal extends Modal {
       const file = await createProject(this.app, name, areaPath);
       this.onCreated(file);
       this.close();
-      new Notice(`Created project: ${file.path}`);
+      showFileNotice(this.app, "Created project", file);
     } catch (err) {
       new Notice(`Create failed: ${(err as Error).message}`);
     }
