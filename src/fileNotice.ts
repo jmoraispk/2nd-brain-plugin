@@ -14,7 +14,7 @@ export function showFileNotice(
   if (!(file instanceof TFile)) return new Notice(message, duration);
 
   const fragment = document.createDocumentFragment();
-  fragment.append(`${message} · `);
+  fragment.append(`${message} → ${file.path} · `);
   const open = document.createElement("a");
   open.textContent = "Open file";
   open.href = "#";

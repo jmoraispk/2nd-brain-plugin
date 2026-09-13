@@ -25,7 +25,10 @@ test("file notice opens the exact file and dismisses itself", async () => {
 
   const notice = showFileNotice(app, "Activity summary created", file);
 
-  assert.equal(notice.message.textContent, "Activity summary created · Open file");
+  assert.equal(
+    notice.message.textContent,
+    "Activity summary created → Reports/2026-09-13.md · Open file"
+  );
   const link = notice.message.children.at(-1);
   assert.equal(link.tagName, "a");
   assert.equal(link.textContent, "Open file");
@@ -55,6 +58,10 @@ test("file notice resolves a vault path before opening", async () => {
   };
 
   const notice = showFileNotice(app, "Captured", file.path);
+  assert.equal(
+    notice.message.textContent,
+    "Captured → Logs/2026-09-13.md · Open file"
+  );
   await notice.message.children.at(-1).click();
 
   assert.deepEqual(opened, [file]);
