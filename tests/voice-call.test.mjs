@@ -64,6 +64,88 @@ test("review sessions use the review prompt and a balanced default", async () =>
   assert.match(variables.firstMessage, /review/i);
 });
 
+test("default voice prompts follow specific threads instead of a checklist", async () => {
+  const {
+    DEFAULT_CAPTURE_CALL_PROMPT,
+    DEFAULT_REVIEW_CALL_PROMPT,
+  } = await loadVoiceSupport();
+
+  for (const prompt of [DEFAULT_CAPTURE_CALL_PROMPT, DEFAULT_REVIEW_CALL_PROMPT]) {
+    assert.match(prompt, /specific or emotionally important phrase/i);
+    assert.match(prompt, /one direct question at a time/i);
+    assert.match(prompt, /two or three turns/i);
+    assert.match(prompt, /concrete event, example, decision, or consequence/i);
+    assert.match(prompt, /briefly reflect your interpretation/i);
+    assert.match(prompt, /generic praise/i);
+    assert.match(prompt, /therapy language/i);
+    assert.match(prompt, /unsolicited advice/i);
+  }
+});
+
+test("capture context keeps the draft and newest log text within 12,000 characters", async () => {
+  const { buildVoiceSessionVariables, MAX_CAPTURE_CONTEXT_CHARS } =
+    await loadVoiceSupport();
+  const currentDraft = "D".repeat(2_000);
+  const oldLog = "O".repeat(8_000);
+  const recentLog = "R".repeat(8_000);
+  const variables = buildVoiceSessionVariables({
+    mode: "capture",
+    today: "2026-09-13",
+    context: oldLog + recentLog,
+    currentDraft,
+    talkativeness: 5,
+  });
+
+  assert.equal(MAX_CAPTURE_CONTEXT_CHARS, 12_000);
+  assert.equal(variables.currentDraft, currentDraft);
+  assert.ok(
+    variables.sessionContext.startsWith("[Older capture context omitted]")
+  );
+  assert.ok(variables.sessionContext.endsWith("R".repeat(8_000)));
+  assert.ok(
+    variables.currentDraft.length + variables.sessionContext.length <= 12_000
+  );
+});
+
+test("review context is not truncated by the capture budget", async () => {
+  const { buildVoiceSessionVariables } = await loadVoiceSupport();
+  const context = "review context ".repeat(1_000);
+  const draft = "reflection draft ".repeat(200);
+
+  const variables = buildVoiceSessionVariables({
+    mode: "review",
+    today: "2026-09-13",
+    context,
+    currentDraft: draft,
+    talkativeness: 5,
+  });
+
+  assert.equal(variables.sessionContext, context.trim());
+  assert.equal(variables.currentDraft, draft.trim());
+});
+
+test("an oversized capture draft keeps its newest text and no log context", async () => {
+  const { buildVoiceSessionVariables, MAX_CAPTURE_CONTEXT_CHARS } =
+    await loadVoiceSupport();
+  const draft = "old".repeat(5_000) + "NEWEST-DRAFT-TEXT";
+
+  const variables = buildVoiceSessionVariables({
+    mode: "capture",
+    today: "2026-09-13",
+    context: "old daily log",
+    currentDraft: draft,
+    talkativeness: 5,
+  });
+
+  assert.ok(variables.currentDraft.startsWith("[Older draft text omitted]"));
+  assert.ok(variables.currentDraft.endsWith("NEWEST-DRAFT-TEXT"));
+  assert.equal(variables.sessionContext, "(no additional context)");
+  assert.ok(
+    variables.currentDraft.length + variables.sessionContext.length <=
+      MAX_CAPTURE_CONTEXT_CHARS
+  );
+});
+
 test("draft synthesis includes user speech but excludes the agent", async () => {
   const { buildVoiceDraftRequest } = await loadVoiceSupport();
 

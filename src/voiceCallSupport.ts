@@ -25,10 +25,17 @@ export interface VoiceCapabilities {
 export type VoiceContextSource = string | (() => Promise<string>);
 
 export const DEFAULT_VOICE_TALKATIVENESS = 5;
+export const MAX_CAPTURE_CONTEXT_CHARS = 12_000;
 
-export const DEFAULT_CAPTURE_CALL_PROMPT = `Help the user develop and capture what is on their mind. Ask one focused follow-up at a time to draw out concrete events, decisions, facts, feelings, and next steps when relevant. Avoid inventing, advising, or steering. Keep the conversation natural and grounded in what the user actually says.`;
+const CONTEXT_OMISSION = "[Older capture context omitted]\n";
+const DRAFT_OMISSION = "[Older draft text omitted]\n";
+const NO_ADDITIONAL_CONTEXT = "(no additional context)";
 
-export const DEFAULT_REVIEW_CALL_PROMPT = `Help the user reflect on the factual review in the session context. Ask one focused follow-up at a time about key progress, main lessons, unique events, and important health facts. Focus on what the user noticed and wants to remember. Do not repeat the summary at length or invent conclusions.`;
+const ACTIVE_LISTENING_METHOD = `Build the next question from the most specific or emotionally important phrase in the user's last answer. Ask one direct question at a time. Follow a promising thread for two or three turns instead of moving through a checklist. When an answer is vague, ask for a concrete event, example, decision, or consequence. Every few turns, briefly reflect your interpretation and let the user correct it. Avoid generic praise, therapy language, canned "tell me more" prompts, unsolicited advice, and multi-part questions. Leave room for silence and interruption.`;
+
+export const DEFAULT_CAPTURE_CALL_PROMPT = `Help the user develop and capture what is on their mind. ${ACTIVE_LISTENING_METHOD} Draw out facts, decisions, feelings, useful detail, and open loops when they naturally matter, without forcing every category. Prefer questions like "What actually happened?", "What made that matter today?", "What changed?", "What are you deciding?", and "What would you want future you to remember?" when they fit. Stay grounded in what the user says and never invent.`;
+
+export const DEFAULT_REVIEW_CALL_PROMPT = `Help the user reflect on the factual review in the session context. ${ACTIVE_LISTENING_METHOD} Explore what mattered, what changed, what was learned, and what remains unresolved. Prefer questions like "What made that matter today?", "What changed?", and "What would you want future you to remember?" when they fit. Do not reread the summary, force its sections into a checklist, or invent conclusions.`;
 
 const CAPTURE_DRAFT_SYSTEM = `Turn only the user's spoken statements into an editable first-person capture draft. Preserve concrete facts, names, decisions, emotions, and useful detail. You may merge in the existing user-written draft, but never add claims made only by the voice agent. Use short paragraphs or bullets when natural. No heading, preamble, advice, or commentary. Output only the draft.`;
 
@@ -50,10 +57,41 @@ export function buildTalkativenessGuidance(value: number): string {
   return `Talkativeness ${level}/10: be active and engaged. Offer fuller reflections and proactive follow-up questions, while still leaving room for the user to think.`;
 }
 
+export function boundCaptureVoiceContext(
+  input: VoiceSessionInput
+): { currentDraft: string; context: string } {
+  const draft = input.currentDraft.trim();
+  const context = input.context.trim();
+  if (input.mode !== "capture") return { currentDraft: draft, context };
+
+  const maximumDraft =
+    MAX_CAPTURE_CONTEXT_CHARS - NO_ADDITIONAL_CONTEXT.length;
+  if (draft.length >= maximumDraft) {
+    const keep = maximumDraft - DRAFT_OMISSION.length;
+    return {
+      currentDraft: DRAFT_OMISSION + draft.slice(-keep),
+      context: NO_ADDITIONAL_CONTEXT,
+    };
+  }
+
+  const budget = MAX_CAPTURE_CONTEXT_CHARS - draft.length;
+  if (!context) return { currentDraft: draft, context: NO_ADDITIONAL_CONTEXT };
+  if (context.length <= budget) return { currentDraft: draft, context };
+  if (budget <= CONTEXT_OMISSION.length) {
+    return { currentDraft: draft, context: NO_ADDITIONAL_CONTEXT };
+  }
+  const keep = budget - CONTEXT_OMISSION.length;
+  return {
+    currentDraft: draft,
+    context: CONTEXT_OMISSION + context.slice(-keep),
+  };
+}
+
 export function buildVoiceSessionVariables(
   input: VoiceSessionInput
 ): Record<string, string> {
   const talkativeness = normalizeTalkativeness(input.talkativeness);
+  const bounded = boundCaptureVoiceContext(input);
   const sessionInstructions =
     (input.mode === "capture" ? input.capturePrompt : input.reviewPrompt)?.trim() ||
     (input.mode === "capture"
@@ -64,8 +102,8 @@ export function buildVoiceSessionVariables(
     mode: input.mode,
     today: input.today,
     sessionInstructions,
-    sessionContext: input.context.trim() || "(no context yet)",
-    currentDraft: input.currentDraft.trim() || "(empty)",
+    sessionContext: bounded.context || "(no context yet)",
+    currentDraft: bounded.currentDraft || "(empty)",
     talkativeness: String(talkativeness),
     talkativenessGuidance: buildTalkativenessGuidance(talkativeness),
     firstMessage:
