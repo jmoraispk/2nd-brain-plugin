@@ -160,6 +160,7 @@ frontmatter field.
 
 ## Release log
 
+- v0.17.1 — **Compact Activity progress control.** Activity now uses the same 44px square footprint as the call button, displays an activity icon at rest and a spinning loader for the full run, while the persistent progress notice reports every ActivityWatch, processing, and AI stage with elapsed time and item counts.
 - v0.17.0 — **DayTrace activity capture.** Desktop Capture now has an **Activity** button that reads today's local ActivityWatch watchers through the browser-compatible `@jmoraispk/daytrace` core, saves sanitized deterministic evidence under `🧑 Me/Activity/Daytrace/Evidence/`, saves validated AI workstream Markdown under `🤖 AI/Activity/Daytrace/Summaries/`, and places the resulting table in the editable Capture box without overwriting an existing draft. OpenAI and Anthropic both use structured JSON output; OpenAI requests opt out of storage. Mobile remains compatible for reading synced artifacts while activity fetching stays desktop-only.
 - v0.16.14 — **Voice deployment refresh.** Republishes the mobile Capture + Review call buttons as the newest plugin release so phone updaters receive the voice interface immediately.
 - v0.16.13 — **File paths restored in open notices.** Successful file notifications retain the full vault path and finish with `· Open file`, preserving context while keeping the target one click away.

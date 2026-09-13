@@ -178,7 +178,8 @@
   width: auto;
 }
 
-.second-brain-simple-call-button {
+.second-brain-simple-call-button,
+.second-brain-simple-activity-button {
   box-sizing: border-box;
   display: inline-flex;
   flex: 0 0 44px;
@@ -192,9 +193,20 @@
   color: var(--text-normal);
 }
 
-.second-brain-simple-call-button svg {
+.second-brain-simple-call-button svg,
+.second-brain-simple-activity-button svg {
   width: 19px;
   height: 19px;
+}
+
+.second-brain-simple-activity-button.is-loading svg {
+  animation: second-brain-spin 1s linear infinite;
+}
+
+@keyframes second-brain-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .second-brain-voice-talk-value {

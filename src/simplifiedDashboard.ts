@@ -150,23 +150,28 @@ export function renderCapture(
   const actions = section.createDiv({ cls: "second-brain-simple-actions" });
   if (Platform.isDesktopApp) {
     const activity = actions.createEl("button", {
-      text: "Activity",
-      cls: "second-brain-button",
+      cls: "second-brain-simple-activity-button",
       attr: {
+        type: "button",
         "data-action": "activity",
         title: "Fetch today's ActivityWatch summary",
         "aria-label": "Fetch today's ActivityWatch summary",
       },
     });
+    setIcon(activity, "activity");
     activity.addEventListener("click", async () => {
       if (activity.hasAttribute("disabled")) return;
       activity.setAttribute("disabled", "true");
-      activity.setText("Fetching…");
+      activity.setAttribute("aria-busy", "true");
+      activity.classList.add("is-loading");
+      setIcon(activity, "loader-circle");
       try {
         await cb.fetchActivity();
       } finally {
         activity.removeAttribute("disabled");
-        activity.setText("Activity");
+        activity.removeAttribute("aria-busy");
+        activity.classList.remove("is-loading");
+        setIcon(activity, "activity");
       }
     });
   }

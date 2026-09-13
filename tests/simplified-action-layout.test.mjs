@@ -36,7 +36,7 @@ test("controls and settings footer retain their intended geometry", async () => 
 <main class="fixture">
   <section class="second-brain-simple-card">
     <div class="second-brain-simple-actions" data-container="capture">
-      <button class="second-brain-button" data-action="activity">Activity</button>
+      <button class="second-brain-simple-activity-button" data-action="activity"><svg></svg></button>
       <button class="second-brain-button second-brain-button-primary" data-action="capture">Capture</button>
       <button class="second-brain-simple-call-button" data-action="capture-call" aria-label="Talk through a capture">Call</button>
     </div>
@@ -70,6 +70,8 @@ test("controls and settings footer retain their intended geometry", async () => 
   );
   const measurements = {
     activity: width('[data-action="activity"]'),
+    activityHeight: document.querySelector('[data-action="activity"]').getBoundingClientRect().height,
+    activityIconWidth: width('[data-action="activity"] svg'),
     capture: width('[data-action="capture"]'),
     captureContainer: width('[data-container="capture"]'),
     captureCallWidth: width('[data-action="capture-call"]'),
@@ -122,6 +124,9 @@ test("controls and settings footer retain their intended geometry", async () => 
       widths.captureContainer,
       "Activity, Capture, and the call button should fill the action row"
     );
+    assert.equal(widths.activity, 44, "Activity should be a square 44px target");
+    assert.equal(widths.activityHeight, 44, "Activity should match the call button height");
+    assert.equal(widths.activityIconWidth, 19, "Activity should use the compact icon size");
     assert.equal(widths.review, widths.reviewContainer, "Review should be full width");
     assert.equal(widths.captureCallWidth, 44, "Capture call should be a square 44px target");
     assert.equal(widths.captureCallHeight, 44, "Capture call should be a square 44px target");
@@ -302,10 +307,14 @@ test("desktop Activity control is single-flight and stays off mobile", async () 
     }
   );
   const activityButton = document.querySelector('[data-action="activity"]');
+  const initialIcon = activityButton.dataset.icon;
   activityButton.click();
   activityButton.click();
   await new Promise((resolve) => setTimeout(resolve, 0));
   const fetchesBeforeCompletion = fetches;
+  const busyDuringFetch = activityButton.getAttribute('aria-busy');
+  const loadingIcon = activityButton.dataset.icon;
+  const disabledDuringFetch = activityButton.hasAttribute('disabled');
   finishFetch();
   await new Promise((resolve) => setTimeout(resolve, 0));
   const textarea = document.querySelector('textarea');
@@ -324,6 +333,10 @@ test("desktop Activity control is single-flight and stays off mobile", async () 
   document.body.dataset.activityResult = JSON.stringify({
     fetches,
     fetchesBeforeCompletion,
+    initialIcon,
+    busyDuringFetch,
+    loadingIcon,
+    disabledDuringFetch,
     value: textarea.value,
     draft: drafts.at(-1),
     buttonText: document.querySelector('[data-action="activity"]').textContent,
@@ -350,9 +363,13 @@ test("desktop Activity control is single-flight and stays off mobile", async () 
 
     assert.equal(result.fetches, 1);
     assert.equal(result.fetchesBeforeCompletion, 1, "A running button should be single-flight");
+    assert.equal(result.initialIcon, "activity");
+    assert.equal(result.busyDuringFetch, "true");
+    assert.equal(result.loadingIcon, "loader-circle");
+    assert.equal(result.disabledDuringFetch, true);
     assert.equal(result.value, "Existing thought");
     assert.equal(result.draft, "view updated its latest state");
-    assert.equal(result.buttonText, "Activity");
+    assert.equal(result.buttonText, "");
     assert.equal(result.mobileButtons, 0, "Activity fetching should stay off mobile");
   } finally {
     await cleanupBrowser(browser, debugPort, profileDir, tempDir);

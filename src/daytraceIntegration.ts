@@ -12,6 +12,7 @@ import {
   ProviderRequest,
   ProviderResponse,
   ProgressCallback,
+  ProgressEvent,
   SummaryProvider,
   SummaryProviderError,
   buildSummaryPlan,
@@ -43,6 +44,33 @@ export interface DaytraceGeneration {
   evidenceFile: TFile;
   summaryFile?: TFile;
   fallbackCode?: string;
+}
+
+const DAYTRACE_PROGRESS_LABELS: Record<ProgressEvent["stage"], string> = {
+  "activitywatch:info": "ActivityWatch connected",
+  "activitywatch:buckets": "ActivityWatch buckets loaded",
+  "activitywatch:events": "Activity events loaded",
+  "pipeline:normalize": "Normalizing activity",
+  "pipeline:sanitize": "Sanitizing activity",
+  "pipeline:fuse": "Combining watcher data",
+  "pipeline:sessions": "Building activity sessions",
+  "pipeline:episodes": "Building activity episodes",
+  "summary:chunk": "Sending activity to AI",
+  "summary:response": "AI response received",
+  "summary:validate": "Validating AI summary",
+  "summary:repair": "Repairing AI allocation",
+  "summary:merge": "Merging AI workstreams",
+  complete: "Activity collection complete",
+};
+
+/** Turn every DayTrace progress event into a visible, informative status line. */
+export function daytraceProgressMessage(event: ProgressEvent): string {
+  const parts = [DAYTRACE_PROGRESS_LABELS[event.stage]];
+  if (event.current !== undefined && event.total !== undefined) {
+    parts.push(`${event.current}/${event.total}`);
+  }
+  parts.push(`${event.elapsedSeconds}s`);
+  return parts.join(" · ");
 }
 
 /** Preserve text already typed into Capture when activity is fetched. */

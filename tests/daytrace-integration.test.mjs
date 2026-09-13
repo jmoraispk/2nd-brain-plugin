@@ -16,6 +16,30 @@ test("an activity summary keeps an existing capture draft instead of erasing it"
   assert.equal(daytrace.mergeCaptureDraft("", "Fetched activity"), "Fetched activity");
 });
 
+test("every DayTrace stage produces visible elapsed progress", async () => {
+  const daytrace = await loadDaytraceModule();
+  const cases = [
+    [{ stage: "activitywatch:info", elapsedSeconds: 7 }, "ActivityWatch connected · 7s"],
+    [{ stage: "activitywatch:buckets", elapsedSeconds: 7, current: 2, total: 2 }, "ActivityWatch buckets loaded · 2/2 · 7s"],
+    [{ stage: "activitywatch:events", elapsedSeconds: 7, current: 2, total: 2 }, "Activity events loaded · 2/2 · 7s"],
+    [{ stage: "pipeline:normalize", elapsedSeconds: 7, current: 8, total: 8 }, "Normalizing activity · 8/8 · 7s"],
+    [{ stage: "pipeline:sanitize", elapsedSeconds: 7, current: 8, total: 8 }, "Sanitizing activity · 8/8 · 7s"],
+    [{ stage: "pipeline:fuse", elapsedSeconds: 7, current: 8, total: 8 }, "Combining watcher data · 8/8 · 7s"],
+    [{ stage: "pipeline:sessions", elapsedSeconds: 7, current: 4, total: 4 }, "Building activity sessions · 4/4 · 7s"],
+    [{ stage: "pipeline:episodes", elapsedSeconds: 7, current: 3, total: 3 }, "Building activity episodes · 3/3 · 7s"],
+    [{ stage: "summary:chunk", elapsedSeconds: 7, current: 1, total: 2 }, "Sending activity to AI · 1/2 · 7s"],
+    [{ stage: "summary:response", elapsedSeconds: 7, current: 1, total: 2 }, "AI response received · 1/2 · 7s"],
+    [{ stage: "summary:validate", elapsedSeconds: 7, current: 1, total: 2 }, "Validating AI summary · 1/2 · 7s"],
+    [{ stage: "summary:repair", elapsedSeconds: 7, current: 1, total: 2 }, "Repairing AI allocation · 1/2 · 7s"],
+    [{ stage: "summary:merge", elapsedSeconds: 7, current: 1, total: 2 }, "Merging AI workstreams · 1/2 · 7s"],
+    [{ stage: "complete", elapsedSeconds: 7 }, "Activity collection complete · 7s"],
+  ];
+
+  for (const [event, expected] of cases) {
+    assert.equal(daytrace.daytraceProgressMessage(event), expected);
+  }
+});
+
 test("ActivityWatch transport sends the exact local request and respects query values", async () => {
   const daytrace = await loadDaytraceModule();
   let observed;

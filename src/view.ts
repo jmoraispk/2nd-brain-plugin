@@ -60,6 +60,7 @@ import {
 } from "./simplifiedDashboard";
 import { showFileNotice } from "./fileNotice";
 import {
+  daytraceProgressMessage,
   generateDaytraceActivity,
   mergeCaptureDraft,
 } from "./daytraceIntegration";
@@ -497,16 +498,7 @@ export class SecondBrainView extends ItemView {
           signal: controller.signal,
           onProgress: (event) => {
             if (runId !== this.activityRunId || controller.signal.aborted) return;
-            const messages: Record<string, string> = {
-              "activitywatch:info": "Connected to ActivityWatch…",
-              "activitywatch:buckets": "Reading ActivityWatch buckets…",
-              "activitywatch:events": "Reading today's activity…",
-              "pipeline:episodes": "Building activity episodes…",
-              "summary:chunk": "Summarizing activity…",
-              "summary:merge": "Merging activity summary…",
-            };
-            const message = messages[event.stage];
-            if (message) progress.setMessage(message);
+            progress.setMessage(daytraceProgressMessage(event));
           },
         }
       );
