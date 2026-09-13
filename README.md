@@ -157,6 +157,7 @@ frontmatter field.
 
 ## Release log
 
+- v0.16.14 — **Voice deployment refresh.** Republishes the mobile Capture + Review call buttons as the newest plugin release so phone updaters receive the voice interface immediately.
 - v0.16.13 — **File paths restored in open notices.** Successful file notifications retain the full vault path and finish with `· Open file`, preserving context while keeping the target one click away.
 - v0.16.12 — **Mobile Capture + Review calls.** Compact phone buttons beside Capture and Save reflection start a Vapi internet call on desktop or Obsidian Mobile. The agent has editable Capture/Review prompts and a 1–10 talkativeness control. Hang-up synthesizes only the user's spoken words into the visible editable box; nothing auto-saves. Vapi's browser dependencies are fully bundled for mobile, microphone permission is requested from the initiating tap, CSP-safe Daily settings are enabled, and staged connection failures are logged.
 - v0.16.11 — **Open created files from notifications.** Successful capture, interview, project, goal, habit, saved-review, and generated-review notices now end with a clickable `· Open file` action that opens the exact vault file.
