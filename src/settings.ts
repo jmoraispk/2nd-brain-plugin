@@ -24,21 +24,15 @@ import {
 export type LLMProvider = "anthropic" | "openai";
 export type DashboardMode = "simplified" | "complete";
 
-/** Curated model lists per provider, ordered roughly quality-first.
- *  Prices as of May 2026 — flagship to cheap. */
-const OPENAI_MODELS: Array<{ id: string; label: string }> = [
-  { id: "gpt-5.5", label: "gpt-5.5 — flagship (April 2026) · $5/$30 per 1M, 1M ctx" },
-  { id: "gpt-5.4", label: "gpt-5.4 — strong, ~50% cheaper than 5.5 · $2.50/$15 per 1M" },
-  { id: "gpt-5", label: "gpt-5 — older flagship · $1.25/$10 per 1M" },
-  { id: "gpt-5-mini", label: "gpt-5-mini — best value · $0.25/$2 per 1M" },
-  { id: "gpt-4.1-nano", label: "gpt-4.1-nano — cheapest, simple tasks · $0.10/$0.40 per 1M" },
-];
+/** Curated model lists and prices come from the shared routing catalog. */
+const providerModels = (provider: LLMProvider) =>
+  MODEL_CATALOG.filter((model) => model.provider === provider).map((model) => ({
+    id: model.id,
+    label: `${model.label} · $${model.inPrice}/$${model.outPrice} per 1M`,
+  }));
 
-const ANTHROPIC_MODELS: Array<{ id: string; label: string }> = [
-  { id: "claude-opus-4-7", label: "claude-opus-4-7 — flagship (April 2026) · $5/$25 per 1M, 1M ctx" },
-  { id: "claude-sonnet-4-6", label: "claude-sonnet-4-6 — balanced default · $3/$15 per 1M, 1M ctx" },
-  { id: "claude-haiku-4-5", label: "claude-haiku-4-5 — fast & cheap · $1/$5 per 1M, 200K ctx" },
-];
+const OPENAI_MODELS = providerModels("openai");
+const ANTHROPIC_MODELS = providerModels("anthropic");
 
 export interface SecondBrainSettings {
   /** Main plugin surface. Simplified keeps capture + review in one view. */

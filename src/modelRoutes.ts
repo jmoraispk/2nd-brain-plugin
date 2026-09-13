@@ -8,7 +8,7 @@
  * settings.openaiModel.
  */
 
-import { SecondBrainSettings } from "./settings";
+import type { SecondBrainSettings } from "./settings";
 
 export type ModelEffort = "default" | "off" | "low" | "high";
 
@@ -110,16 +110,19 @@ export interface ModelInfo {
   provider: "openai" | "anthropic";
   /** USD per 1M tokens. */
   inPrice: number;
+  cachedInPrice?: number;
   outPrice: number;
 }
 
-/** Structured catalog (prices mirror the dropdowns in settings.ts). */
+export const MODEL_PRICING_VERSION = "2026-09-13";
+
+/** Structured catalog used by settings, routing hints, and usage history. */
 export const MODEL_CATALOG: ModelInfo[] = [
-  { id: "gpt-5.5", label: "gpt-5.5 — flagship", provider: "openai", inPrice: 5, outPrice: 30 },
-  { id: "gpt-5.4", label: "gpt-5.4 — strong", provider: "openai", inPrice: 2.5, outPrice: 15 },
-  { id: "gpt-5", label: "gpt-5 — balanced default", provider: "openai", inPrice: 1.25, outPrice: 10 },
-  { id: "gpt-5-mini", label: "gpt-5-mini — cheap", provider: "openai", inPrice: 0.25, outPrice: 2 },
-  { id: "gpt-4.1-nano", label: "gpt-4.1-nano — cheapest", provider: "openai", inPrice: 0.1, outPrice: 0.4 },
+  { id: "gpt-5.5", label: "gpt-5.5 — flagship", provider: "openai", inPrice: 5, cachedInPrice: 0.5, outPrice: 30 },
+  { id: "gpt-5.4", label: "gpt-5.4 — strong", provider: "openai", inPrice: 2.5, cachedInPrice: 0.25, outPrice: 15 },
+  { id: "gpt-5", label: "gpt-5 — balanced default", provider: "openai", inPrice: 1.25, cachedInPrice: 0.125, outPrice: 10 },
+  { id: "gpt-5-mini", label: "gpt-5-mini — cheap", provider: "openai", inPrice: 0.25, cachedInPrice: 0.025, outPrice: 2 },
+  { id: "gpt-4.1-nano", label: "gpt-4.1-nano — cheapest", provider: "openai", inPrice: 0.1, cachedInPrice: 0.025, outPrice: 0.4 },
   { id: "claude-opus-4-7", label: "claude-opus-4-7 — flagship", provider: "anthropic", inPrice: 5, outPrice: 25 },
   { id: "claude-sonnet-4-6", label: "claude-sonnet-4-6 — balanced", provider: "anthropic", inPrice: 3, outPrice: 15 },
   { id: "claude-haiku-4-5", label: "claude-haiku-4-5 — cheap", provider: "anthropic", inPrice: 1, outPrice: 5 },
