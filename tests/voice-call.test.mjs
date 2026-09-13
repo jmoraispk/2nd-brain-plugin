@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -291,4 +292,19 @@ test("cancelled startup retries teardown on progress and after settlement", asyn
   assert.equal(cancellation.isCancelled(), true);
   assert.equal(stops, 3);
   assert.deepEqual(failures, ["call object not ready"]);
+});
+
+test("the voice modal tracks either Vapi call ID and shares its interaction", async () => {
+  const source = await readFile(
+    path.join(repoRoot, "src", "voiceInterviewModal.ts"),
+    "utf8"
+  );
+
+  assert.match(source, /vapi\.on\("call-start-success"/);
+  assert.match(source, /trackStartedCall\(event\?\.callId\)/);
+  assert.match(source, /trackStartedCall\(startedCall\?\.id\)/);
+  assert.match(source, /createPendingVapiEntry/);
+  assert.match(source, /finishTrackedCall\("completed"\)/);
+  assert.match(source, /finishTrackedCall\("cancelled"\)/);
+  assert.match(source, /interactionId: this\.interactionId/);
 });

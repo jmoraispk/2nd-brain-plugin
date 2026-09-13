@@ -8,7 +8,15 @@ import { App, Modal, Notice } from "obsidian";
 import SecondBrainPlugin from "../main";
 import { callLLM } from "./llm";
 import { resolveRoute } from "./modelRoutes";
-import { createInteractionId } from "./usageHistory";
+import {
+  createInteractionId,
+  type UsageHistoryEntry,
+  type UsageHistoryStore,
+} from "./usageHistory";
+import {
+  completePendingVapiEntry,
+  createPendingVapiEntry,
+} from "./vapiUsage";
 import {
   buildVoiceSessionVariables,
   createVoiceCallCompletion,
@@ -49,6 +57,10 @@ export class VoiceCallModal extends Modal {
   ) => Promise<boolean>;
   private readonly completion: ReturnType<typeof createVoiceCallCompletion>;
   private startCancellation?: ReturnType<typeof createVoiceStartCancellation>;
+  private callId?: string;
+  private callStartedAt?: number;
+  private trackedCall?: UsageHistoryEntry;
+  private localCallFinished = false;
 
   private vapi: AnyVapi | null = null;
   private phase: Phase = "idle";
@@ -249,6 +261,9 @@ export class VoiceCallModal extends Modal {
           event?.error || `Call setup failed at ${event?.stage || "unknown stage"}`;
         this.handleError("vapi:start-failed", detail, event);
       });
+      vapi.on("call-start-success", (event: AnyVapi) => {
+        void this.trackStartedCall(event?.callId);
+      });
       vapi.on("call-start", () => {
         if (this.closed) {
           void this.startCancellation?.onProgress();
@@ -259,6 +274,7 @@ export class VoiceCallModal extends Modal {
         this.renderStatus();
       });
       vapi.on("call-end", () => {
+        void this.finishTrackedCall("completed");
         if (this.closed || this.discardOnClose || this.phase === "processing") return;
         void this.finishDraft();
       });
@@ -306,7 +322,10 @@ export class VoiceCallModal extends Modal {
       });
       this.discardOnClose = false;
       if (this.closed) return;
-      await vapi.start(assistant, { variableValues: variables });
+      const startedCall = await vapi.start(assistant, {
+        variableValues: variables,
+      });
+      await this.trackStartedCall(startedCall?.id);
       // Closing while start() is creating the Daily call can make the first
       // stop a no-op. Stop again once startup settles so no headless call can
       // retain the microphone.
@@ -344,6 +363,45 @@ export class VoiceCallModal extends Modal {
     this.muteBtn?.setText(this.muted ? "Unmute" : "Mute");
   }
 
+  private async trackStartedCall(value: unknown): Promise<void> {
+    const callId = typeof value === "string" ? value.trim() : "";
+    if (!callId || callId === "unknown" || this.callId) return;
+    this.callId = callId;
+    this.callStartedAt = Date.now();
+    this.trackedCall = createPendingVapiEntry({
+      callId,
+      interactionId: this.interactionId,
+      action:
+        this.options.mode === "capture" ? "Capture call" : "Review call",
+      occurredAt: new Date(this.callStartedAt).toISOString(),
+    });
+    await this.usageHistory()?.upsert(this.trackedCall);
+    if (this.closed) await this.finishTrackedCall("cancelled");
+  }
+
+  private async finishTrackedCall(
+    status: "completed" | "failed" | "cancelled"
+  ): Promise<void> {
+    if (this.localCallFinished || !this.trackedCall) return;
+    this.localCallFinished = true;
+    const durationSeconds =
+      this.callStartedAt === undefined
+        ? undefined
+        : Math.max(0, (Date.now() - this.callStartedAt) / 1000);
+    this.trackedCall = completePendingVapiEntry({
+      entry: this.trackedCall,
+      status,
+      durationSeconds,
+    });
+    await this.usageHistory()?.upsert(this.trackedCall);
+  }
+
+  private usageHistory(): UsageHistoryStore | undefined {
+    return (
+      this.plugin as SecondBrainPlugin & { usageHistory?: UsageHistoryStore }
+    ).usageHistory;
+  }
+
   private async endCall() {
     if (this.phase === "processing") return;
     if (!this.vapi || (this.phase !== "live" && this.phase !== "connecting")) {
@@ -359,6 +417,7 @@ export class VoiceCallModal extends Modal {
     } catch (error) {
       this.plugin.errorLog.push("vapi:stop", error);
     }
+    await this.finishTrackedCall("completed");
     await this.finishDraft();
   }
 
@@ -390,6 +449,7 @@ export class VoiceCallModal extends Modal {
   onClose() {
     this.closed = true;
     this.discardOnClose = true;
+    void this.finishTrackedCall("cancelled");
     this.startCancellation?.cancel();
     this.vapi = null;
     this.contentEl.empty();
