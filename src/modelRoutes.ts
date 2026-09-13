@@ -123,9 +123,9 @@ export const MODEL_CATALOG: ModelInfo[] = [
   { id: "gpt-5", label: "gpt-5 — balanced default", provider: "openai", inPrice: 1.25, cachedInPrice: 0.125, outPrice: 10 },
   { id: "gpt-5-mini", label: "gpt-5-mini — cheap", provider: "openai", inPrice: 0.25, cachedInPrice: 0.025, outPrice: 2 },
   { id: "gpt-4.1-nano", label: "gpt-4.1-nano — cheapest", provider: "openai", inPrice: 0.1, cachedInPrice: 0.025, outPrice: 0.4 },
-  { id: "claude-opus-4-7", label: "claude-opus-4-7 — flagship", provider: "anthropic", inPrice: 5, outPrice: 25 },
-  { id: "claude-sonnet-4-6", label: "claude-sonnet-4-6 — balanced", provider: "anthropic", inPrice: 3, outPrice: 15 },
-  { id: "claude-haiku-4-5", label: "claude-haiku-4-5 — cheap", provider: "anthropic", inPrice: 1, outPrice: 5 },
+  { id: "claude-opus-4-7", label: "claude-opus-4-7 — flagship", provider: "anthropic", inPrice: 5, cachedInPrice: 0.5, outPrice: 25 },
+  { id: "claude-sonnet-4-6", label: "claude-sonnet-4-6 — balanced", provider: "anthropic", inPrice: 3, cachedInPrice: 0.3, outPrice: 15 },
+  { id: "claude-haiku-4-5", label: "claude-haiku-4-5 — cheap", provider: "anthropic", inPrice: 1, cachedInPrice: 0.1, outPrice: 5 },
 ];
 
 export function modelInfo(id: string): ModelInfo | undefined {

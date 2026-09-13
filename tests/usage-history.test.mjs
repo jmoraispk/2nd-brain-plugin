@@ -86,7 +86,10 @@ test("Anthropic usage is estimated and malformed counts are discarded", async ()
     "2026-09-13T12:00:00.000Z"
   );
 
-  assert.equal(entry.costUsd, (1_000 * 3 + 100 * 15) / 1_000_000);
+  assert.equal(
+    entry.costUsd,
+    (800 * 3 + 200 * 0.3 + 100 * 15) / 1_000_000
+  );
   assert.deepEqual(entry.usage, {
     inputTokens: 1_000,
     cachedInputTokens: 200,
