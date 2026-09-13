@@ -1,4 +1,4 @@
-import { Plugin, WorkspaceLeaf } from "obsidian";
+import { Platform, Plugin, WorkspaceLeaf } from "obsidian";
 import { SecondBrainView, VIEW_TYPE_SECOND_BRAIN } from "./src/view";
 import {
   SecondBrainSettingTab,
@@ -7,13 +7,33 @@ import {
 } from "./src/settings";
 import { BUILT_IN_COMMANDS } from "./src/commands";
 import { ErrorLog } from "./src/errorLog";
+import { UsageHistoryStore } from "./src/usageHistory";
+import { configureUsageEventSink } from "./src/usageTelemetry";
+import {
+  readVapiPrivateKey,
+  reconcileVapiUsage,
+  type VapiReconcileResult,
+} from "./src/vapiUsage";
 
 export default class SecondBrainPlugin extends Plugin {
   settings: SecondBrainSettings;
   errorLog = new ErrorLog();
+  usageHistory!: UsageHistoryStore;
+  private usageRefresh?: Promise<VapiReconcileResult>;
 
   async onload() {
     await this.loadSettings();
+    this.usageHistory = new UsageHistoryStore(
+      this.settings.usageHistory,
+      async (state) => {
+        this.settings.usageHistory = state;
+        await this.saveSettings();
+      },
+      (error) => this.errorLog.push("usage-history", error)
+    );
+    configureUsageEventSink((event) =>
+      this.usageHistory.recordProviderUsage(event)
+    );
     await this.migrateSettings();
     await this.bootstrapVaultFolders();
 
@@ -35,7 +55,9 @@ export default class SecondBrainPlugin extends Plugin {
     this.addSettingTab(new SecondBrainSettingTab(this.app, this));
   }
 
-  async onunload() {}
+  async onunload() {
+    configureUsageEventSink(undefined);
+  }
 
   async loadSettings() {
     this.settings = Object.assign(
@@ -47,6 +69,45 @@ export default class SecondBrainPlugin extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
+  }
+
+  async refreshExactUsageCosts(): Promise<VapiReconcileResult> {
+    if (this.usageRefresh) return this.usageRefresh;
+    const refresh = this.performUsageRefresh();
+    this.usageRefresh = refresh;
+    try {
+      return await refresh;
+    } finally {
+      if (this.usageRefresh === refresh) this.usageRefresh = undefined;
+    }
+  }
+
+  private async performUsageRefresh(): Promise<VapiReconcileResult> {
+    const snapshot = this.usageHistory.snapshot();
+    const assistantId = this.settings.vapiAssistantId?.trim() ?? "";
+    if (!Platform.isDesktopApp) {
+      return reconcileVapiUsage(snapshot, {
+        assistantId,
+        isMobile: true,
+      });
+    }
+    const environment =
+      typeof process === "undefined" ? undefined : process.env;
+    const result = await reconcileVapiUsage(snapshot, {
+      assistantId,
+      privateKey: readVapiPrivateKey(environment),
+    });
+    if (result.status === "updated") {
+      await this.usageHistory.replaceAll(
+        result.state.entries,
+        result.state.lastVapiSyncAt
+      );
+    }
+    return result;
+  }
+
+  async clearUsageHistory(): Promise<void> {
+    await this.usageHistory.clear();
   }
 
   /** Re-render every open Second Brain leaf after a live setting changes. */

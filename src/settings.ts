@@ -20,6 +20,8 @@ import {
   DEFAULT_REVIEW_CALL_PROMPT,
   DEFAULT_VOICE_TALKATIVENESS,
 } from "./voiceCallSupport";
+import type { UsageHistoryState } from "./usageHistory";
+import { renderUsageHistory } from "./usageHistorySettings";
 
 export type LLMProvider = "anthropic" | "openai";
 export type DashboardMode = "simplified" | "complete";
@@ -59,6 +61,8 @@ export interface SecondBrainSettings {
   voiceTalkativeness: number;
   voiceCapturePrompt?: string;
   voiceReviewPrompt?: string;
+  /** Private, metadata-only provider usage and cost history. */
+  usageHistory?: UsageHistoryState;
   /**
    * v0.9.6 per-task model routing. Key = task-group id; value = the model +
    * reasoning effort for that group. Unset groups fall back to the default
@@ -83,6 +87,7 @@ export const DEFAULT_SETTINGS: SecondBrainSettings = {
 
 export class SecondBrainSettingTab extends PluginSettingTab {
   plugin: SecondBrainPlugin;
+  private historyRefreshStarted = false;
 
   constructor(app: App, plugin: SecondBrainPlugin) {
     super(app, plugin);
@@ -116,6 +121,17 @@ export class SecondBrainSettingTab extends PluginSettingTab {
     this.collapsible(containerEl, "Voice (Vapi)", false, (body) =>
       this.renderVoice(body)
     );
+    const history = this.collapsible(containerEl, "History", false, (body) =>
+      renderUsageHistory(body, this.plugin)
+    );
+    const historyBody = history.children[1] as HTMLElement | undefined;
+    history.addEventListener("toggle", () => {
+      if (!history.open || this.historyRefreshStarted || !historyBody) return;
+      this.historyRefreshStarted = true;
+      void this.plugin.refreshExactUsageCosts().then((result) =>
+        renderUsageHistory(historyBody, this.plugin, result.message)
+      );
+    });
     this.collapsible(containerEl, "Troubleshooting", false, (body) =>
       this.renderTroubleshooting(body)
     );
@@ -214,7 +230,7 @@ export class SecondBrainSettingTab extends PluginSettingTab {
     title: string,
     openByDefault: boolean,
     contentRenderer: (body: HTMLElement) => void
-  ) {
+  ): HTMLDetailsElement {
     const det = parent.createEl("details", {
       cls: "second-brain-settings-section",
     });
@@ -225,6 +241,7 @@ export class SecondBrainSettingTab extends PluginSettingTab {
     });
     const body = det.createDiv({ cls: "second-brain-settings-body" });
     contentRenderer(body);
+    return det;
   }
 
   private renderProvider(containerEl: HTMLElement) {

@@ -12,12 +12,22 @@ test("settings show the installed version after Logs", async () => {
     errorLog: { count: () => 0 },
     manifest: { version: "9.8.7" },
     settings: { ...settings.DEFAULT_SETTINGS },
+    usageHistory: { snapshot: () => ({ schemaVersion: 1, entries: [] }) },
+    refreshExactUsageCosts: async () => ({
+      state: { schemaVersion: 1, entries: [] },
+      status: "missing-key",
+      message: "Not configured",
+      imported: 0,
+      reconciled: 0,
+    }),
+    clearUsageHistory: async () => {},
   };
   const tab = new settings.SecondBrainSettingTab({}, plugin);
 
   tab.display();
 
   const topLevel = tab.containerEl.children;
+  const menus = topLevel.slice(0, -1).map((element) => element.children[0]?.textContent);
   const logs = topLevel.at(-2);
   const footer = topLevel.at(-1);
   assert.equal(logs?.tagName, "details", "Logs should remain the final settings menu");
@@ -25,6 +35,7 @@ test("settings show the installed version after Logs", async () => {
   assert.equal(footer?.tagName, "p", "Version should sit outside the settings menus");
   assert.equal(footer?.className, "second-brain-settings-version");
   assert.equal(footer?.textContent, "Second Brain · v9.8.7");
+  assert.deepEqual(menus.slice(-3), ["History", "Troubleshooting", "Logs"]);
 });
 
 async function loadSettingsModule() {
@@ -71,6 +82,8 @@ function obsidianStubPlugin() {
               setAttribute() {}
               appendText(text) { this.textContent += text; }
               setText(text) { this.textContent = text; }
+              addEventListener() {}
+              toggleClass() {}
             }
 
             class FakeControl {

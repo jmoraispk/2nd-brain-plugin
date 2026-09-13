@@ -1115,6 +1115,165 @@ button.second-brain-month-day[disabled] {
   text-align: center;
 }
 
+/* Settings — metadata-only provider usage history */
+.second-brain-history-totals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 4px 0 10px;
+}
+
+.second-brain-history-total {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary);
+}
+
+.second-brain-history-total-label {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.second-brain-history-total-cost {
+  color: var(--text-normal);
+  font-size: var(--font-ui-medium);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.second-brain-history-legend {
+  margin-bottom: 10px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.45;
+}
+
+.second-brain-history-row {
+  margin: 7px 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-primary-alt, var(--background-primary));
+}
+
+.second-brain-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
+  cursor: pointer;
+}
+
+.second-brain-history-identity,
+.second-brain-history-amount {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.second-brain-history-action {
+  color: var(--text-normal);
+  font-weight: 600;
+}
+
+.second-brain-history-when {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.second-brain-history-amount {
+  align-items: flex-end;
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.second-brain-history-accuracy {
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: var(--background-modifier-border);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.second-brain-history-accuracy.is-exact {
+  color: var(--color-green, #4caf50);
+}
+
+.second-brain-history-accuracy.is-pending,
+.second-brain-history-accuracy.is-unknown {
+  color: var(--color-orange, #d97706);
+}
+
+.second-brain-history-breakdown {
+  display: grid;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
+.second-brain-history-component {
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--background-secondary);
+}
+
+.second-brain-history-component-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-weight: 600;
+}
+
+.second-brain-history-detail {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+}
+
+.second-brain-history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.second-brain-history-status {
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+}
+
+@media (max-width: 600px) {
+  .second-brain-history-totals {
+    grid-template-columns: 1fr;
+  }
+
+  .second-brain-history-head {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .second-brain-history-amount {
+    align-items: flex-start;
+  }
+
+  .second-brain-history-actions button {
+    min-height: 44px;
+    flex: 1 1 150px;
+  }
+}
+
 .second-brain-prompt-setting {
   flex-direction: column;
   align-items: stretch;
