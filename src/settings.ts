@@ -15,6 +15,11 @@ import {
   costHint,
   defaultModel,
 } from "./modelRoutes";
+import {
+  DEFAULT_CAPTURE_CALL_PROMPT,
+  DEFAULT_REVIEW_CALL_PROMPT,
+  DEFAULT_VOICE_TALKATIVENESS,
+} from "./voiceCallSupport";
 
 export type LLMProvider = "anthropic" | "openai";
 export type DashboardMode = "simplified" | "complete";
@@ -56,6 +61,10 @@ export interface SecondBrainSettings {
   /** v0.15: Vapi voice — public key (client-safe) + assistant id. */
   vapiPublicKey?: string;
   vapiAssistantId?: string;
+  /** How actively the Vapi assistant speaks, from 1 (quiet) to 10 (active). */
+  voiceTalkativeness: number;
+  voiceCapturePrompt?: string;
+  voiceReviewPrompt?: string;
   /**
    * v0.9.6 per-task model routing. Key = task-group id; value = the model +
    * reasoning effort for that group. Unset groups fall back to the default
@@ -74,6 +83,7 @@ export const DEFAULT_SETTINGS: SecondBrainSettings = {
   logsFolder: "🧑 Me/Logs",
   dailyLogPathTemplate: "🧑 Me/Logs/{ISO_YEAR}/Q{Q}/W{WW}/{YYYY-MM-DD}.md",
   reviewsPathTemplate: "🤖 AI/Reviews/Daily/{ISO_YEAR}/Q{Q}/W{WW}/{YYYY-MM-DD}.md",
+  voiceTalkativeness: DEFAULT_VOICE_TALKATIVENESS,
   customCommands: [],
 };
 
@@ -568,7 +578,7 @@ export class SecondBrainSettingTab extends PluginSettingTab {
   private renderVoice(containerEl: HTMLElement) {
     containerEl.createEl("p", {
       cls: "second-brain-muted",
-      text: "Voice interview via Vapi (vapi.ai). The public key only starts calls. Configure the agent's persona in the Vapi dashboard — add the interviewer prompt and a {{dayLog}} placeholder so the plugin can inject your day. Desktop-first; mic on mobile may not work.",
+      text: "Internet voice calls via Vapi on desktop and mobile. Calls receive only the context shown in Capture or Review. When a call ends, its result returns as an editable draft and is never saved automatically.",
     });
 
     new Setting(containerEl)
@@ -586,7 +596,7 @@ export class SecondBrainSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Vapi assistant id")
-      .setDesc("The assistant to call (configure its prompt + voice in the Vapi dashboard).")
+      .setDesc("The Second Brain assistant to call.")
       .addText((t) =>
         t
           .setPlaceholder("xxxxxxxx-xxxx-…")
@@ -595,6 +605,84 @@ export class SecondBrainSettingTab extends PluginSettingTab {
             this.plugin.settings.vapiAssistantId = v.trim();
             await this.plugin.saveSettings();
           })
+      );
+
+    const talkativeness = Math.min(
+      10,
+      Math.max(
+        1,
+        Math.round(
+          this.plugin.settings.voiceTalkativeness ??
+            DEFAULT_VOICE_TALKATIVENESS
+        )
+      )
+    );
+    const talkSetting = new Setting(containerEl)
+      .setName("Talkativeness")
+      .setDesc("1 is mostly quiet; 10 is highly active. The default is 5.");
+    const talkValue = talkSetting.controlEl.createSpan({
+      text: String(talkativeness),
+      cls: "second-brain-voice-talk-value",
+    });
+    talkSetting.addSlider((slider) =>
+      slider
+        .setLimits(1, 10, 1)
+        .setValue(talkativeness)
+        .setDynamicTooltip()
+        .onChange(async (value) => {
+          this.plugin.settings.voiceTalkativeness = value;
+          talkValue.setText(String(value));
+          await this.plugin.saveSettings();
+        })
+    );
+
+    const capturePrompt = new Setting(containerEl)
+      .setName("Capture call prompt")
+      .setDesc("Instructions for the voice agent when you call from Capture.")
+      .addTextArea((text) => {
+        text
+          .setValue(
+            this.plugin.settings.voiceCapturePrompt?.trim() ||
+              DEFAULT_CAPTURE_CALL_PROMPT
+          )
+          .onChange(async (value) => {
+            this.plugin.settings.voiceCapturePrompt = value;
+            await this.plugin.saveSettings();
+          });
+        text.inputEl.rows = 7;
+        text.inputEl.setAttribute("aria-label", "Capture call prompt");
+      });
+    capturePrompt.settingEl.addClass("second-brain-prompt-setting");
+
+    const reviewPrompt = new Setting(containerEl)
+      .setName("Review call prompt")
+      .setDesc("Instructions for the voice agent when you call from a generated review.")
+      .addTextArea((text) => {
+        text
+          .setValue(
+            this.plugin.settings.voiceReviewPrompt?.trim() ||
+              DEFAULT_REVIEW_CALL_PROMPT
+          )
+          .onChange(async (value) => {
+            this.plugin.settings.voiceReviewPrompt = value;
+            await this.plugin.saveSettings();
+          });
+        text.inputEl.rows = 7;
+        text.inputEl.setAttribute("aria-label", "Review call prompt");
+      });
+    reviewPrompt.settingEl.addClass("second-brain-prompt-setting");
+
+    new Setting(containerEl)
+      .setName("Restore voice prompts")
+      .setDesc("Restore both Capture and Review call instructions to their defaults.")
+      .addButton((button) =>
+        button.setButtonText("Reset to defaults").onClick(async () => {
+          this.plugin.settings.voiceCapturePrompt = undefined;
+          this.plugin.settings.voiceReviewPrompt = undefined;
+          await this.plugin.saveSettings();
+          new Notice("Reset both voice prompts.");
+          this.display();
+        })
       );
   }
 

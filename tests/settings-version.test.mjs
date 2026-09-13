@@ -65,6 +65,7 @@ function obsidianStubPlugin() {
                 return child;
               }
               createDiv(options = {}) { return this.createEl("div", options); }
+              createSpan(options = {}) { return this.createEl("span", options); }
               addClass(className) { this.className = className; }
               empty() { this.children = []; this.textContent = ""; }
               setAttribute() {}
@@ -79,6 +80,8 @@ function obsidianStubPlugin() {
               setCta() { return this; }
               setDisabled() { return this; }
               setPlaceholder() { return this; }
+              setLimits() { return this; }
+              setDynamicTooltip() { return this; }
               setTooltip() { return this; }
               setValue() { return this; }
               setWarning() { return this; }
@@ -97,11 +100,13 @@ function obsidianStubPlugin() {
               constructor(parent) {
                 this.settingEl = parent.createDiv({ cls: "setting-item" });
                 this.descEl = this.settingEl.createDiv({ cls: "setting-item-description" });
+                this.controlEl = this.settingEl.createDiv({ cls: "setting-item-control" });
               }
               setName(name) { this.settingEl.createEl("div", { text: name }); return this; }
               setDesc(description) { this.descEl.textContent = description; return this; }
               addButton(callback) { callback(new FakeControl()); return this; }
               addDropdown(callback) { callback(new FakeControl()); return this; }
+              addSlider(callback) { callback(new FakeControl()); return this; }
               addText(callback) { callback(new FakeControl()); return this; }
               addTextArea(callback) { callback(new FakeControl()); return this; }
             }

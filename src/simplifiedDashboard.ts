@@ -1,4 +1,4 @@
-import { Component, MarkdownRenderer, Menu, TFile, TFolder } from "obsidian";
+import { Component, MarkdownRenderer, Menu, setIcon, TFile, TFolder } from "obsidian";
 import SecondBrainPlugin from "../main";
 import { applyDatePlaceholders, todayISO } from "./paths";
 import { ReviewTabState } from "./reviewTab";
@@ -78,6 +78,7 @@ export function defaultSimplifiedDashboardState(): SimplifiedDashboardState {
 export interface SimplifiedDashboardCallbacks {
   setCaptureDraft: (value: string) => void;
   saveCapture: (value: string) => Promise<void>;
+  startCaptureCall: () => void;
   changeMonth: (month: string) => void;
   selectCalendarDate: (date: string) => void;
   setRangeStart: (date: string) => void;
@@ -86,6 +87,7 @@ export interface SimplifiedDashboardCallbacks {
   runReview: () => Promise<void>;
   setUserReview: (value: string) => void;
   finishReview: () => Promise<void>;
+  startReviewCall: () => void;
   openResult: (file: TFile) => void;
 }
 
@@ -141,6 +143,7 @@ function renderCapture(
     text: "Capture",
     cls: "second-brain-button second-brain-button-primary",
   });
+  renderCallButton(actions, "Talk through a capture", cb.startCaptureCall);
   const submit = async () => {
     const content = textarea.value.trim();
     if (!content || save.hasAttribute("disabled")) return;
@@ -460,11 +463,26 @@ function renderRangeReview(
   reflection.value = reviewState.userReview;
   reflection.addEventListener("input", () => cb.setUserReview(reflection.value));
 
-  const finish = section.createEl("button", {
+  const reflectionActions = section.createDiv({ cls: "second-brain-simple-actions" });
+  const finish = reflectionActions.createEl("button", {
     text: "Save reflection",
     cls: "second-brain-button second-brain-button-primary second-brain-simple-review-button",
   });
   finish.addEventListener("click", () => void cb.finishReview());
+  renderCallButton(reflectionActions, "Talk through this review", cb.startReviewCall);
+}
+
+function renderCallButton(
+  parent: HTMLElement,
+  label: string,
+  startCall: () => void
+) {
+  const button = parent.createEl("button", {
+    cls: "second-brain-simple-call-button",
+    attr: { type: "button", title: label, "aria-label": label },
+  });
+  setIcon(button, "phone");
+  button.addEventListener("click", startCall);
 }
 
 function renderDateInput(

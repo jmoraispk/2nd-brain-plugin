@@ -37,13 +37,17 @@ test("controls and settings footer retain their intended geometry", async () => 
   <section class="second-brain-simple-card">
     <div class="second-brain-simple-actions" data-container="capture">
       <button class="second-brain-button second-brain-button-primary" data-action="capture">Capture</button>
+      <button class="second-brain-simple-call-button" data-action="capture-call" aria-label="Talk through a capture">Call</button>
     </div>
   </section>
   <section class="second-brain-simple-card" data-container="review">
     <button class="second-brain-button second-brain-button-primary second-brain-simple-review-button second-brain-simple-review-run" data-action="review">Review</button>
   </section>
   <section class="second-brain-simple-card" data-container="reflection">
-    <button class="second-brain-button second-brain-button-primary second-brain-simple-review-button" data-action="reflection">Save reflection</button>
+    <div class="second-brain-simple-actions">
+      <button class="second-brain-button second-brain-button-primary second-brain-simple-review-button" data-action="reflection">Save reflection</button>
+      <button class="second-brain-simple-call-button" data-action="review-call" aria-label="Talk through this review">Call</button>
+    </div>
   </section>
   <button class="second-brain-simple-metric" data-control="metric">Captures</button>
   <p class="second-brain-settings-version" data-control="settings-version">Second Brain · v9.8.7</p>
@@ -66,10 +70,14 @@ test("controls and settings footer retain their intended geometry", async () => 
   const measurements = {
     capture: width('[data-action="capture"]'),
     captureContainer: width('[data-container="capture"]'),
+    captureCallWidth: width('[data-action="capture-call"]'),
+    captureCallHeight: document.querySelector('[data-action="capture-call"]').getBoundingClientRect().height,
     review: width('[data-action="review"]'),
     reviewContainer: contentWidth('[data-container="review"]'),
     reflection: width('[data-action="reflection"]'),
     reflectionContainer: contentWidth('[data-container="reflection"]'),
+    reviewCallWidth: width('[data-action="review-call"]'),
+    reviewCallHeight: document.querySelector('[data-action="review-call"]').getBoundingClientRect().height,
     metricCenterOffset: Math.abs(
       metricBounds.left + metricBounds.width / 2 -
       (metricTextBounds.left + metricTextBounds.width / 2)
@@ -107,13 +115,21 @@ test("controls and settings footer retain their intended geometry", async () => 
     const page = await waitForPage(debugPort, pathToFileURL(fixturePath).href);
     const widths = await waitForWidths(page.webSocketDebuggerUrl);
 
-    assert.equal(widths.capture, widths.captureContainer, "Capture should be full width");
-    assert.equal(widths.review, widths.reviewContainer, "Review should be full width");
     assert.equal(
-      widths.reflection,
-      widths.reflectionContainer,
-      "Save reflection should be full width"
+      widths.capture + widths.captureCallWidth + 10,
+      widths.captureContainer,
+      "Capture and its call button should fill the action row"
     );
+    assert.equal(widths.review, widths.reviewContainer, "Review should be full width");
+    assert.equal(widths.captureCallWidth, 44, "Capture call should be a square 44px target");
+    assert.equal(widths.captureCallHeight, 44, "Capture call should be a square 44px target");
+    assert.equal(
+      widths.reflection + widths.reviewCallWidth + 10,
+      widths.reflectionContainer,
+      "Save reflection and its call button should fill the action row"
+    );
+    assert.equal(widths.reviewCallWidth, 44, "Review call should be a square 44px target");
+    assert.equal(widths.reviewCallHeight, 44, "Review call should be a square 44px target");
     assert.equal(widths.metricTextAlign, "center", "Metric label should be centered");
     assert.ok(widths.metricCenterOffset < 0.5, "Metric text should be geometrically centered");
     assert.equal(widths.metricMobileHeight, 44, "Mobile metric target should be 44px high");
@@ -326,6 +342,9 @@ function obsidianBrowserStubPlugin() {
             export class TFile {}
             export class TFolder {}
             export const MarkdownRenderer = {};
+            export function setIcon(element, icon) {
+              element.dataset.icon = icon;
+            }
           `,
           loader: "js",
         })

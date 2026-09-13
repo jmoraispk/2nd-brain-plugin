@@ -39,10 +39,11 @@ import {
 } from "./proposals";
 import { askVault } from "./askChat";
 import { InterviewModal } from "./interviewModal";
-import { VoiceInterviewModal } from "./voiceInterviewModal";
+import { VoiceCallModal } from "./voiceInterviewModal";
+import { VoiceCallMode } from "./voiceCallSupport";
 import { loadProjects } from "./projects";
 import { completeTodoInProject } from "./projectMutate";
-import { todayISO } from "./paths";
+import { resolveDailyLogPath, todayISO } from "./paths";
 import {
   ActivityMetric,
   defaultSimplifiedDashboardState,
@@ -119,6 +120,7 @@ export class SecondBrainView extends ItemView {
             this.simplifiedState.captureDraft = value;
           },
           saveCapture: (value) => this.saveSimplifiedCapture(value),
+          startCaptureCall: () => void this.openSimplifiedVoiceCall("capture"),
           changeMonth: (month) => this.changeSimplifiedMonth(month),
           selectCalendarDate: (date) => this.selectSimplifiedDate(date),
           setRangeStart: (date) => this.setSimplifiedRangeStart(date),
@@ -129,6 +131,7 @@ export class SecondBrainView extends ItemView {
             this.reviewState.userReview = value;
           },
           finishReview: () => this.finishReview(),
+          startReviewCall: () => void this.openSimplifiedVoiceCall("review"),
           openResult: (file) => {
             void this.app.workspace.getLeaf(false).openFile(file);
           },
@@ -449,6 +452,70 @@ export class SecondBrainView extends ItemView {
       this.plugin.errorLog.push("simple-capture", err);
       new Notice(
         `Capture failed: ${(err as Error).message}\nSee Settings → Logs for details.`,
+        8000
+      );
+    }
+  }
+
+  private openSimplifiedVoiceCall(mode: VoiceCallMode): void {
+    try {
+      const targetDate = todayISO();
+      let context: string | (() => Promise<string>);
+      let existingDraft: string;
+      if (mode === "capture") {
+        context = async () => {
+          const path = await resolveDailyLogPath(
+            this.app,
+            this.plugin.settings,
+            targetDate
+          );
+          const file = this.app.vault.getAbstractFileByPath(path);
+          return file instanceof TFile
+            ? (await this.app.vault.read(file)).trim()
+            : "(no captures yet today)";
+        };
+        existingDraft = this.simplifiedState.captureDraft;
+      } else {
+        if (!this.reviewState.resultContent) {
+          new Notice("Run Review first, then use the call button below the summary.");
+          return;
+        }
+        context = [
+          `Review period: ${this.simplifiedState.rangeStart} to ${this.simplifiedState.rangeEnd}`,
+          "",
+          this.reviewState.resultContent,
+        ].join("\n");
+        existingDraft = this.reviewState.userReview;
+      }
+
+      new VoiceCallModal(this.app, this.plugin, {
+        mode,
+        context,
+        existingDraft,
+        targetDate,
+        onDraft: async (draft) => {
+          if (mode === "capture") {
+            this.simplifiedState.captureDraft = draft;
+          } else {
+            this.reviewState.userReview = draft;
+          }
+          await this.render();
+          window.setTimeout(() => {
+            const container = this.containerEl.children[1] as HTMLElement;
+            const selector =
+              mode === "capture"
+                ? ".second-brain-simple-capture-input"
+                : ".second-brain-review-textarea";
+            const input = container.querySelector<HTMLTextAreaElement>(selector);
+            input?.scrollIntoView({ block: "center", behavior: "smooth" });
+            input?.focus({ preventScroll: true });
+          }, 0);
+        },
+      }).open();
+    } catch (error) {
+      this.plugin.errorLog.push(`voice:${mode}:context`, error);
+      new Notice(
+        `Couldn't prepare the ${mode} call: ${(error as Error).message}\nSee Settings → Logs.`,
         8000
       );
     }
@@ -857,6 +924,8 @@ class CaptureModal extends Modal {
   plugin: SecondBrainPlugin;
   targetDate?: string;
   onSaved?: () => void;
+  initialDraft: string;
+  initialProject: string;
   textarea!: HTMLTextAreaElement;
   mode: "note" | "todo" = "note";
   projectSelect: HTMLSelectElement | null = null;
@@ -865,12 +934,18 @@ class CaptureModal extends Modal {
     app: App,
     plugin: SecondBrainPlugin,
     targetDate?: string,
-    onSaved?: () => void
+    onSaved?: () => void,
+    initialDraft = "",
+    initialMode: "note" | "todo" = "note",
+    initialProject = ""
   ) {
     super(app);
     this.plugin = plugin;
     this.targetDate = targetDate;
     this.onSaved = onSaved;
+    this.initialDraft = initialDraft;
+    this.mode = initialMode;
+    this.initialProject = initialProject;
     // Class hook so CSS can anchor this modal near the top of the screen
     // (default Obsidian modals are vertically centered, which lands behind
     // the on-screen keyboard on phone).
@@ -929,6 +1004,7 @@ class CaptureModal extends Modal {
       cls: "second-brain-modal-textarea",
       attr: { placeholder: "What's on your mind?" },
     });
+    this.textarea.value = this.initialDraft;
     this.textarea.focus();
 
     // Project picker (TODO mode). Populated async — "no project" default.
@@ -971,19 +1047,11 @@ class CaptureModal extends Modal {
     });
 
     const voiceBtn = actions.createEl("button", {
-      text: "📞 Voice interview",
+      text: "📞 Call",
       cls: "second-brain-modal-cancel",
-      attr: { title: "Talk to the agent out loud; the conversation becomes a richer capture." },
+      attr: { title: "Talk through this note; the conversation returns as an editable draft." },
     });
-    voiceBtn.addEventListener("click", () => {
-      this.close();
-      new VoiceInterviewModal(
-        this.app,
-        this.plugin,
-        this.targetDate,
-        this.onSaved
-      ).open();
-    });
+    voiceBtn.addEventListener("click", () => void this.openVoiceCall());
 
     const cancelBtn = actions.createEl("button", {
       text: "Cancel",
@@ -1009,8 +1077,56 @@ class CaptureModal extends Modal {
         const opt = this.projectSelect.createEl("option", { text: p.name });
         opt.value = p.file.path;
       }
+      if (this.initialProject) {
+        this.projectSelect.value = this.initialProject;
+      }
     } catch (err) {
       this.plugin.errorLog.push("loadProjectOptions", err);
+    }
+  }
+
+  private openVoiceCall() {
+    const targetDate = this.targetDate ?? todayISO();
+    const existingDraft = this.textarea.value;
+    const existingMode = this.mode;
+    const existingProject = this.projectSelect?.value ?? "";
+    const reopenCapture = (draft: string) => {
+      new CaptureModal(
+        this.app,
+        this.plugin,
+        this.targetDate,
+        this.onSaved,
+        draft,
+        existingMode,
+        existingProject
+      ).open();
+    };
+    try {
+      this.close();
+      new VoiceCallModal(this.app, this.plugin, {
+        mode: "capture",
+        context: async () => {
+          const path = await resolveDailyLogPath(
+            this.app,
+            this.plugin.settings,
+            targetDate
+          );
+          const file = this.app.vault.getAbstractFileByPath(path);
+          return file instanceof TFile
+            ? (await this.app.vault.read(file)).trim()
+            : "(no captures yet today)";
+        },
+        existingDraft,
+        targetDate,
+        onDraft: reopenCapture,
+        onCancel: () => reopenCapture(existingDraft),
+      }).open();
+    } catch (error) {
+      this.plugin.errorLog.push("voice:capture:context", error);
+      new Notice(
+        `Couldn't prepare the capture call: ${(error as Error).message}\nSee Settings → Logs.`,
+        8000
+      );
     }
   }
 

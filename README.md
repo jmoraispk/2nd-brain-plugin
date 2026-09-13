@@ -38,8 +38,19 @@ The default Simplified dashboard puts the whole loop on one screen:
 2. Use the one-month activity map to see capture counts or word counts per day.
 3. Select any date range inside that month and press **Review**.
 4. Read the AI summary inline and save your own reflection without leaving the dashboard.
+5. Use the phone button beside **Capture** or **Save reflection** to talk through either draft. The call result returns to the text box for editing; it is never saved automatically.
 
 Range summaries live at `🤖 AI/Reviews/Custom/<start>--<end>.md`; reflections remain separate under `🧑 Me/Reviews/Custom/`. Settings → Second Brain → Interface can restore the Complete dashboard with Habits, Projects, Review, Think, proposals, and TODOs.
+
+### Voice setup
+
+Voice calls use Vapi's WebRTC SDK directly inside Obsidian—no Twilio or public vault endpoint.
+
+1. Put a Vapi private key in the `VAPI_PRIVATE_KEY` environment variable and run `node scripts/provision-vapi-assistant.mjs`. This creates or updates the dedicated Capture + Review assistant and prints its assistant ID. The private key is used only by this local provisioning script.
+2. In Vapi → API Keys, create a **public** key restricted to that assistant. Allow `http://localhost` for Obsidian on Android, `capacitor://localhost` for iOS, and `app://obsidian.md` for desktop as needed.
+3. Paste the public key and assistant ID into Settings → Second Brain → Voice (Vapi). Talkativeness and both call prompts are editable there.
+
+The plugin sends Vapi only the selected call context: today's capture context for Capture, or the visible generated summary for Review. After hang-up, the configured OpenAI or Anthropic model turns only the user's spoken transcript into an editable draft.
 
 Weekly: **Week's Review** rolls up the seven daily logs and threads in the current Kepano yearly question. Monthly threads in the current Kepano decade question.
 
@@ -104,11 +115,13 @@ Reload Obsidian (Cmd/Ctrl-R) after each rebuild.
 | Logs folder                      | `🧑 Me/Logs`                                                           | Recursively searched for `<today>.md`.                         |
 | Daily log path template          | `🧑 Me/Logs/{ISO_YEAR}/Q{Q}/W{WW}/{YYYY-MM-DD}.md`                     | Used when today's file doesn't exist yet.                      |
 | Daily review path template       | `🤖 AI/Reviews/Daily/{ISO_YEAR}/Q{Q}/W{WW}/{YYYY-MM-DD}.md`            | Where Today's Review writes. Cache-busted on re-run.           |
+| Vapi public key / assistant ID   | _empty_                                                                | Client-safe credentials for in-plugin internet calls.          |
+| Voice talkativeness              | `5`                                                                    | Tunable from 1 (quiet) to 10 (active).                          |
 
 ## Privacy / costs
 
-- **BYOK.** The plugin only talks to `api.anthropic.com` or `api.openai.com`. Nothing else is exfiltrated.
-- Daily-log content is sent to the configured provider when you press a review command. That's it.
+- **BYOK.** Text generation goes to the configured Anthropic or OpenAI API. Voice calls additionally use Vapi and its WebRTC transport only when you press a phone button.
+- Daily-log content is sent to the configured provider when you press a review command. A voice call sends only its selected Capture or Review context to Vapi.
 - All vault writes happen client-side via Obsidian's normal API.
 
 ## Required Obsidian plugins (v0.8+)
@@ -144,6 +157,7 @@ frontmatter field.
 
 ## Release log
 
+- v0.16.12 — **Mobile Capture + Review calls.** Compact phone buttons beside Capture and Save reflection start a Vapi internet call on desktop or Obsidian Mobile. The agent has editable Capture/Review prompts and a 1–10 talkativeness control. Hang-up synthesizes only the user's spoken words into the visible editable box; nothing auto-saves. Vapi's browser dependencies are fully bundled for mobile, microphone permission is requested from the initiating tap, CSP-safe Daily settings are enabled, and staged connection failures are logged.
 - v0.16.11 — **Open created files from notifications.** Successful capture, interview, project, goal, habit, saved-review, and generated-review notices now end with a clickable `· Open file` action that opens the exact vault file.
 - v0.16.10 — **Visible installed version.** Settings now ends with a quiet footer that reads the running plugin version from its manifest, making update status easy to confirm.
 - v0.16.9 — **Tap-to-cycle activity metric.** The centered Captures / Words control advances on a short click or tap; holding it opens the full metric menu.

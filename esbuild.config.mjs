@@ -27,7 +27,10 @@ const context = await esbuild.context({
     "@lezer/common",
     "@lezer/highlight",
     "@lezer/lr",
-    ...builtins,
+    // Vapi is a browser SDK and depends on the npm `events` polyfill. Leaving
+    // Node's builtin external produces `require("events")`, which Obsidian
+    // Mobile cannot resolve.
+    ...builtins.filter((moduleName) => moduleName !== "events"),
   ],
   format: "cjs",
   target: "es2018",

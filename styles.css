@@ -159,6 +159,7 @@
 .second-brain-simple-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 10px;
 }
 
 .second-brain-simple-actions .second-brain-button,
@@ -170,6 +171,37 @@
   padding: 8px 22px;
   border-radius: 9px;
   font-size: 16px;
+}
+
+.second-brain-simple-actions .second-brain-button {
+  flex: 1 1 auto;
+  width: auto;
+}
+
+.second-brain-simple-call-button {
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: 0 0 44px;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  color: var(--text-normal);
+}
+
+.second-brain-simple-call-button svg {
+  width: 19px;
+  height: 19px;
+}
+
+.second-brain-voice-talk-value {
+  min-width: 18px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
 }
 
 .second-brain-month-header {
