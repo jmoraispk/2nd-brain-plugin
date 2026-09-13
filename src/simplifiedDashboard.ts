@@ -1,4 +1,12 @@
-import { Component, MarkdownRenderer, Menu, setIcon, TFile, TFolder } from "obsidian";
+import {
+  Component,
+  MarkdownRenderer,
+  Menu,
+  Platform,
+  setIcon,
+  TFile,
+  TFolder,
+} from "obsidian";
 import SecondBrainPlugin from "../main";
 import { applyDatePlaceholders, todayISO } from "./paths";
 import { ReviewTabState } from "./reviewTab";
@@ -78,6 +86,7 @@ export function defaultSimplifiedDashboardState(): SimplifiedDashboardState {
 export interface SimplifiedDashboardCallbacks {
   setCaptureDraft: (value: string) => void;
   saveCapture: (value: string) => Promise<void>;
+  fetchActivity: () => Promise<void>;
   startCaptureCall: () => void;
   changeMonth: (month: string) => void;
   selectCalendarDate: (date: string) => void;
@@ -117,7 +126,7 @@ export async function renderSimplifiedDashboard(
   });
 }
 
-function renderCapture(
+export function renderCapture(
   body: HTMLElement,
   state: SimplifiedDashboardState,
   cb: SimplifiedDashboardCallbacks
@@ -139,6 +148,28 @@ function renderCapture(
   textarea.addEventListener("input", () => cb.setCaptureDraft(textarea.value));
 
   const actions = section.createDiv({ cls: "second-brain-simple-actions" });
+  if (Platform.isDesktopApp) {
+    const activity = actions.createEl("button", {
+      text: "Activity",
+      cls: "second-brain-button",
+      attr: {
+        "data-action": "activity",
+        title: "Fetch today's ActivityWatch summary",
+        "aria-label": "Fetch today's ActivityWatch summary",
+      },
+    });
+    activity.addEventListener("click", async () => {
+      if (activity.hasAttribute("disabled")) return;
+      activity.setAttribute("disabled", "true");
+      activity.setText("Fetching…");
+      try {
+        await cb.fetchActivity();
+      } finally {
+        activity.removeAttribute("disabled");
+        activity.setText("Activity");
+      }
+    });
+  }
   const save = actions.createEl("button", {
     text: "Capture",
     cls: "second-brain-button second-brain-button-primary",

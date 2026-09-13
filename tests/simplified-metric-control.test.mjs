@@ -74,6 +74,8 @@ function obsidianStubPlugin() {
             export class TFile {}
             export class TFolder {}
             export const MarkdownRenderer = {};
+            export const Platform = { isDesktopApp: true };
+            export async function requestUrl() { return {}; }
             export function setIcon() {}
           `,
           loader: "js",

@@ -16,6 +16,7 @@ The plugin organizes the vault into two authoring zones plus the PARA tier. The 
 | `Reviews/Monthly/{Y}-{mm}.md`           | `Reviews/Monthly/{Y}-{mm}.md`                   | monthly            |
 | `Reviews/Quarterly/{Y}-Q{q}.md`         | `Reviews/Quarterly/{Y}-Q{q}.md`                 | quarterly          |
 | `Reviews/Yearly/{Y}.md`                 | `Reviews/Yearly/{Y}.md`                         | yearly             |
+| `Activity/Daytrace/Evidence/{Y}/Q{q}/W{ww}/<date>.json` | `Activity/Daytrace/Summaries/{Y}/Q{q}/W{ww}/<date>.md` | on demand (desktop) |
 | `Reviews/Qs-Year/<NN>-<slug>.md`        | _(no mirror — pure reflection)_                 | weekly rotation    |
 | `Reviews/Qs-Decade/<NN>-<slug>.md`      | _(no mirror — pure reflection)_                 | monthly rotation   |
 
@@ -35,10 +36,11 @@ Alongside Me / AI sit the PARA folders (knowledge organized by topic, not by aut
 The default Simplified dashboard puts the whole loop on one screen:
 
 1. **Capture** a plain note → appends `[HH:MM] ...` to `🧑 Me/Logs/<today>.md`.
-2. Use the one-month activity map to see capture counts or word counts per day.
-3. Select any date range inside that month and press **Review**.
-4. Read the AI summary inline and save your own reflection without leaving the dashboard.
-5. Use the phone button beside **Capture** or **Save reflection** to talk through either draft. The call result returns to the text box for editing; it is never saved automatically.
+2. On desktop, press **Activity** to turn today's local ActivityWatch trace into an editable DayTrace table. Sanitized deterministic evidence is saved under `🧑 Me/Activity/Daytrace/Evidence/`; a validated AI summary is saved under the matching `🤖 AI/Activity/Daytrace/Summaries/` path. Nothing is appended to the daily log until you press **Capture**.
+3. Use the one-month activity map to see capture counts or word counts per day.
+4. Select any date range inside that month and press **Review**.
+5. Read the AI summary inline and save your own reflection without leaving the dashboard.
+6. Use the phone button beside **Capture** or **Save reflection** to talk through either draft. The call result returns to the text box for editing; it is never saved automatically.
 
 Range summaries live at `🤖 AI/Reviews/Custom/<start>--<end>.md`; reflections remain separate under `🧑 Me/Reviews/Custom/`. Settings → Second Brain → Interface can restore the Complete dashboard with Habits, Projects, Review, Think, proposals, and TODOs.
 
@@ -122,6 +124,7 @@ Reload Obsidian (Cmd/Ctrl-R) after each rebuild.
 
 - **BYOK.** Text generation goes to the configured Anthropic or OpenAI API. Voice calls additionally use Vapi and its WebRTC transport only when you press a phone button.
 - Daily-log content is sent to the configured provider when you press a review command. A voice call sends only its selected Capture or Review context to Vapi.
+- ActivityWatch stays local. Pressing **Activity** sends only DayTrace's minimized, sanitized episode evidence to the configured provider; OpenAI activity-summary requests explicitly set `store: false`. If the model step fails, the local deterministic evidence remains available and is placed in Capture as a fallback.
 - All vault writes happen client-side via Obsidian's normal API.
 
 ## Required Obsidian plugins (v0.8+)
@@ -157,6 +160,7 @@ frontmatter field.
 
 ## Release log
 
+- v0.17.0 — **DayTrace activity capture.** Desktop Capture now has an **Activity** button that reads today's local ActivityWatch watchers through the browser-compatible `@jmoraispk/daytrace` core, saves sanitized deterministic evidence under `🧑 Me/Activity/Daytrace/Evidence/`, saves validated AI workstream Markdown under `🤖 AI/Activity/Daytrace/Summaries/`, and places the resulting table in the editable Capture box without overwriting an existing draft. OpenAI and Anthropic both use structured JSON output; OpenAI requests opt out of storage. Mobile remains compatible for reading synced artifacts while activity fetching stays desktop-only.
 - v0.16.14 — **Voice deployment refresh.** Republishes the mobile Capture + Review call buttons as the newest plugin release so phone updaters receive the voice interface immediately.
 - v0.16.13 — **File paths restored in open notices.** Successful file notifications retain the full vault path and finish with `· Open file`, preserving context while keeping the target one click away.
 - v0.16.12 — **Mobile Capture + Review calls.** Compact phone buttons beside Capture and Save reflection start a Vapi internet call on desktop or Obsidian Mobile. The agent has editable Capture/Review prompts and a 1–10 talkativeness control. Hang-up synthesizes only the user's spoken words into the visible editable box; nothing auto-saves. Vapi's browser dependencies are fully bundled for mobile, microphone permission is requested from the initiating tap, CSP-safe Daily settings are enabled, and staged connection failures are logged.

@@ -1,4 +1,12 @@
-import { ItemView, WorkspaceLeaf, Notice, Modal, App, TFile } from "obsidian";
+import {
+  ItemView,
+  WorkspaceLeaf,
+  Notice,
+  Modal,
+  App,
+  Platform,
+  TFile,
+} from "obsidian";
 import SecondBrainPlugin from "../main";
 import { appendCapture } from "./capture";
 import { runCommand, RunResult } from "./runner";
@@ -51,6 +59,10 @@ import {
   SimplifiedDashboardState,
 } from "./simplifiedDashboard";
 import { showFileNotice } from "./fileNotice";
+import {
+  generateDaytraceActivity,
+  mergeCaptureDraft,
+} from "./daytraceIntegration";
 
 export const VIEW_TYPE_SECOND_BRAIN = "second-brain-view";
 
@@ -77,6 +89,8 @@ export class SecondBrainView extends ItemView {
   tabInfoOpen: boolean = false;
   /** Date the Dashboard's day-header is showing (capped at yesterday ↔ today). */
   displayedDate: string = todayISO();
+  private activityController?: AbortController;
+  private activityRunId = 0;
 
   constructor(leaf: WorkspaceLeaf, plugin: SecondBrainPlugin) {
     super(leaf);
@@ -97,7 +111,9 @@ export class SecondBrainView extends ItemView {
     await this.render();
   }
 
-  async onClose() {}
+  async onClose() {
+    this.activityController?.abort();
+  }
 
   async render() {
     const container = this.containerEl.children[1] as HTMLElement;
@@ -120,6 +136,7 @@ export class SecondBrainView extends ItemView {
             this.simplifiedState.captureDraft = value;
           },
           saveCapture: (value) => this.saveSimplifiedCapture(value),
+          fetchActivity: () => this.fetchSimplifiedActivity(),
           startCaptureCall: () => void this.openSimplifiedVoiceCall("capture"),
           changeMonth: (month) => this.changeSimplifiedMonth(month),
           selectCalendarDate: (date) => this.selectSimplifiedDate(date),
@@ -454,6 +471,77 @@ export class SecondBrainView extends ItemView {
         `Capture failed: ${(err as Error).message}\nSee Settings → Logs for details.`,
         8000
       );
+    }
+  }
+
+  private async fetchSimplifiedActivity(): Promise<void> {
+    if (!Platform.isDesktopApp) {
+      new Notice("ActivityWatch fetching is available on desktop.");
+      return;
+    }
+
+    if (this.activityController) {
+      new Notice("Activity summary is already running.");
+      return;
+    }
+    const controller = new AbortController();
+    const runId = ++this.activityRunId;
+    this.activityController = controller;
+    const progress = new Notice("Connecting to ActivityWatch…", 0);
+    try {
+      const result = await generateDaytraceActivity(
+        this.app,
+        this.plugin.settings,
+        todayISO(),
+        {
+          signal: controller.signal,
+          onProgress: (event) => {
+            if (runId !== this.activityRunId || controller.signal.aborted) return;
+            const messages: Record<string, string> = {
+              "activitywatch:info": "Connected to ActivityWatch…",
+              "activitywatch:buckets": "Reading ActivityWatch buckets…",
+              "activitywatch:events": "Reading today's activity…",
+              "pipeline:episodes": "Building activity episodes…",
+              "summary:chunk": "Summarizing activity…",
+              "summary:merge": "Merging activity summary…",
+            };
+            const message = messages[event.stage];
+            if (message) progress.setMessage(message);
+          },
+        }
+      );
+      if (runId !== this.activityRunId || controller.signal.aborted) return;
+
+      this.simplifiedState.captureDraft = mergeCaptureDraft(
+        this.simplifiedState.captureDraft,
+        result.captureMarkdown
+      );
+
+      if (result.summaryFile) {
+        showFileNotice(
+          this.app,
+          "Activity summary created",
+          result.summaryFile
+        );
+      } else {
+        showFileNotice(
+          this.app,
+          `Activity evidence created; AI summary unavailable (${result.fallbackCode})`,
+          result.evidenceFile,
+          8000
+        );
+      }
+      await this.render();
+    } catch (err) {
+      if (controller.signal.aborted) return;
+      this.plugin.errorLog.push("daytrace-activity", err);
+      new Notice(
+        `Activity fetch failed: ${(err as Error).message}\nSee Settings → Logs for details.`,
+        8000
+      );
+    } finally {
+      progress.hide();
+      if (runId === this.activityRunId) this.activityController = undefined;
     }
   }
 

@@ -36,6 +36,7 @@ test("controls and settings footer retain their intended geometry", async () => 
 <main class="fixture">
   <section class="second-brain-simple-card">
     <div class="second-brain-simple-actions" data-container="capture">
+      <button class="second-brain-button" data-action="activity">Activity</button>
       <button class="second-brain-button second-brain-button-primary" data-action="capture">Capture</button>
       <button class="second-brain-simple-call-button" data-action="capture-call" aria-label="Talk through a capture">Call</button>
     </div>
@@ -68,6 +69,7 @@ test("controls and settings footer retain their intended geometry", async () => 
     document.querySelector('[data-control="settings-version"]')
   );
   const measurements = {
+    activity: width('[data-action="activity"]'),
     capture: width('[data-action="capture"]'),
     captureContainer: width('[data-container="capture"]'),
     captureCallWidth: width('[data-action="capture-call"]'),
@@ -116,9 +118,9 @@ test("controls and settings footer retain their intended geometry", async () => 
     const widths = await waitForWidths(page.webSocketDebuggerUrl);
 
     assert.equal(
-      widths.capture + widths.captureCallWidth + 10,
+      widths.activity + widths.capture + widths.captureCallWidth + 20,
       widths.captureContainer,
-      "Capture and its call button should fill the action row"
+      "Activity, Capture, and the call button should fill the action row"
     );
     assert.equal(widths.review, widths.reviewContainer, "Review should be full width");
     assert.equal(widths.captureCallWidth, 44, "Capture call should be a square 44px target");
@@ -248,6 +250,115 @@ test("metric pointer lifecycle opens only intentional long presses", async () =>
   }
 });
 
+test("desktop Activity control is single-flight and stays off mobile", async () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "second-brain-activity-"));
+  const profileDir = path.join(tempDir, "edge-profile");
+  const debugPort = 10300 + Math.floor(Math.random() * 500);
+  let browser;
+  try {
+    const bundle = await buildDashboardBrowserBundle();
+    const fixturePath = path.join(tempDir, "fixture.html");
+    writeFileSync(
+      fixturePath,
+      `<!doctype html>
+<main id="host"></main>
+<script>
+  HTMLElement.prototype.createEl = function(tag, options = {}) {
+    const element = document.createElement(tag);
+    if (options.text !== undefined) element.textContent = options.text;
+    if (options.cls) element.className = options.cls;
+    for (const [name, value] of Object.entries(options.attr ?? {})) {
+      element.setAttribute(name, value);
+    }
+    this.appendChild(element);
+    return element;
+  };
+  HTMLElement.prototype.createDiv = function(options = {}) {
+    return this.createEl('div', options);
+  };
+  HTMLElement.prototype.setText = function(text) {
+    this.textContent = text;
+  };
+</script>
+<script>${bundle}</script>
+<script type="module">
+  const drafts = [];
+  let fetches = 0;
+  let finishFetch;
+  dashboard.renderCapture(
+    document.querySelector('#host'),
+    { captureDraft: 'Existing thought' },
+    {
+      setCaptureDraft: (value) => drafts.push(value),
+      saveCapture: async () => {},
+      startCaptureCall: () => {},
+      fetchActivity: () => new Promise((resolve) => {
+        fetches += 1;
+        finishFetch = () => {
+          drafts.push('view updated its latest state');
+          resolve();
+        };
+      }),
+    }
+  );
+  const activityButton = document.querySelector('[data-action="activity"]');
+  activityButton.click();
+  activityButton.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const fetchesBeforeCompletion = fetches;
+  finishFetch();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const textarea = document.querySelector('textarea');
+  globalThis.__obsidianPlatform.isDesktopApp = false;
+  const mobile = document.body.createDiv();
+  dashboard.renderCapture(
+    mobile,
+    { captureDraft: '' },
+    {
+      setCaptureDraft: () => {},
+      saveCapture: async () => {},
+      startCaptureCall: () => {},
+      fetchActivity: async () => 'not used',
+    }
+  );
+  document.body.dataset.activityResult = JSON.stringify({
+    fetches,
+    fetchesBeforeCompletion,
+    value: textarea.value,
+    draft: drafts.at(-1),
+    buttonText: document.querySelector('[data-action="activity"]').textContent,
+    mobileButtons: mobile.querySelectorAll('[data-action="activity"]').length,
+  });
+</script>`,
+      "utf8"
+    );
+
+    browser = spawn(
+      edgePath,
+      [
+        "--headless=new",
+        "--disable-gpu",
+        "--no-first-run",
+        `--remote-debugging-port=${debugPort}`,
+        `--user-data-dir=${profileDir}`,
+        pathToFileURL(fixturePath).href,
+      ],
+      { stdio: "ignore" }
+    );
+    const page = await waitForPage(debugPort, pathToFileURL(fixturePath).href);
+    const result = await waitForDataset(page.webSocketDebuggerUrl, "activityResult");
+
+    assert.equal(result.fetches, 1);
+    assert.equal(result.fetchesBeforeCompletion, 1, "A running button should be single-flight");
+    assert.equal(result.value, "Existing thought");
+    assert.equal(result.draft, "view updated its latest state");
+    assert.equal(result.buttonText, "Activity");
+    assert.equal(result.mobileButtons, 0, "Activity fetching should stay off mobile");
+  } finally {
+    await cleanupBrowser(browser, debugPort, profileDir, tempDir);
+  }
+});
+
 async function waitForPage(port, expectedUrl) {
   const endpoint = `http://127.0.0.1:${port}/json/list`;
   for (let attempt = 0; attempt < 50; attempt += 1) {
@@ -342,6 +453,9 @@ function obsidianBrowserStubPlugin() {
             export class TFile {}
             export class TFolder {}
             export const MarkdownRenderer = {};
+            export const Platform = { isDesktopApp: true };
+            globalThis.__obsidianPlatform = Platform;
+            export async function requestUrl() { return {}; }
             export function setIcon(element, icon) {
               element.dataset.icon = icon;
             }

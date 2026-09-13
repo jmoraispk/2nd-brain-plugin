@@ -1,0 +1,409 @@
+import assert from "node:assert/strict";
+import path from "node:path";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+import { build } from "esbuild";
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+test("an activity summary keeps an existing capture draft instead of erasing it", async () => {
+  const daytrace = await loadDaytraceModule();
+
+  assert.equal(
+    daytrace.mergeCaptureDraft("Remember this", "| Workstream | Work |\n| --- | --- |"),
+    "Remember this\n\n| Workstream | Work |\n| --- | --- |"
+  );
+  assert.equal(daytrace.mergeCaptureDraft("", "Fetched activity"), "Fetched activity");
+});
+
+test("ActivityWatch transport sends the exact local request and respects query values", async () => {
+  const daytrace = await loadDaytraceModule();
+  let observed;
+  const transport = daytrace.createActivityWatchTransport(async (request) => {
+    observed = request;
+    return { status: 200, json: [{ id: 1 }] };
+  });
+
+  const result = await transport.request({
+    server: "http://127.0.0.1:5600",
+    path: "/api/0/buckets/aw-watcher-window_test/events",
+    query: {
+      start: "2026-09-13T00:00:00-07:00",
+      end: "2026-09-14T00:00:00-07:00",
+    },
+  });
+
+  assert.deepEqual(result, [{ id: 1 }]);
+  assert.equal(observed.method, "GET");
+  assert.equal(observed.throw, false);
+  assert.equal(
+    observed.url,
+    "http://127.0.0.1:5600/api/0/buckets/aw-watcher-window_test/events?start=2026-09-13T00%3A00%3A00-07%3A00&end=2026-09-14T00%3A00%3A00-07%3A00"
+  );
+});
+
+test("OpenAI DayTrace requests use strict JSON output without provider storage", async () => {
+  const daytrace = await loadDaytraceModule();
+  let observed;
+  const provider = daytrace.createDaytraceSummaryProvider(
+    settings({ provider: "openai", openaiApiKey: "openai-secret", openaiModel: "gpt-5" }),
+    async (request) => {
+      observed = request;
+      return {
+        status: 200,
+        json: {
+          id: "chatcmpl_123",
+          choices: [{ message: { content: '{"schema":"daytrace.workstream-digest.v2"}' } }],
+          usage: { prompt_tokens: 21, completion_tokens: 8 },
+        },
+      };
+    }
+  );
+  const format = responseFormat();
+
+  const result = await provider.complete(providerRequest(format));
+  const body = JSON.parse(observed.body);
+
+  assert.equal(observed.url, "https://api.openai.com/v1/chat/completions");
+  assert.equal(observed.headers.authorization, "Bearer openai-secret");
+  assert.equal(body.store, false);
+  assert.deepEqual(body.response_format, {
+    type: "json_schema",
+    json_schema: {
+      name: "daytrace_workstream_digest_v2",
+      strict: true,
+      schema: format.schema,
+    },
+  });
+  assert.deepEqual(JSON.parse(body.messages[1].content), { episodes: [] });
+  assert.equal(JSON.stringify(body).includes("openai-secret"), false);
+  assert.deepEqual(result, {
+    payload: { schema: "daytrace.workstream-digest.v2" },
+    provider: "openai",
+    model: "gpt-5",
+    inputTokens: 21,
+    outputTokens: 8,
+    responseId: "chatcmpl_123",
+  });
+});
+
+test("Anthropic DayTrace requests translate the shared schema to output_config.format", async () => {
+  const daytrace = await loadDaytraceModule();
+  let observed;
+  const provider = daytrace.createDaytraceSummaryProvider(
+    settings({
+      provider: "anthropic",
+      anthropicApiKey: "anthropic-secret",
+      anthropicModel: "claude-sonnet-4-6",
+    }),
+    async (request) => {
+      observed = request;
+      return {
+        status: 200,
+        json: {
+          id: "msg_123",
+          content: [{ type: "text", text: '{"schema":"daytrace.workstream-digest.v2"}' }],
+          usage: { input_tokens: 34, output_tokens: 13 },
+        },
+      };
+    }
+  );
+  const format = responseFormat();
+
+  const result = await provider.complete(providerRequest(format));
+  const body = JSON.parse(observed.body);
+
+  assert.equal(observed.url, "https://api.anthropic.com/v1/messages");
+  assert.equal(observed.headers["x-api-key"], "anthropic-secret");
+  assert.deepEqual(body.output_config, {
+    format: {
+      type: "json_schema",
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["schema"],
+        properties: {
+          schema: { type: "string" },
+          items: {
+            type: "array",
+            minItems: 1,
+            items: { type: "string" },
+          },
+        },
+      },
+    },
+  });
+  assert.equal(JSON.stringify(body).includes("anthropic-secret"), false);
+  assert.equal(result.provider, "anthropic");
+  assert.equal(result.model, "claude-sonnet-4-6");
+  assert.equal(result.inputTokens, 34);
+  assert.equal(result.outputTokens, 13);
+  assert.equal(result.responseId, "msg_123");
+});
+
+test("generation runs the published core, stores Human evidence and AI summary, and returns the table", async () => {
+  const daytrace = await loadDaytraceModule();
+  const vault = new FakeVault(globalThis.__DaytraceTFile);
+  const app = { vault };
+  const request = async (input) => {
+    const url = new URL(input.url);
+    if (url.pathname === "/api/0/info") {
+      return { status: 200, json: { version: "0.13.2", testing: false } };
+    }
+    if (url.pathname === "/api/0/buckets") {
+      return {
+        status: 200,
+        json: {
+          "aw-watcher-window_test": {
+            type: "currentwindow",
+            client: "aw-watcher-window",
+            hostname: "test",
+          },
+        },
+      };
+    }
+    if (url.pathname.endsWith("/events")) {
+      return {
+        status: 200,
+        json: [
+          {
+            id: 7,
+            timestamp: "2026-09-13T16:00:00Z",
+            duration: 1800,
+            data: { app: "Visual Studio Code", title: "daytrace integration" },
+          },
+        ],
+      };
+    }
+    if (input.url === "https://api.openai.com/v1/chat/completions") {
+      const body = JSON.parse(input.body);
+      const episodeId =
+        body.response_format.json_schema.schema.properties.workstreams.items.properties
+          .episode_ids.items.enum[0];
+      return {
+        status: 200,
+        json: {
+          id: "chatcmpl_daytrace",
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  schema: "daytrace.workstream-digest.v2",
+                  workstreams: [
+                    {
+                      label: "DayTrace integration",
+                      confidence: "high",
+                      episode_ids: [episodeId],
+                      topics: [{ text: "Connected the Obsidian plugin", evidence: [episodeId] }],
+                      outcomes: [
+                        {
+                          text: "Worked on the integration",
+                          strength: "observed",
+                          evidence: [episodeId],
+                        },
+                      ],
+                    },
+                  ],
+                  unassigned_episode_ids: [],
+                }),
+              },
+            },
+          ],
+          usage: { prompt_tokens: 100, completion_tokens: 50 },
+        },
+      };
+    }
+    throw new Error(`Unexpected request: ${input.url}`);
+  };
+
+  const result = await daytrace.generateDaytraceActivity(
+    app,
+    settings({ provider: "openai", openaiApiKey: "secret", openaiModel: "gpt-5" }),
+    "2026-09-13",
+    { request, timezoneName: "UTC" }
+  );
+
+  assert.equal(
+    result.evidenceFile.path,
+    "🧑 Me/Activity/Daytrace/Evidence/2026/Q3/W37/2026-09-13.json"
+  );
+  assert.equal(
+    result.summaryFile.path,
+    "🤖 AI/Activity/Daytrace/Summaries/2026/Q3/W37/2026-09-13.md"
+  );
+  assert.match(result.captureMarkdown, /\| Project \/ workstream \| Apparent achievements \| Work and topics \|/);
+  assert.match(result.captureMarkdown, /DayTrace integration/);
+  assert.equal(result.fallbackCode, undefined);
+  assert.match(vault.content(result.evidenceFile.path), /"schema": "daytrace\.episode-bundle\.v1"/);
+  assert.equal(vault.content(result.summaryFile.path), result.captureMarkdown);
+});
+
+test("provider network failure returns deterministic activity and marks an older AI summary stale", async () => {
+  const daytrace = await loadDaytraceModule();
+  const vault = new FakeVault(globalThis.__DaytraceTFile);
+  const summaryPath =
+    "🤖 AI/Activity/Daytrace/Summaries/2026/Q3/W37/2026-09-13.md";
+  await vault.create(summaryPath, "old AI summary");
+  const app = { vault };
+  const request = async (input) => {
+    const url = new URL(input.url);
+    if (url.pathname === "/api/0/info")
+      return { status: 200, json: { version: "0.13.2" } };
+    if (url.pathname === "/api/0/buckets") return { status: 200, json: {} };
+    if (input.url === "https://api.openai.com/v1/chat/completions")
+      throw new TypeError("offline");
+    throw new Error(`Unexpected request: ${input.url}`);
+  };
+
+  const result = await daytrace.generateDaytraceActivity(
+    app,
+    settings({ provider: "openai", openaiApiKey: "secret" }),
+    "2026-09-13",
+    { request, timezoneName: "UTC" }
+  );
+
+  assert.equal(result.fallbackCode, "provider-network");
+  assert.equal(result.summaryFile, undefined);
+  assert.match(result.captureMarkdown, /Summary: Deterministic activity episodes/);
+  assert.match(vault.content(summaryPath), /daytrace-status: unavailable/);
+  assert.doesNotMatch(vault.content(summaryPath), /old AI summary/);
+});
+
+test("an aborted generation makes no requests or vault writes", async () => {
+  const daytrace = await loadDaytraceModule();
+  const vault = new FakeVault(globalThis.__DaytraceTFile);
+  const controller = new AbortController();
+  controller.abort();
+  let requests = 0;
+
+  await assert.rejects(
+    daytrace.generateDaytraceActivity(
+      { vault },
+      settings({ provider: "openai", openaiApiKey: "secret" }),
+      "2026-09-13",
+      {
+        signal: controller.signal,
+        request: async () => {
+          requests += 1;
+          return { status: 200, json: {} };
+        },
+        timezoneName: "UTC",
+      }
+    ),
+    (error) => error?.name === "AbortError"
+  );
+  assert.equal(requests, 0);
+  assert.equal(vault.items.size, 0);
+});
+
+function settings(overrides) {
+  return {
+    provider: "openai",
+    openaiApiKey: "",
+    openaiModel: "gpt-5",
+    anthropicApiKey: "",
+    anthropicModel: "claude-sonnet-4-6",
+    ...overrides,
+  };
+}
+
+function responseFormat() {
+  return {
+    type: "json_schema",
+    name: "daytrace_workstream_digest_v2",
+    strict: true,
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["schema"],
+      properties: {
+        schema: { type: "string", maxLength: 80 },
+        items: {
+          type: "array",
+          minItems: 1,
+          maxItems: 3,
+          items: { type: "string", maxLength: 80 },
+        },
+      },
+    },
+  };
+}
+
+function providerRequest(format) {
+  return {
+    passKind: "chunk",
+    payload: { episodes: [] },
+    instructions: "Return the DayTrace digest.",
+    responseFormat: format,
+  };
+}
+
+class FakeVault {
+  constructor(TFile) {
+    this.TFile = TFile;
+    this.items = new Map();
+  }
+  getAbstractFileByPath(pathname) {
+    return this.items.get(pathname) ?? null;
+  }
+  async createFolder(pathname) {
+    this.items.set(pathname, { path: pathname, kind: "folder" });
+  }
+  async create(pathname, content) {
+    const file = new this.TFile(pathname);
+    file.content = content;
+    this.items.set(pathname, file);
+    return file;
+  }
+  async modify(file, content) {
+    file.content = content;
+  }
+  content(pathname) {
+    return this.items.get(pathname)?.content;
+  }
+}
+
+let daytraceModule;
+
+async function loadDaytraceModule() {
+  daytraceModule ??= build({
+    entryPoints: [path.join(repoRoot, "src", "daytraceIntegration.ts")],
+    bundle: true,
+    format: "esm",
+    platform: "node",
+    write: false,
+    plugins: [obsidianStubPlugin()],
+  }).then(({ outputFiles }) => {
+    const source = outputFiles[0].text;
+    return import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
+  });
+  return daytraceModule;
+}
+
+function obsidianStubPlugin() {
+  return {
+    name: "obsidian-daytrace-test-stub",
+    setup(buildApi) {
+      buildApi.onResolve({ filter: /^obsidian$/ }, () => ({
+        path: "obsidian",
+        namespace: "obsidian-daytrace-test-stub",
+      }));
+      buildApi.onLoad(
+        { filter: /.*/, namespace: "obsidian-daytrace-test-stub" },
+        () => ({
+          contents: `
+            export class TFile {
+              constructor(path) { this.path = path; }
+            }
+            export class TFolder {}
+            globalThis.__DaytraceTFile = TFile;
+            export async function requestUrl() {
+              throw new Error("Unexpected default requestUrl call");
+            }
+          `,
+          loader: "js",
+        })
+      );
+    },
+  };
+}
