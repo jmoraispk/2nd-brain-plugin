@@ -41,6 +41,7 @@ The default Simplified dashboard puts the whole loop on one screen:
 4. Select any date range inside that month and press **Review**.
 5. Read the AI summary inline and save your own reflection without leaving the dashboard.
 6. Use the phone button beside **Capture** or **Save reflection** to talk through either draft. The call result returns to the text box for editing; it is never saved automatically.
+7. Open Settings → Second Brain → **History** to see metadata-only cost totals and per-interaction details. Vapi charges become exact after desktop reconciliation; OpenAI and Anthropic amounts are token-based estimates.
 
 Range summaries live at `🤖 AI/Reviews/Custom/<start>--<end>.md`; reflections remain separate under `🧑 Me/Reviews/Custom/`. Settings → Second Brain → Interface can restore the Complete dashboard with Habits, Projects, Review, Think, proposals, and TODOs.
 
@@ -48,11 +49,11 @@ Range summaries live at `🤖 AI/Reviews/Custom/<start>--<end>.md`; reflections 
 
 Voice calls use Vapi's WebRTC SDK directly inside Obsidian—no Twilio or public vault endpoint.
 
-1. Put a Vapi private key in the `VAPI_PRIVATE_KEY` environment variable and run `node scripts/provision-vapi-assistant.mjs`. This creates or updates the dedicated Capture + Review assistant and prints its assistant ID. The private key is used only by this local provisioning script.
+1. Put a Vapi private key in the desktop `VAPI_PRIVATE_KEY` environment variable and fully restart Obsidian so it inherits the value. Run `node scripts/provision-vapi-assistant.mjs` once to create or update the dedicated Capture + Review assistant and print its assistant ID. The plugin also uses this environment variable on desktop to reconcile exact Vapi call charges; it is never saved in plugin settings or the vault.
 2. In Vapi → API Keys, create a **public** key restricted to that assistant. Allow `http://localhost` for Obsidian on Android, `capacitor://localhost` for iOS, and `app://obsidian.md` for desktop as needed.
 3. Paste the public key and assistant ID into Settings → Second Brain → Voice (Vapi). Talkativeness and both call prompts are editable there.
 
-The plugin sends Vapi only the selected call context: today's capture context for Capture, or the visible generated summary for Review. After hang-up, the configured OpenAI or Anthropic model turns only the user's spoken transcript into an editable draft.
+The plugin sends Vapi only the selected call context: today's capture context for Capture (capped at 12,000 characters, favoring the current draft and newest log text), or the visible generated summary for Review. After hang-up, the configured OpenAI or Anthropic model turns only the user's spoken transcript into an editable draft. The default voice prompts follow specific threads for several turns and ask one direct question at a time; both prompts and talkativeness remain editable.
 
 Weekly: **Week's Review** rolls up the seven daily logs and threads in the current Kepano yearly question. Monthly threads in the current Kepano decade question.
 
@@ -119,12 +120,15 @@ Reload Obsidian (Cmd/Ctrl-R) after each rebuild.
 | Daily review path template       | `🤖 AI/Reviews/Daily/{ISO_YEAR}/Q{Q}/W{WW}/{YYYY-MM-DD}.md`            | Where Today's Review writes. Cache-busted on re-run.           |
 | Vapi public key / assistant ID   | _empty_                                                                | Client-safe credentials for in-plugin internet calls.          |
 | Voice talkativeness              | `5`                                                                    | Tunable from 1 (quiet) to 10 (active).                          |
+| History                          | _metadata only_                                                        | Exact Vapi costs on desktop; token-based LLM estimates.         |
 
 ## Privacy / costs
 
 - **BYOK.** Text generation goes to the configured Anthropic or OpenAI API. Voice calls additionally use Vapi and its WebRTC transport only when you press a phone button.
 - Daily-log content is sent to the configured provider when you press a review command. A voice call sends only its selected Capture or Review context to Vapi.
 - ActivityWatch stays local. Pressing **Activity** sends only DayTrace's minimized, sanitized episode evidence to the configured provider; OpenAI activity-summary requests explicitly set `store: false`. If the model step fails, the local deterministic evidence remains available and is placed in Capture as a fallback.
+- Usage History stores only timestamps, action labels, provider/model names, token counts, call duration, status, and costs. It never stores prompts, captures, reviews, transcripts, generated text, raw provider responses, or API keys.
+- Vapi reports authoritative per-call USD charges, which History reconciles on desktop through `VAPI_PRIVATE_KEY`. Calls made or viewed on mobile remain pending until desktop Obsidian runs a refresh. OpenAI and Anthropic expose per-request token counts rather than an authoritative request charge, so their dollar amounts are estimates using the versioned pricing table shown by the plugin.
 - All vault writes happen client-side via Obsidian's normal API.
 
 ## Required Obsidian plugins (v0.8+)
@@ -160,6 +164,7 @@ frontmatter field.
 
 ## Release log
 
+- v0.18.0 — **Conversational voice + private cost History.** Capture and Review calls now stay on specific threads, ask one direct question at a time, and remain tunable at talkativeness 5; Capture context is capped at 12,000 characters while preserving the current draft and newest log text. Settings → History stores metadata only, groups multi-call actions (including Ask, Activity, and voice synthesis), estimates OpenAI/Anthropic costs from exact token counts and versioned rates, and reconciles exact Vapi charges on desktop through the local `VAPI_PRIVATE_KEY`. Mobile calls remain clearly pending until desktop sync.
 - v0.17.1 — **Compact Activity progress control.** Activity now uses the same 44px square footprint as the call button, displays an activity icon at rest and a spinning loader for the full run, while the persistent progress notice reports every ActivityWatch, processing, and AI stage with elapsed time and item counts.
 - v0.17.0 — **DayTrace activity capture.** Desktop Capture now has an **Activity** button that reads today's local ActivityWatch watchers through the browser-compatible `@jmoraispk/daytrace` core, saves sanitized deterministic evidence under `🧑 Me/Activity/Daytrace/Evidence/`, saves validated AI workstream Markdown under `🤖 AI/Activity/Daytrace/Summaries/`, and places the resulting table in the editable Capture box without overwriting an existing draft. OpenAI and Anthropic both use structured JSON output; OpenAI requests opt out of storage. Mobile remains compatible for reading synced artifacts while activity fetching stays desktop-only.
 - v0.16.14 — **Voice deployment refresh.** Republishes the mobile Capture + Review call buttons as the newest plugin release so phone updaters receive the voice interface immediately.
