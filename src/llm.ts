@@ -1,9 +1,23 @@
 import { requestUrl } from "obsidian";
-import { SecondBrainSettings } from "./settings";
+import type { SecondBrainSettings } from "./settings";
+import type { ProviderUsageEvent, TokenUsage } from "./usageHistory";
+import { createInteractionId } from "./usageHistory";
+import { emitUsageEvent } from "./usageTelemetry";
 
 export interface ConnectionTestResult {
   ok: boolean;
   message: string;
+}
+
+export interface LLMCallContext {
+  action?: string;
+  interactionId?: string;
+}
+
+interface ProviderCompletion {
+  text: string;
+  providerRequestId?: string;
+  usage?: TokenUsage;
 }
 
 /**
@@ -15,8 +29,14 @@ export interface ConnectionTestResult {
 export async function testConnection(
   settings: SecondBrainSettings
 ): Promise<ConnectionTestResult> {
+  const interactionId = createInteractionId();
+  const action = "Test connection";
+  const provider = settings.provider;
+  const model =
+    provider === "anthropic" ? settings.anthropicModel : settings.openaiModel;
+
   try {
-    if (settings.provider === "openai") {
+    if (provider === "openai") {
       if (!settings.openaiApiKey.trim())
         return { ok: false, message: "OpenAI API key not set." };
       const res = await requestUrl({
@@ -27,21 +47,33 @@ export async function testConnection(
           authorization: `Bearer ${settings.openaiApiKey}`,
         },
         body: JSON.stringify({
-          model: settings.openaiModel,
+          model,
           max_tokens: 5,
           messages: [{ role: "user", content: "hi" }],
         }),
         throw: false,
       });
       if (res.status >= 400) {
+        await emitUsageEvent(
+          failedUsageEvent(provider, model, action, interactionId)
+        );
         const errMsg =
           res.json?.error?.message ||
           res.json?.error?.code ||
           `HTTP ${res.status}`;
         return { ok: false, message: errMsg };
       }
-      return { ok: true, message: `OpenAI ${settings.openaiModel} responded.` };
-    } else if (settings.provider === "anthropic") {
+      await emitUsageEvent(
+        successfulUsageEvent(provider, model, action, interactionId, {
+          providerRequestId: stringField(res.json?.id),
+          usage: openAIUsage(res.json?.usage),
+          text: "",
+        })
+      );
+      return { ok: true, message: `OpenAI ${model} responded.` };
+    }
+
+    if (provider === "anthropic") {
       if (!settings.anthropicApiKey.trim())
         return { ok: false, message: "Anthropic API key not set." };
       const res = await requestUrl({
@@ -53,24 +85,34 @@ export async function testConnection(
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
-          model: settings.anthropicModel,
+          model,
           max_tokens: 5,
           messages: [{ role: "user", content: "hi" }],
         }),
         throw: false,
       });
       if (res.status >= 400) {
-        const errMsg =
-          res.json?.error?.message || `HTTP ${res.status}`;
+        await emitUsageEvent(
+          failedUsageEvent(provider, model, action, interactionId)
+        );
+        const errMsg = res.json?.error?.message || `HTTP ${res.status}`;
         return { ok: false, message: errMsg };
       }
-      return {
-        ok: true,
-        message: `Anthropic ${settings.anthropicModel} responded.`,
-      };
+      await emitUsageEvent(
+        successfulUsageEvent(provider, model, action, interactionId, {
+          providerRequestId: stringField(res.json?.id),
+          usage: anthropicUsage(res.json?.usage),
+          text: "",
+        })
+      );
+      return { ok: true, message: `Anthropic ${model} responded.` };
     }
-    return { ok: false, message: `Unknown provider: ${settings.provider}` };
+
+    return { ok: false, message: `Unknown provider: ${provider}` };
   } catch (err) {
+    await emitUsageEvent(
+      failedUsageEvent(provider, model, action, interactionId)
+    );
     return { ok: false, message: (err as Error).message };
   }
 }
@@ -84,6 +126,7 @@ export async function testConnection(
 export interface LLMOverride {
   model?: string;
   effort?: "default" | "off" | "low" | "high";
+  usage?: LLMCallContext;
 }
 
 export async function callLLM(
@@ -92,7 +135,6 @@ export async function callLLM(
   userMessage: string,
   override?: LLMOverride
 ): Promise<string> {
-  // Resolve effective provider + model.
   let provider = settings.provider;
   let model =
     settings.provider === "anthropic"
@@ -103,10 +145,31 @@ export async function callLLM(
     provider = override.model.startsWith("claude") ? "anthropic" : "openai";
   }
 
-  if (provider === "anthropic") {
-    return callAnthropic(settings, systemPrompt, userMessage, model);
+  const action = override?.usage?.action ?? "AI request";
+  const interactionId =
+    override?.usage?.interactionId ?? createInteractionId();
+
+  try {
+    const result =
+      provider === "anthropic"
+        ? await callAnthropic(settings, systemPrompt, userMessage, model)
+        : await callOpenAI(
+            settings,
+            systemPrompt,
+            userMessage,
+            model,
+            override?.effort
+          );
+    await emitUsageEvent(
+      successfulUsageEvent(provider, model, action, interactionId, result)
+    );
+    return result.text;
+  } catch (error) {
+    await emitUsageEvent(
+      failedUsageEvent(provider, model, action, interactionId)
+    );
+    throw error;
   }
-  return callOpenAI(settings, systemPrompt, userMessage, model, override?.effort);
 }
 
 async function callAnthropic(
@@ -114,7 +177,7 @@ async function callAnthropic(
   systemPrompt: string,
   userMessage: string,
   model: string
-): Promise<string> {
+): Promise<ProviderCompletion> {
   if (!settings.anthropicApiKey) {
     throw new Error("Anthropic API key not set. Configure in plugin settings.");
   }
@@ -146,7 +209,15 @@ async function callAnthropic(
 
   const text = res.json?.content?.[0]?.text;
   if (!text) throw new Error("No content returned by Anthropic API.");
-  return text;
+  return {
+    text,
+    ...(stringField(res.json?.id) === undefined
+      ? {}
+      : { providerRequestId: stringField(res.json?.id) }),
+    ...(anthropicUsage(res.json?.usage) === undefined
+      ? {}
+      : { usage: anthropicUsage(res.json?.usage) }),
+  };
 }
 
 async function callOpenAI(
@@ -155,7 +226,7 @@ async function callOpenAI(
   userMessage: string,
   model: string,
   effort?: "default" | "off" | "low" | "high"
-): Promise<string> {
+): Promise<ProviderCompletion> {
   if (!settings.openaiApiKey) {
     throw new Error("OpenAI API key not set. Configure in plugin settings.");
   }
@@ -168,8 +239,6 @@ async function callOpenAI(
       { role: "user", content: userMessage },
     ],
   };
-  // "Thinking mode" → reasoning_effort. Only attach for low/high; "off" and
-  // "default" leave the model's own behavior alone.
   if (effort === "low" || effort === "high") {
     payload.reasoning_effort = effort;
   }
@@ -193,5 +262,99 @@ async function callOpenAI(
 
   const text = res.json?.choices?.[0]?.message?.content;
   if (!text) throw new Error("No content returned by OpenAI API.");
-  return text;
+  return {
+    text,
+    ...(stringField(res.json?.id) === undefined
+      ? {}
+      : { providerRequestId: stringField(res.json?.id) }),
+    ...(openAIUsage(res.json?.usage) === undefined
+      ? {}
+      : { usage: openAIUsage(res.json?.usage) }),
+  };
+}
+
+function successfulUsageEvent(
+  provider: "openai" | "anthropic",
+  model: string,
+  action: string,
+  interactionId: string,
+  completion: ProviderCompletion
+): ProviderUsageEvent {
+  return {
+    provider,
+    model,
+    status: "completed",
+    action,
+    interactionId,
+    ...(completion.providerRequestId === undefined
+      ? {}
+      : { providerRequestId: completion.providerRequestId }),
+    ...(completion.usage === undefined ? {} : { usage: completion.usage }),
+  };
+}
+
+function failedUsageEvent(
+  provider: "openai" | "anthropic",
+  model: string,
+  action: string,
+  interactionId: string
+): ProviderUsageEvent {
+  return { provider, model, status: "failed", action, interactionId };
+}
+
+function openAIUsage(value: unknown): TokenUsage | undefined {
+  const usage = recordField(value);
+  if (!usage) return undefined;
+  return compactUsage({
+    inputTokens: numberField(usage.prompt_tokens),
+    cachedInputTokens: numberField(
+      recordField(usage.prompt_tokens_details)?.cached_tokens
+    ),
+    outputTokens: numberField(usage.completion_tokens),
+    reasoningTokens: numberField(
+      recordField(usage.completion_tokens_details)?.reasoning_tokens
+    ),
+  });
+}
+
+function anthropicUsage(value: unknown): TokenUsage | undefined {
+  const usage = recordField(value);
+  if (!usage) return undefined;
+  const uncached = numberField(usage.input_tokens);
+  const cacheRead = numberField(usage.cache_read_input_tokens);
+  const cacheCreation = numberField(usage.cache_creation_input_tokens);
+  const inputParts = [uncached, cacheRead, cacheCreation].filter(
+    (item): item is number => item !== undefined
+  );
+  return compactUsage({
+    inputTokens:
+      inputParts.length === 0
+        ? undefined
+        : inputParts.reduce((sum, item) => sum + item, 0),
+    cachedInputTokens: cacheRead,
+    outputTokens: numberField(usage.output_tokens),
+  });
+}
+
+function compactUsage(usage: TokenUsage): TokenUsage | undefined {
+  const compact = Object.fromEntries(
+    Object.entries(usage).filter(([, value]) => value !== undefined)
+  ) as TokenUsage;
+  return Object.keys(compact).length === 0 ? undefined : compact;
+}
+
+function recordField(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function stringField(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function numberField(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined;
 }

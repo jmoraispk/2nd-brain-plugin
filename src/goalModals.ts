@@ -142,6 +142,7 @@ export class GoalDesignerModal extends Modal {
       const out = await callLLM(this.plugin.settings, GOAL_DESIGNER_SYSTEM, desc, {
         model: route.model,
         effort: route.effort,
+        usage: { action: "Project AI" },
       });
       const { name, fields, body } = parseDesignerOutput(out);
       const file = await createGoalFromDesigner(

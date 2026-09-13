@@ -194,6 +194,7 @@ export class HabitDesignerModal extends Modal {
       const out = await callLLM(this.plugin.settings, DESIGNER_SYSTEM, desc, {
         model: route.model,
         effort: route.effort,
+        usage: { action: "Project AI" },
       });
       const { name, fields, body } = parseDesignerOutput(out);
       const areaPaths = this.areaSelect.value ? [this.areaSelect.value] : [];

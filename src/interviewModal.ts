@@ -16,6 +16,7 @@ import { appendCapture } from "./capture";
 import { resolveDailyLogPath, todayISO } from "./paths";
 import { TFile } from "obsidian";
 import { showFileNotice } from "./fileNotice";
+import { createInteractionId } from "./usageHistory";
 
 const MAX_QUESTIONS = 6;
 
@@ -32,6 +33,7 @@ interface Turn {
 
 export class InterviewModal extends Modal {
   private readonly plugin: SecondBrainPlugin;
+  private readonly interactionId = createInteractionId();
   private readonly targetDate?: string;
   private readonly onSaved?: () => void;
   private turns: Turn[] = [];
@@ -138,6 +140,7 @@ export class InterviewModal extends Modal {
       const out = (await callLLM(this.plugin.settings, INTERVIEWER_SYSTEM, msg, {
         model: r.model,
         effort: r.effort,
+        usage: { action: "Interview", interactionId: this.interactionId },
       })).trim();
       this.busy = false;
       if (/^done\b/i.test(out) || this.turns.length >= MAX_QUESTIONS) {
@@ -187,7 +190,11 @@ export class InterviewModal extends Modal {
         this.plugin.settings,
         SYNTH_SYSTEM,
         `## Interview\n${this.transcriptText()}`,
-        { model: r.model, effort: r.effort }
+        {
+          model: r.model,
+          effort: r.effort,
+          usage: { action: "Interview", interactionId: this.interactionId },
+        }
       )).trim();
       const path = await appendCapture(
         this.plugin.app,

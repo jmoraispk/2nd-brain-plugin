@@ -64,6 +64,7 @@ import {
   generateDaytraceActivity,
   mergeCaptureDraft,
 } from "./daytraceIntegration";
+import { createInteractionId } from "./usageHistory";
 
 export const VIEW_TYPE_SECOND_BRAIN = "second-brain-view";
 
@@ -488,6 +489,7 @@ export class SecondBrainView extends ItemView {
     const controller = new AbortController();
     const runId = ++this.activityRunId;
     this.activityController = controller;
+    const interactionId = createInteractionId();
     const progress = new Notice("Connecting to ActivityWatch…", 0);
     try {
       const result = await generateDaytraceActivity(
@@ -496,6 +498,7 @@ export class SecondBrainView extends ItemView {
         todayISO(),
         {
           signal: controller.signal,
+          usage: { action: "Activity", interactionId },
           onProgress: (event) => {
             if (runId !== this.activityRunId || controller.signal.aborted) return;
             progress.setMessage(daytraceProgressMessage(event));

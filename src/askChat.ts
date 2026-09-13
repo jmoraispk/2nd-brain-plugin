@@ -19,6 +19,7 @@ import { loadProjects } from "./projects";
 import { AREAS } from "./areas";
 import { LESSONS_PATH } from "./lessons";
 import { resolveDailyLogPath, todayISO, toISO } from "./paths";
+import { createInteractionId } from "./usageHistory";
 
 const MAX_FILES = 8;
 const MAX_TOTAL_CHARS = 60_000;
@@ -51,13 +52,18 @@ export async function askVault(
 ): Promise<AskResult> {
   const { text: map, allowed } = await buildVaultMap(plugin);
   const route = resolveRoute(plugin.settings, "ask");
+  const interactionId = createInteractionId();
 
   // ── Pass 1: plan ──
   const planOut = await callLLM(
     plugin.settings,
     PLAN_SYSTEM,
     `Question: ${question}\n\n${map}`,
-    { model: route.model, effort: route.effort }
+    {
+      model: route.model,
+      effort: route.effort,
+      usage: { action: "Ask", interactionId },
+    }
   );
   const wanted = parsePlannedFiles(planOut).filter((p) => allowed.has(p)).slice(0, MAX_FILES);
 
@@ -87,7 +93,11 @@ export async function askVault(
     plugin.settings,
     ANSWER_SYSTEM,
     `Question: ${question}\n\n## Vault excerpts\n\n${context}`,
-    { model: route.model, effort: route.effort }
+    {
+      model: route.model,
+      effort: route.effort,
+      usage: { action: "Ask", interactionId },
+    }
   );
 
   return { answer, sources };

@@ -23,7 +23,11 @@ import {
   summarizeBundleOrFallback,
 } from "daytrace";
 import { applyDatePlaceholders } from "./paths";
+import type { LLMCallContext } from "./llm";
 import { SecondBrainSettings } from "./settings";
+import type { ProviderUsageEvent, TokenUsage } from "./usageHistory";
+import { createInteractionId } from "./usageHistory";
+import { emitUsageEvent } from "./usageTelemetry";
 
 export const DAYTRACE_EVIDENCE_PATH =
   "🧑 Me/Activity/Daytrace/Evidence/{ISO_YEAR}/Q{Q}/W{WW}/{YYYY-MM-DD}.json";
@@ -32,11 +36,17 @@ export const DAYTRACE_SUMMARY_PATH =
 
 type Requester = (request: RequestUrlParam) => Promise<RequestUrlResponse>;
 
+type MeteredProviderResponse = ProviderResponse & {
+  cachedInputTokens?: number;
+  reasoningTokens?: number;
+};
+
 export interface GenerateDaytraceOptions {
   request?: Requester;
   timezoneName?: string;
   signal?: AbortSignal;
   onProgress?: ProgressCallback;
+  usage?: LLMCallContext;
 }
 
 export interface DaytraceGeneration {
@@ -111,33 +121,59 @@ export function createActivityWatchTransport(
 /** Adapt the plugin's configured provider to DayTrace's strict JSON contract. */
 export function createDaytraceSummaryProvider(
   settings: SecondBrainSettings,
-  requester: Requester = requestUrl
+  requester: Requester = requestUrl,
+  usage?: LLMCallContext
 ): SummaryProvider {
   const provider = settings.provider;
   const model =
     provider === "anthropic" ? settings.anthropicModel : settings.openaiModel;
+  const action = usage?.action ?? "Activity";
+  const interactionId = usage?.interactionId ?? createInteractionId();
 
   return {
     async complete(request, options = {}) {
-      options.signal?.throwIfAborted();
-      const response =
-        provider === "anthropic"
-          ? await completeAnthropic(
-              settings,
-              model,
-              request,
-              requester,
-              options.signal
-            )
-          : await completeOpenAI(
-              settings,
-              model,
-              request,
-              requester,
-              options.signal
-            );
-      options.signal?.throwIfAborted();
-      return response;
+      try {
+        options.signal?.throwIfAborted();
+        const response =
+          provider === "anthropic"
+            ? await completeAnthropic(
+                settings,
+                model,
+                request,
+                requester,
+                options.signal
+              )
+            : await completeOpenAI(
+                settings,
+                model,
+                request,
+                requester,
+                options.signal
+              );
+        options.signal?.throwIfAborted();
+        await emitUsageEvent(
+          daytraceUsageEvent(
+            provider,
+            model,
+            action,
+            interactionId,
+            "completed",
+            response
+          )
+        );
+        return response;
+      } catch (error) {
+        await emitUsageEvent(
+          daytraceUsageEvent(
+            provider,
+            model,
+            action,
+            interactionId,
+            "failed"
+          )
+        );
+        throw error;
+      }
     },
   };
 }
@@ -174,7 +210,7 @@ export async function generateDaytraceActivity(
   const plan = buildSummaryPlan(bundle);
   const outcome = await summarizeBundleOrFallback(
     bundle,
-    createDaytraceSummaryProvider(settings, requester),
+    createDaytraceSummaryProvider(settings, requester, options.usage),
     plan,
     {
       ...(options.signal === undefined ? {} : { signal: options.signal }),
@@ -231,7 +267,7 @@ async function completeOpenAI(
   request: ProviderRequest,
   requester: Requester,
   signal?: AbortSignal
-): Promise<ProviderResponse> {
+): Promise<MeteredProviderResponse> {
   if (!settings.openaiApiKey.trim()) throw new SummaryProviderError("authentication");
   const format = structuredFormat(request.responseFormat);
   const response = await requestProvider(requester, {
@@ -271,6 +307,23 @@ async function completeOpenAI(
     ...(numberValue(response.json?.usage?.completion_tokens) === undefined
       ? {}
       : { outputTokens: numberValue(response.json?.usage?.completion_tokens) }),
+    ...(numberValue(response.json?.usage?.prompt_tokens_details?.cached_tokens) ===
+    undefined
+      ? {}
+      : {
+          cachedInputTokens: numberValue(
+            response.json?.usage?.prompt_tokens_details?.cached_tokens
+          ),
+        }),
+    ...(numberValue(
+      response.json?.usage?.completion_tokens_details?.reasoning_tokens
+    ) === undefined
+      ? {}
+      : {
+          reasoningTokens: numberValue(
+            response.json?.usage?.completion_tokens_details?.reasoning_tokens
+          ),
+        }),
     ...(stringValue(response.json?.id) === undefined
       ? {}
       : { responseId: stringValue(response.json?.id) }),
@@ -283,7 +336,7 @@ async function completeAnthropic(
   request: ProviderRequest,
   requester: Requester,
   signal?: AbortSignal
-): Promise<ProviderResponse> {
+): Promise<MeteredProviderResponse> {
   if (!settings.anthropicApiKey.trim())
     throw new SummaryProviderError("authentication");
   const format = structuredFormat(request.responseFormat);
@@ -319,13 +372,26 @@ async function completeAnthropic(
       block !== null &&
       (block as { type?: unknown }).type === "text"
   ) as { text?: unknown } | undefined;
+  const uncachedInput = numberValue(response.json?.usage?.input_tokens);
+  const cachedInput = numberValue(
+    response.json?.usage?.cache_read_input_tokens
+  );
+  const createdCacheInput = numberValue(
+    response.json?.usage?.cache_creation_input_tokens
+  );
+  const inputParts = [uncachedInput, cachedInput, createdCacheInput].filter(
+    (item): item is number => item !== undefined
+  );
   return {
     payload: parseProviderJson(text?.text),
     provider: "anthropic",
     model,
-    ...(numberValue(response.json?.usage?.input_tokens) === undefined
+    ...(inputParts.length === 0
       ? {}
-      : { inputTokens: numberValue(response.json?.usage?.input_tokens) }),
+      : { inputTokens: inputParts.reduce((sum, item) => sum + item, 0) }),
+    ...(cachedInput === undefined
+      ? {}
+      : { cachedInputTokens: cachedInput }),
     ...(numberValue(response.json?.usage?.output_tokens) === undefined
       ? {}
       : { outputTokens: numberValue(response.json?.usage?.output_tokens) }),
@@ -333,6 +399,42 @@ async function completeAnthropic(
       ? {}
       : { responseId: stringValue(response.json?.id) }),
   };
+}
+
+function daytraceUsageEvent(
+  provider: "openai" | "anthropic",
+  model: string,
+  action: string,
+  interactionId: string,
+  status: "completed" | "failed",
+  response?: MeteredProviderResponse
+): ProviderUsageEvent {
+  const usage: TokenUsage | undefined = response
+    ? compactTokenUsage({
+        inputTokens: response.inputTokens,
+        cachedInputTokens: response.cachedInputTokens,
+        outputTokens: response.outputTokens,
+        reasoningTokens: response.reasoningTokens,
+      })
+    : undefined;
+  return {
+    provider,
+    model,
+    status,
+    action,
+    interactionId,
+    ...(response?.responseId === undefined
+      ? {}
+      : { providerRequestId: response.responseId }),
+    ...(usage === undefined ? {} : { usage }),
+  };
+}
+
+function compactTokenUsage(usage: TokenUsage): TokenUsage | undefined {
+  const compact = Object.fromEntries(
+    Object.entries(usage).filter(([, value]) => value !== undefined)
+  ) as TokenUsage;
+  return Object.keys(compact).length === 0 ? undefined : compact;
 }
 
 function structuredFormat(value: JsonObject): {

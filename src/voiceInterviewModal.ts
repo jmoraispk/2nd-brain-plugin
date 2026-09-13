@@ -8,6 +8,7 @@ import { App, Modal, Notice } from "obsidian";
 import SecondBrainPlugin from "../main";
 import { callLLM } from "./llm";
 import { resolveRoute } from "./modelRoutes";
+import { createInteractionId } from "./usageHistory";
 import {
   buildVoiceSessionVariables,
   createVoiceCallCompletion,
@@ -41,6 +42,7 @@ export interface VoiceCallOptions {
 
 export class VoiceCallModal extends Modal {
   private readonly plugin: SecondBrainPlugin;
+  private readonly interactionId = createInteractionId();
   private readonly options: VoiceCallOptions;
   private readonly finalizeDraft: (
     lines: VoiceTranscriptLine[]
@@ -79,7 +81,15 @@ export class VoiceCallModal extends Modal {
           this.plugin.settings,
           request.systemPrompt,
           request.userMessage,
-          { model: route.model, effort: route.effort }
+          {
+            model: route.model,
+            effort: route.effort,
+            usage: {
+              action:
+                options.mode === "capture" ? "Capture call" : "Review call",
+              interactionId: this.interactionId,
+            },
+          }
         );
       },
       applyDraft: async (draft) => {

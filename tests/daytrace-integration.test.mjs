@@ -165,6 +165,48 @@ test("Anthropic DayTrace requests translate the shared schema to output_config.f
   assert.equal(result.responseId, "msg_123");
 });
 
+test("DayTrace provider calls share one content-free Activity interaction", async () => {
+  const daytrace = await loadDaytraceModule();
+  const events = [];
+  daytrace.configureUsageEventSink((event) => events.push(event));
+  let requestNumber = 0;
+  const provider = daytrace.createDaytraceSummaryProvider(
+    settings({ provider: "openai", openaiApiKey: "secret", openaiModel: "gpt-5" }),
+    async () => {
+      requestNumber += 1;
+      return {
+        status: 200,
+        json: {
+          id: `chatcmpl-daytrace-${requestNumber}`,
+          choices: [{ message: { content: '{"schema":"daytrace.workstream-digest.v2"}' } }],
+          usage: { prompt_tokens: 20 + requestNumber, completion_tokens: 5 },
+        },
+      };
+    },
+    { action: "Activity", interactionId: "activity-1" }
+  );
+
+  await provider.complete(providerRequest(responseFormat()));
+  await provider.complete(providerRequest(responseFormat()));
+
+  assert.equal(events.length, 2);
+  assert.deepEqual(
+    events.map(({ action, interactionId, provider, model, status }) => ({
+      action,
+      interactionId,
+      provider,
+      model,
+      status,
+    })),
+    [
+      { action: "Activity", interactionId: "activity-1", provider: "openai", model: "gpt-5", status: "completed" },
+      { action: "Activity", interactionId: "activity-1", provider: "openai", model: "gpt-5", status: "completed" },
+    ]
+  );
+  assert.doesNotMatch(JSON.stringify(events), /daytrace.workstream-digest/);
+  daytrace.configureUsageEventSink(undefined);
+});
+
 test("generation runs the published core, stores Human evidence and AI summary, and returns the table", async () => {
   const daytrace = await loadDaytraceModule();
   const vault = new FakeVault(globalThis.__DaytraceTFile);
@@ -391,7 +433,14 @@ let daytraceModule;
 
 async function loadDaytraceModule() {
   daytraceModule ??= build({
-    entryPoints: [path.join(repoRoot, "src", "daytraceIntegration.ts")],
+    stdin: {
+      contents: `
+        export * from "./src/daytraceIntegration.ts";
+        export { configureUsageEventSink } from "./src/usageTelemetry.ts";
+      `,
+      resolveDir: repoRoot,
+      sourcefile: "daytrace-usage-test-entry.ts",
+    },
     bundle: true,
     format: "esm",
     platform: "node",

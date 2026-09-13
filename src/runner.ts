@@ -78,6 +78,7 @@ export async function runCommand(
     const body = await callLLM(settings, command.systemPrompt, userMsg, {
       model: route.model,
       effort: route.effort,
+      usage: { action: command.label },
     });
     const added = await mergeLessons(app, today, parseLessonsBlock(body));
     const ledger = app.vault.getAbstractFileByPath(LESSONS_PATH);
@@ -209,6 +210,7 @@ export async function runCommand(
   const body = await callLLM(settings, command.systemPrompt, userMsg, {
     model: route.model,
     effort: route.effort,
+    usage: { action: command.label },
   });
 
   const meta: ReviewMetadata = {
