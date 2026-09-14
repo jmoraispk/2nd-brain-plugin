@@ -14,6 +14,7 @@ import {
   reconcileVapiUsage,
   type VapiReconcileResult,
 } from "./src/vapiUsage";
+import { registerSimplifiedCaptureHotkey } from "./src/simplifiedDashboard";
 
 export default class SecondBrainPlugin extends Plugin {
   settings: SecondBrainSettings;
@@ -52,6 +53,8 @@ export default class SecondBrainPlugin extends Plugin {
       name: "Open Second Brain",
       callback: () => this.activateView(),
     });
+
+    registerSimplifiedCaptureHotkey(this);
 
     this.settingTab = new SecondBrainSettingTab(this.app, this);
     this.addSettingTab(this.settingTab);

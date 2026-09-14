@@ -6,6 +6,7 @@ import {
   setIcon,
   TFile,
   TFolder,
+  type Plugin,
 } from "obsidian";
 import SecondBrainPlugin from "../main";
 import { loadDaytraceReviewSource } from "./daytraceReview";
@@ -163,7 +164,7 @@ export function renderCapture(
   const actions = section.createDiv({ cls: "second-brain-simple-actions" });
   const save = actions.createEl("button", {
     text: "Capture",
-    cls: "second-brain-button second-brain-button-primary",
+    cls: "second-brain-button second-brain-button-primary second-brain-simple-capture-submit",
   });
   renderCallButton(actions, "Talk through a capture", cb.startCaptureCall);
   const submit = async () => {
@@ -184,6 +185,47 @@ export function renderCapture(
       event.preventDefault();
       void submit();
     }
+  });
+}
+
+/** Route Obsidian's desktop Ctrl+Enter hotkey to the focused Capture box. */
+export function submitFocusedSimplifiedCapture(
+  document: Document,
+  checking = false
+): boolean {
+  const Textarea = document.defaultView?.HTMLTextAreaElement;
+  const active = document.activeElement;
+  if (
+    !Textarea ||
+    !(active instanceof Textarea) ||
+    !active.classList.contains("second-brain-simple-capture-input") ||
+    !active.value.trim()
+  ) {
+    return false;
+  }
+  const button = active
+    .closest(".second-brain-simple-capture")
+    ?.querySelector<HTMLButtonElement>(".second-brain-simple-capture-submit");
+  if (!button || button.hasAttribute("disabled")) return false;
+  if (!checking) button.click();
+  return true;
+}
+
+/** Register the Obsidian-level shortcut that survives desktop key routing. */
+export function registerSimplifiedCaptureHotkey(
+  plugin: Plugin,
+  isDesktop = Platform.isDesktopApp
+): void {
+  if (!isDesktop) return;
+  plugin.addCommand({
+    id: "submit-focused-capture",
+    name: "Submit focused capture",
+    hotkeys: [{ modifiers: ["Ctrl"], key: "Enter" }],
+    checkCallback: (checking) =>
+      submitFocusedSimplifiedCapture(
+        plugin.app.workspace.containerEl.ownerDocument,
+        checking
+      ),
   });
 }
 

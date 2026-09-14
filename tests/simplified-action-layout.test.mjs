@@ -472,6 +472,135 @@ test("desktop Activity control uses the Review selection and stays off Capture a
   }
 });
 
+test("desktop hotkey routing submits only the focused non-empty Capture box", async () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "second-brain-capture-hotkey-"));
+  const profileDir = path.join(tempDir, "edge-profile");
+  const debugPort = 10300 + Math.floor(Math.random() * 500);
+  let browser;
+  try {
+    const bundle = await buildDashboardBrowserBundle();
+    const fixturePath = path.join(tempDir, "fixture.html");
+    writeFileSync(
+      fixturePath,
+      `<!doctype html>
+<main id="host"></main>
+<button id="outside">Outside</button>
+<script>
+  HTMLElement.prototype.createEl = function(tag, options = {}) {
+    const element = document.createElement(tag);
+    if (options.text !== undefined) element.textContent = options.text;
+    if (options.cls) element.className = options.cls;
+    for (const [name, value] of Object.entries(options.attr ?? {})) {
+      element.setAttribute(name, value);
+    }
+    this.appendChild(element);
+    return element;
+  };
+  HTMLElement.prototype.createDiv = function(options = {}) { return this.createEl('div', options); };
+  HTMLElement.prototype.createSpan = function(options = {}) { return this.createEl('span', options); };
+  HTMLElement.prototype.setText = function(text) { this.textContent = text; };
+</script>
+<script>${bundle}</script>
+<script>
+  const saved = [];
+  const desktopCommands = [];
+  const mobileCommands = [];
+  const registrationAvailable =
+    typeof dashboard.registerSimplifiedCaptureHotkey === 'function';
+  if (registrationAvailable) {
+    dashboard.registerSimplifiedCaptureHotkey(
+      {
+        app: { workspace: { containerEl: document.body } },
+        addCommand: (command) => desktopCommands.push(command),
+      },
+      true
+    );
+    dashboard.registerSimplifiedCaptureHotkey(
+      {
+        app: { workspace: { containerEl: document.body } },
+        addCommand: (command) => mobileCommands.push(command),
+      },
+      false
+    );
+  }
+  dashboard.renderCapture(
+    document.querySelector('#host'),
+    { captureDraft: 'Shortcut capture' },
+    {
+      setCaptureDraft: () => {},
+      saveCapture: async (content) => { saved.push(content); },
+      startCaptureCall: () => {},
+    }
+  );
+  const textarea = document.querySelector('.second-brain-simple-capture-input');
+  textarea.focus();
+  textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  const savesAfterPlainEnter = saved.length;
+  const command = desktopCommands[0];
+  const checkingHandled = command?.checkCallback(true) ?? false;
+  const savesAfterChecking = saved.length;
+  document.addEventListener('keydown', (event) => {
+    if (event.ctrlKey && event.key === 'Enter') command?.checkCallback(false);
+  }, { capture: true });
+  textarea.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'Enter', ctrlKey: true, bubbles: true,
+  }));
+  Promise.resolve().then(() => {
+    textarea.value = '';
+    textarea.focus();
+    const emptyHandled = command?.checkCallback(false) ?? false;
+    textarea.value = 'Ignored while unfocused';
+    document.querySelector('#outside').focus();
+    const unfocusedHandled = command?.checkCallback(false) ?? false;
+    document.body.dataset.captureHotkey = JSON.stringify({
+      registrationAvailable,
+      desktopCommandCount: desktopCommands.length,
+      mobileCommandCount: mobileCommands.length,
+      modifiers: command?.hotkeys?.[0]?.modifiers ?? [],
+      key: command?.hotkeys?.[0]?.key ?? '',
+      checkingHandled,
+      savesAfterChecking,
+      emptyHandled,
+      unfocusedHandled,
+      savesAfterPlainEnter,
+      saved,
+    });
+  });
+</script>`,
+      "utf8"
+    );
+
+    browser = spawn(
+      edgePath,
+      [
+        "--headless=new",
+        "--disable-gpu",
+        "--no-first-run",
+        `--remote-debugging-port=${debugPort}`,
+        `--user-data-dir=${profileDir}`,
+        pathToFileURL(fixturePath).href,
+      ],
+      { stdio: "ignore" }
+    );
+    const page = await waitForPage(debugPort, pathToFileURL(fixturePath).href);
+    const result = await waitForDataset(page.webSocketDebuggerUrl, "captureHotkey");
+
+    assert.equal(result.registrationAvailable, true);
+    assert.equal(result.desktopCommandCount, 1);
+    assert.equal(result.mobileCommandCount, 0);
+    assert.deepEqual(result.modifiers, ["Ctrl"]);
+    assert.equal(result.key, "Enter");
+    assert.equal(result.checkingHandled, true);
+    assert.equal(result.savesAfterChecking, 0, "Checking shortcut availability must not submit");
+    assert.deepEqual(result.saved, ["Shortcut capture"]);
+    assert.equal(result.savesAfterPlainEnter, 0, "Plain Enter must remain a newline");
+    assert.equal(result.emptyHandled, false, "Empty Capture text must not submit");
+    assert.equal(result.unfocusedHandled, false, "The hotkey must not target an unfocused Capture box");
+  } finally {
+    await cleanupBrowser(browser, debugPort, profileDir, tempDir);
+  }
+});
+
 async function waitForPage(port, expectedUrl) {
   const endpoint = `http://127.0.0.1:${port}/json/list`;
   for (let attempt = 0; attempt < 50; attempt += 1) {
