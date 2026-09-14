@@ -204,15 +204,19 @@ test("a telemetry sink failure cannot fail a successful model response", async (
 });
 
 test("Test Connection records its small provider interaction", async () => {
-  const llm = await loadLLM(async () => ({
-    status: 200,
-    json: {
-      id: "chatcmpl-test",
-      choices: [{ message: { content: "hi" } }],
-      usage: { prompt_tokens: 8, completion_tokens: 1 },
-    },
-    text: "",
-  }));
+  let observed;
+  const llm = await loadLLM(async (request) => {
+    observed = request;
+    return {
+      status: 200,
+      json: {
+        id: "chatcmpl-test",
+        choices: [{ message: { content: "hi" } }],
+        usage: { prompt_tokens: 8, completion_tokens: 1 },
+      },
+      text: "",
+    };
+  });
   const events = [];
   llm.configureUsageEventSink((event) => events.push(event));
 
@@ -223,4 +227,7 @@ test("Test Connection records its small provider interaction", async () => {
   assert.equal(events[0].action, "Test connection");
   assert.equal(events[0].providerRequestId, "chatcmpl-test");
   assert.deepEqual(events[0].usage, { inputTokens: 8, outputTokens: 1 });
+  const body = JSON.parse(observed.body);
+  assert.equal(body.max_completion_tokens, 5);
+  assert.equal("max_tokens" in body, false);
 });

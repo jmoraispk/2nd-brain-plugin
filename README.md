@@ -36,12 +36,12 @@ Alongside Me / AI sit the PARA folders (knowledge organized by topic, not by aut
 The default Simplified dashboard puts the whole loop on one screen:
 
 1. **Capture** a plain note → appends `[HH:MM] ...` to `🧑 Me/Logs/<today>.md`.
-2. On desktop, press **Activity** to turn today's local ActivityWatch trace into an editable DayTrace table. Sanitized deterministic evidence is saved under `🧑 Me/Activity/Daytrace/Evidence/`; a validated AI summary is saved under the matching `🤖 AI/Activity/Daytrace/Summaries/` path. Nothing is appended to the daily log until you press **Capture**.
+2. On desktop, press **Activity** to summarize today's local ActivityWatch trace. Sanitized deterministic evidence is saved under `🧑 Me/Activity/Daytrace/Evidence/`; a validated AI summary is saved under the matching `🤖 AI/Activity/Daytrace/Summaries/` path. Successful runs leave the Capture draft untouched; if AI summarization fails, the deterministic fallback is placed in Capture for editing.
 3. Use the one-month activity map to see capture counts or word counts per day.
-4. Select any date range inside that month and press **Review**.
+4. Select any date range inside that month and press **Review**. Saved Activity summaries join the model context, Activity-only dates are supported, and an exact copy of each saved workstream table is appended under `## Activity`.
 5. Read the AI summary inline and save your own reflection without leaving the dashboard.
 6. Use the phone button beside **Capture** or **Save reflection** to talk through either draft. The call result returns to the text box for editing; it is never saved automatically.
-7. Open Settings → Second Brain → **History** to see metadata-only cost totals and per-interaction details. Vapi charges become exact after desktop reconciliation; OpenAI and Anthropic amounts are token-based estimates.
+7. Press the book icon beside Settings—or open Settings → Second Brain → **History**—to see refreshed metadata-only cost totals and per-interaction details. Vapi charges become exact after desktop reconciliation; OpenAI and Anthropic amounts are token-based estimates.
 
 Range summaries live at `🤖 AI/Reviews/Custom/<start>--<end>.md`; reflections remain separate under `🧑 Me/Reviews/Custom/`. Settings → Second Brain → Interface can restore the Complete dashboard with Habits, Projects, Review, Think, proposals, and TODOs.
 
@@ -164,6 +164,7 @@ frontmatter field.
 
 ## Release log
 
+- v0.18.1 — **Activity-aware Review + quick History.** Both dashboard modes now include a compact book shortcut that opens, scrolls to, and refreshes Settings → History. Successful DayTrace runs save Human evidence and the AI summary without changing the Capture draft; selected-date Reviews accept Activity-only dates, include saved summaries as source context, fingerprint them for cache invalidation, and append verbatim workstream tables under `## Activity`. OpenAI's Test Connection now uses `max_completion_tokens`, fixing GPT-5 validation errors.
 - v0.18.0 — **Conversational voice + private cost History.** Capture and Review calls now stay on specific threads, ask one direct question at a time, and remain tunable at talkativeness 5; Capture context is capped at 12,000 characters while preserving the current draft and newest log text. Settings → History stores metadata only, groups multi-call actions (including Ask, Activity, and voice synthesis), estimates OpenAI/Anthropic costs from exact token counts and versioned rates, and reconciles exact Vapi charges on desktop through the local `VAPI_PRIVATE_KEY`. Mobile calls remain clearly pending until desktop sync.
 - v0.17.1 — **Compact Activity progress control.** Activity now uses the same 44px square footprint as the call button, displays an activity icon at rest and a spinning loader for the full run, while the persistent progress notice reports every ActivityWatch, processing, and AI stage with elapsed time and item counts.
 - v0.17.0 — **DayTrace activity capture.** Desktop Capture now has an **Activity** button that reads today's local ActivityWatch watchers through the browser-compatible `@jmoraispk/daytrace` core, saves sanitized deterministic evidence under `🧑 Me/Activity/Daytrace/Evidence/`, saves validated AI workstream Markdown under `🤖 AI/Activity/Daytrace/Summaries/`, and places the resulting table in the editable Capture box without overwriting an existing draft. OpenAI and Anthropic both use structured JSON output; OpenAI requests opt out of storage. Mobile remains compatible for reading synced artifacts while activity fetching stays desktop-only.

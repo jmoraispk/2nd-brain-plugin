@@ -60,11 +60,12 @@ import {
 } from "./simplifiedDashboard";
 import { showFileNotice } from "./fileNotice";
 import {
+  activityCaptureDraft,
   daytraceProgressMessage,
   generateDaytraceActivity,
-  mergeCaptureDraft,
 } from "./daytraceIntegration";
 import { createInteractionId } from "./usageHistory";
+import { renderDashboardUtilityButtons } from "./dashboardUtilityButtons";
 
 export const VIEW_TYPE_SECOND_BRAIN = "second-brain-view";
 
@@ -405,21 +406,10 @@ export class SecondBrainView extends ItemView {
     }
 
     const right = topbar.createDiv({ cls: "second-brain-topbar-right" });
-
-    const refreshBtn = right.createEl("button", {
-      text: "↻",
-      cls: "second-brain-iconbtn",
-      attr: { title: "Refresh" },
-    });
-    refreshBtn.addEventListener("click", () => this.render());
-
-    const settingsBtn = right.createEl("button", {
-      text: "⚙",
-      cls: "second-brain-iconbtn",
-      attr: { title: "Settings" },
-    });
-    settingsBtn.addEventListener("click", () => {
-      this.openSettings();
+    renderDashboardUtilityButtons(right, {
+      onRefresh: () => void this.render(),
+      onHistory: () => this.plugin.openUsageHistory(),
+      onSettings: () => this.openSettings(),
     });
   }
 
@@ -432,19 +422,11 @@ export class SecondBrainView extends ItemView {
     title.createEl("small", { text: "Capture · Review" });
 
     const right = topbar.createDiv({ cls: "second-brain-topbar-right" });
-    const refresh = right.createEl("button", {
-      text: "↻",
-      cls: "second-brain-iconbtn",
-      attr: { title: "Refresh" },
+    renderDashboardUtilityButtons(right, {
+      onRefresh: () => void this.render(),
+      onHistory: () => this.plugin.openUsageHistory(),
+      onSettings: () => this.openSettings(),
     });
-    refresh.addEventListener("click", () => void this.render());
-
-    const settings = right.createEl("button", {
-      text: "⚙",
-      cls: "second-brain-iconbtn",
-      attr: { title: "Settings" },
-    });
-    settings.addEventListener("click", () => this.openSettings());
   }
 
   private openSettings() {
@@ -507,9 +489,9 @@ export class SecondBrainView extends ItemView {
       );
       if (runId !== this.activityRunId || controller.signal.aborted) return;
 
-      this.simplifiedState.captureDraft = mergeCaptureDraft(
+      this.simplifiedState.captureDraft = activityCaptureDraft(
         this.simplifiedState.captureDraft,
-        result.captureMarkdown
+        result
       );
 
       if (result.summaryFile) {

@@ -23,6 +23,7 @@ import {
   summarizeBundleOrFallback,
 } from "daytrace";
 import { applyDatePlaceholders } from "./paths";
+import { DAYTRACE_SUMMARY_PATH } from "./daytraceReview";
 import type { LLMCallContext } from "./llm";
 import { SecondBrainSettings } from "./settings";
 import type { ProviderUsageEvent, TokenUsage } from "./usageHistory";
@@ -31,8 +32,7 @@ import { emitUsageEvent } from "./usageTelemetry";
 
 export const DAYTRACE_EVIDENCE_PATH =
   "🧑 Me/Activity/Daytrace/Evidence/{ISO_YEAR}/Q{Q}/W{WW}/{YYYY-MM-DD}.json";
-export const DAYTRACE_SUMMARY_PATH =
-  "🤖 AI/Activity/Daytrace/Summaries/{ISO_YEAR}/Q{Q}/W{WW}/{YYYY-MM-DD}.md";
+export { DAYTRACE_SUMMARY_PATH } from "./daytraceReview";
 
 type Requester = (request: RequestUrlParam) => Promise<RequestUrlResponse>;
 
@@ -90,6 +90,16 @@ export function mergeCaptureDraft(current: string, fetched: string): string {
   if (!existing) return activity;
   if (!activity) return existing;
   return `${existing}\n\n${activity}`;
+}
+
+/** Keep successful Activity out of Capture; deterministic fallback remains editable. */
+export function activityCaptureDraft(
+  current: string,
+  result: DaytraceGeneration
+): string {
+  return result.summaryFile
+    ? current
+    : mergeCaptureDraft(current, result.captureMarkdown);
 }
 
 /** Adapt Obsidian's desktop-capable HTTP client to DayTrace's AW boundary. */

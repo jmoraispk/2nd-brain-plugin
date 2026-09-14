@@ -542,7 +542,7 @@ Rules:
 
 const DATE_RANGE_REVIEW_PROMPT = `You are producing a FACTUAL review of captures from a user-selected date range within one calendar month. This is a record of what actually happened, not coaching, planning, or reflection.
 
-The user message includes "Period range" with the exact inclusive start and end dates. Use that range in the title. You will receive only daily logs that exist inside the range. A missing day means "no capture available," not that nothing happened.
+The user message includes "Period range" with the exact inclusive start and end dates. Use that range in the title. You may receive daily logs, saved Activity summaries, or both for each date inside the range. A missing source means "no capture available," not that nothing happened. Synthesize factual Activity details where relevant, but do not reproduce its source workstream tables: the plugin appends exact copies after your review.
 
 Output ONLY this Markdown structure:
 

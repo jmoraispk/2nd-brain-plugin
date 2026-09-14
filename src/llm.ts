@@ -48,7 +48,7 @@ export async function testConnection(
         },
         body: JSON.stringify({
           model,
-          max_tokens: 5,
+          max_completion_tokens: 5,
           messages: [{ role: "user", content: "hi" }],
         }),
         throw: false,

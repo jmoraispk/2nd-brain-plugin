@@ -20,6 +20,7 @@ export default class SecondBrainPlugin extends Plugin {
   errorLog = new ErrorLog();
   usageHistory!: UsageHistoryStore;
   private usageRefresh?: Promise<VapiReconcileResult>;
+  private settingTab!: SecondBrainSettingTab;
 
   async onload() {
     await this.loadSettings();
@@ -52,7 +53,8 @@ export default class SecondBrainPlugin extends Plugin {
       callback: () => this.activateView(),
     });
 
-    this.addSettingTab(new SecondBrainSettingTab(this.app, this));
+    this.settingTab = new SecondBrainSettingTab(this.app, this);
+    this.addSettingTab(this.settingTab);
   }
 
   async onunload() {
@@ -108,6 +110,17 @@ export default class SecondBrainPlugin extends Plugin {
 
   async clearUsageHistory(): Promise<void> {
     await this.usageHistory.clear();
+  }
+
+  /** Open Settings directly at a freshly rendered usage History section. */
+  openUsageHistory(): void {
+    // Obsidian does not currently expose this settings controller publicly.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const setting = (this.app as any).setting;
+    if (!setting) return;
+    setting.open();
+    setting.openTabById?.(this.manifest.id);
+    this.settingTab.openHistory();
   }
 
   /** Re-render every open Second Brain leaf after a live setting changes. */

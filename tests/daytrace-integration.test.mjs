@@ -16,6 +16,28 @@ test("an activity summary keeps an existing capture draft instead of erasing it"
   assert.equal(daytrace.mergeCaptureDraft("", "Fetched activity"), "Fetched activity");
 });
 
+test("successful Activity stays out of Capture while fallback remains editable", async () => {
+  const daytrace = await loadDaytraceModule();
+  const summaryFile = new globalThis.__DaytraceTFile("summary.md");
+
+  assert.equal(
+    daytrace.activityCaptureDraft("Existing thought", {
+      captureMarkdown: "AI table",
+      evidenceFile: new globalThis.__DaytraceTFile("evidence.json"),
+      summaryFile,
+    }),
+    "Existing thought"
+  );
+  assert.equal(
+    daytrace.activityCaptureDraft("Existing thought", {
+      captureMarkdown: "Deterministic activity",
+      evidenceFile: new globalThis.__DaytraceTFile("evidence.json"),
+      fallbackCode: "network",
+    }),
+    "Existing thought\n\nDeterministic activity"
+  );
+});
+
 test("every DayTrace stage produces visible elapsed progress", async () => {
   const daytrace = await loadDaytraceModule();
   const cases = [

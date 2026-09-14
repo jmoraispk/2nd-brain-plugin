@@ -36,6 +36,11 @@ import { writeHabitDataFiles, mergeBackfillIntoData } from "./habitData";
 import { loadProjects } from "./projects";
 import { mergeExtractedTodos, parseTodosBlock } from "./proposals";
 import { LESSONS_PATH, lessonsUserMessage, mergeLessons, parseLessonsBlock } from "./lessons";
+import {
+  DaytraceReviewSource,
+  loadDaytraceReviewSource,
+  renderDaytraceReviewAppendix,
+} from "./daytraceReview";
 
 interface InputContent {
   label: string;
@@ -43,6 +48,8 @@ interface InputContent {
   content: string;
   /** Per-file fingerprints. For multi-file inputs, one entry per file read. */
   files: InputFingerprint[];
+  /** Saved Activity summaries used only by the selected-date Review flow. */
+  daytraceSources?: DaytraceReviewSource[];
 }
 
 export type RunResult =
@@ -217,7 +224,13 @@ export async function runCommand(
     ...currentFingerprint,
     generatedAt: new Date().toISOString(),
   };
-  const result = buildFrontmatter(meta) + "\n\n" + body;
+  const activityAppendix = renderDaytraceReviewAppendix(
+    inputs.flatMap((input) => input.daytraceSources ?? [])
+  );
+  const renderedBody = activityAppendix
+    ? `${body.trimEnd()}\n\n${activityAppendix}`
+    : body;
+  const result = buildFrontmatter(meta) + "\n\n" + renderedBody;
 
   await ensureFolderExists(app, outputPath);
 
@@ -341,13 +354,15 @@ async function readInput(
     const sections: string[] = [];
     const paths: string[] = [];
     const files: InputFingerprint[] = [];
+    const daytraceSources: DaytraceReviewSource[] = [];
     for (const date of multiDayDates) {
       const p = await resolveDailyLogPath(app, settings, date);
       const f = app.vault.getAbstractFileByPath(p);
+      let dailyContent: string | undefined;
       if (f instanceof TFile) {
         const c = await app.vault.read(f);
         if (c.trim()) {
-          sections.push(`### ${date}\n\n${c}`);
+          dailyContent = c;
           paths.push(p);
           files.push({
             path: p,
@@ -356,15 +371,46 @@ async function readInput(
           });
         }
       }
+      const activity =
+        input.kind === "date-range-logs"
+          ? await loadDaytraceReviewSource(app, date)
+          : undefined;
+      if (activity) {
+        daytraceSources.push(activity);
+        paths.push(activity.path);
+        files.push({
+          path: activity.path,
+          size: new TextEncoder().encode(activity.content).length,
+          sha1: await sha1Hex(activity.content),
+        });
+      }
+      if (input.kind !== "date-range-logs" && dailyContent) {
+        sections.push(`### ${date}\n\n${dailyContent}`);
+      } else if (dailyContent || activity) {
+        const dateSections = [`### ${date}`];
+        if (dailyContent) dateSections.push(`#### Daily log\n\n${dailyContent}`);
+        if (activity) {
+          dateSections.push(`#### Activity summary\n\n${activity.content}`);
+        }
+        sections.push(dateSections.join("\n\n"));
+      }
     }
     if (sections.length === 0) {
-      throw new Error(`No daily logs found for ${input.kind}.`);
+      throw new Error(
+        input.kind === "date-range-logs"
+          ? "No daily logs or Activity summaries found for the selected range."
+          : `No daily logs found for ${input.kind}.`
+      );
     }
     return {
       label,
-      sourcePath: `${paths.length} daily file(s)`,
+      sourcePath:
+        input.kind === "date-range-logs"
+          ? `${paths.length} source file(s)`
+          : `${paths.length} daily file(s)`,
       content: sections.join("\n\n---\n\n"),
       files,
+      ...(daytraceSources.length > 0 ? { daytraceSources } : {}),
     };
   }
 

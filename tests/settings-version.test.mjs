@@ -38,6 +38,34 @@ test("settings show the installed version after Logs", async () => {
   assert.deepEqual(menus.slice(-3), ["History", "Troubleshooting", "Logs"]);
 });
 
+test("the dashboard shortcut opens, scrolls to, and refreshes History", async () => {
+  const settings = await loadSettingsModule();
+  let refreshes = 0;
+  globalThis.requestAnimationFrame = (callback) => { callback(); return 1; };
+  const plugin = {
+    errorLog: { count: () => 0 },
+    manifest: { version: "9.8.7" },
+    settings: { ...settings.DEFAULT_SETTINGS },
+    usageHistory: { snapshot: () => ({ schemaVersion: 1, entries: [] }) },
+    refreshExactUsageCosts: async () => {
+      refreshes += 1;
+      return { state: { schemaVersion: 1, entries: [] }, message: "Current" };
+    },
+    clearUsageHistory: async () => {},
+  };
+  const tab = new settings.SecondBrainSettingTab({}, plugin);
+
+  tab.openHistory();
+  await Promise.resolve();
+
+  const history = tab.containerEl.children.find(
+    (element) => element.children[0]?.textContent === "History"
+  );
+  assert.equal(history.open, true);
+  assert.equal(history.scrolled, true);
+  assert.equal(refreshes, 1);
+});
+
 async function loadSettingsModule() {
   const result = await build({
     entryPoints: [path.join(repoRoot, "src", "settings.ts")],
@@ -79,7 +107,8 @@ function obsidianStubPlugin() {
               createSpan(options = {}) { return this.createEl("span", options); }
               addClass(className) { this.className = className; }
               empty() { this.children = []; this.textContent = ""; }
-              setAttribute() {}
+              setAttribute(name) { if (name === "open") this.open = true; }
+              scrollIntoView() { this.scrolled = true; }
               appendText(text) { this.textContent += text; }
               setText(text) { this.textContent = text; }
               addEventListener() {}

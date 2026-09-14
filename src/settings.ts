@@ -88,16 +88,26 @@ export const DEFAULT_SETTINGS: SecondBrainSettings = {
 export class SecondBrainSettingTab extends PluginSettingTab {
   plugin: SecondBrainPlugin;
   private historyRefreshStarted = false;
+  private historyOpenRequested = false;
 
   constructor(app: App, plugin: SecondBrainPlugin) {
     super(app, plugin);
     this.plugin = plugin;
   }
 
+  /** Re-render Settings with History expanded, scrolled into view, and refreshed. */
+  openHistory(): void {
+    this.historyOpenRequested = true;
+    this.display();
+  }
+
   display() {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.addClass("second-brain-settings");
+    this.historyRefreshStarted = false;
+    const openHistory = this.historyOpenRequested;
+    this.historyOpenRequested = false;
 
     this.collapsible(containerEl, "Interface", true, (body) =>
       this.renderInterface(body)
@@ -121,17 +131,19 @@ export class SecondBrainSettingTab extends PluginSettingTab {
     this.collapsible(containerEl, "Voice (Vapi)", false, (body) =>
       this.renderVoice(body)
     );
-    const history = this.collapsible(containerEl, "History", false, (body) =>
+    const history = this.collapsible(containerEl, "History", openHistory, (body) =>
       renderUsageHistory(body, this.plugin)
     );
     const historyBody = history.children[1] as HTMLElement | undefined;
     history.addEventListener("toggle", () => {
-      if (!history.open || this.historyRefreshStarted || !historyBody) return;
-      this.historyRefreshStarted = true;
-      void this.plugin.refreshExactUsageCosts().then((result) =>
-        renderUsageHistory(historyBody, this.plugin, result.message)
-      );
+      this.refreshHistory(history, historyBody);
     });
+    if (openHistory) {
+      this.refreshHistory(history, historyBody);
+      requestAnimationFrame(() =>
+        history.scrollIntoView({ behavior: "smooth", block: "start" })
+      );
+    }
     this.collapsible(containerEl, "Troubleshooting", false, (body) =>
       this.renderTroubleshooting(body)
     );
@@ -143,6 +155,17 @@ export class SecondBrainSettingTab extends PluginSettingTab {
       cls: "second-brain-settings-version",
       text: `Second Brain · v${this.plugin.manifest.version}`,
     });
+  }
+
+  private refreshHistory(
+    history: HTMLDetailsElement,
+    historyBody: HTMLElement | undefined
+  ): void {
+    if (!history.open || this.historyRefreshStarted || !historyBody) return;
+    this.historyRefreshStarted = true;
+    void this.plugin.refreshExactUsageCosts().then((result) =>
+      renderUsageHistory(historyBody, this.plugin, result.message)
+    );
   }
 
   private renderInterface(containerEl: HTMLElement) {
