@@ -36,13 +36,15 @@ test("controls and settings footer retain their intended geometry", async () => 
 <main class="fixture">
   <section class="second-brain-simple-card">
     <div class="second-brain-simple-actions" data-container="capture">
-      <button class="second-brain-simple-activity-button" data-action="activity"><svg></svg></button>
       <button class="second-brain-button second-brain-button-primary" data-action="capture">Capture</button>
       <button class="second-brain-simple-call-button" data-action="capture-call" aria-label="Talk through a capture">Call</button>
     </div>
   </section>
-  <section class="second-brain-simple-card" data-container="review">
-    <button class="second-brain-button second-brain-button-primary second-brain-simple-review-button second-brain-simple-review-run" data-action="review">Review</button>
+  <section class="second-brain-simple-card">
+    <div class="second-brain-simple-actions" data-container="review">
+      <button class="second-brain-simple-activity-button" data-action="activity"><svg></svg></button>
+      <button class="second-brain-button second-brain-button-primary second-brain-simple-review-button second-brain-simple-review-run" data-action="review">Review</button>
+    </div>
   </section>
   <section class="second-brain-simple-card" data-container="reflection">
     <div class="second-brain-simple-actions">
@@ -120,14 +122,18 @@ test("controls and settings footer retain their intended geometry", async () => 
     const widths = await waitForWidths(page.webSocketDebuggerUrl);
 
     assert.equal(
-      widths.activity + widths.capture + widths.captureCallWidth + 20,
+      widths.capture + widths.captureCallWidth + 10,
       widths.captureContainer,
-      "Activity, Capture, and the call button should fill the action row"
+      "Capture and the call button should fill the action row"
     );
     assert.equal(widths.activity, 44, "Activity should be a square 44px target");
     assert.equal(widths.activityHeight, 44, "Activity should match the call button height");
     assert.equal(widths.activityIconWidth, 19, "Activity should use the compact icon size");
-    assert.equal(widths.review, widths.reviewContainer, "Review should be full width");
+    assert.equal(
+      widths.activity + widths.review + 10,
+      widths.reviewContainer,
+      "Activity and Review should fill the Review action row"
+    );
     assert.equal(widths.captureCallWidth, 44, "Capture call should be a square 44px target");
     assert.equal(widths.captureCallHeight, 44, "Capture call should be a square 44px target");
     assert.equal(
@@ -255,7 +261,7 @@ test("metric pointer lifecycle opens only intentional long presses", async () =>
   }
 });
 
-test("desktop Activity control is single-flight and stays off mobile", async () => {
+test("desktop Activity control uses the Review selection and stays off Capture and mobile", async () => {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "second-brain-activity-"));
   const profileDir = path.join(tempDir, "edge-profile");
   const debugPort = 10300 + Math.floor(Math.random() * 500);
@@ -281,6 +287,9 @@ test("desktop Activity control is single-flight and stays off mobile", async () 
   HTMLElement.prototype.createDiv = function(options = {}) {
     return this.createEl('div', options);
   };
+  HTMLElement.prototype.createSpan = function(options = {}) {
+    return this.createEl('span', options);
+  };
   HTMLElement.prototype.setText = function(text) {
     this.textContent = text;
   };
@@ -289,11 +298,9 @@ test("desktop Activity control is single-flight and stays off mobile", async () 
 <script type="module">
   const drafts = [];
   let fetches = 0;
+  let reviews = 0;
   let finishFetch;
-  dashboard.renderCapture(
-    document.querySelector('#host'),
-    { captureDraft: 'Existing thought' },
-    {
+  const callbacks = {
       setCaptureDraft: (value) => drafts.push(value),
       saveCapture: async () => {},
       startCaptureCall: () => {},
@@ -304,9 +311,41 @@ test("desktop Activity control is single-flight and stays off mobile", async () 
           resolve();
         };
       }),
-    }
+      changeMonth: () => {}, selectCalendarDate: () => {},
+      setRangeStart: () => {}, setRangeEnd: () => {}, setMetric: () => {},
+      runReview: async () => { reviews += 1; }, setUserReview: () => {},
+      finishReview: async () => {}, startReviewCall: () => {}, openResult: () => {},
+  };
+  const plugin = {
+    app: { vault: {
+      getAbstractFileByPath: (path) => path.includes('/Activity/Daytrace/Summaries/')
+        ? new globalThis.__DashboardTFile(path)
+        : null,
+      cachedRead: async () => '',
+      read: async () => '# DayTrace\\n\\n| Project / workstream | Apparent achievements | Work and topics |\\n| --- | --- | --- |\\n| Plugin | Done | Tests |',
+    } },
+    settings: {
+      logsFolder: 'Logs',
+      dailyLogPathTemplate: 'Logs/{YYYY-MM-DD}.md',
+    },
+  };
+  const state = {
+    captureDraft: 'Existing thought', month: '2026-09',
+    rangeStart: '2026-09-13', rangeEnd: '2026-09-14', metric: 'captures',
+  };
+  await dashboard.renderSimplifiedDashboard(
+    document.querySelector('#host'),
+    plugin,
+    state,
+    { resultContent: '', userReview: '' },
+    callbacks,
+    {}
   );
-  const activityButton = document.querySelector('[data-action="activity"]');
+  const captureActivityButtons = document.querySelectorAll('.second-brain-simple-capture [data-action="activity"]').length;
+  const activityButton = document.querySelector('.second-brain-simple-review [data-action="activity"]');
+  const reviewDisabledWithoutCaptures = document.querySelector('[data-action="activity"]')
+    .parentElement.querySelector('.second-brain-simple-review-run').hasAttribute('disabled');
+  const reviewButton = activityButton.parentElement.querySelector('.second-brain-simple-review-run');
   const initialIcon = activityButton.dataset.icon;
   activityButton.click();
   activityButton.click();
@@ -315,20 +354,51 @@ test("desktop Activity control is single-flight and stays off mobile", async () 
   const busyDuringFetch = activityButton.getAttribute('aria-busy');
   const loadingIcon = activityButton.dataset.icon;
   const disabledDuringFetch = activityButton.hasAttribute('disabled');
+  const reviewDisabledDuringFetch = reviewButton.hasAttribute('disabled');
+  reviewButton.click();
+  const reviewsDuringFetch = reviews;
+  const rerendered = document.body.createDiv();
+  await dashboard.renderSimplifiedDashboard(
+    rerendered,
+    plugin,
+    state,
+    { resultContent: '', userReview: '' },
+    callbacks,
+    {},
+    'activity'
+  );
+  const rerenderedActivity = rerendered.querySelector('[data-action="activity"]');
+  const rerenderedReview = rerendered.querySelector('.second-brain-simple-review-run');
+  const rerenderedActivityDisabled = rerenderedActivity.hasAttribute('disabled');
+  const rerenderedReviewDisabled = rerenderedReview.hasAttribute('disabled');
+  rerenderedReview.click();
+  const reviewsAfterRerender = reviews;
   finishFetch();
   await new Promise((resolve) => setTimeout(resolve, 0));
+  reviewButton.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
   const textarea = document.querySelector('textarea');
+  const empty = document.body.createDiv();
+  await dashboard.renderSimplifiedDashboard(
+    empty,
+    { ...plugin, app: { vault: {
+      getAbstractFileByPath: () => null, cachedRead: async () => '', read: async () => '',
+    } } },
+    state,
+    { resultContent: '', userReview: '' },
+    callbacks,
+    {}
+  );
+  const emptyReviewDisabled = empty.querySelector('.second-brain-simple-review-run').hasAttribute('disabled');
   globalThis.__obsidianPlatform.isDesktopApp = false;
   const mobile = document.body.createDiv();
-  dashboard.renderCapture(
+  await dashboard.renderSimplifiedDashboard(
     mobile,
-    { captureDraft: '' },
-    {
-      setCaptureDraft: () => {},
-      saveCapture: async () => {},
-      startCaptureCall: () => {},
-      fetchActivity: async () => 'not used',
-    }
+    plugin,
+    { ...state, captureDraft: '' },
+    { resultContent: '', userReview: '' },
+    { ...callbacks, fetchActivity: async () => 'not used' },
+    {}
   );
   document.body.dataset.activityResult = JSON.stringify({
     fetches,
@@ -337,9 +407,18 @@ test("desktop Activity control is single-flight and stays off mobile", async () 
     busyDuringFetch,
     loadingIcon,
     disabledDuringFetch,
+    reviewDisabledDuringFetch,
+    reviewsDuringFetch,
+    rerenderedActivityDisabled,
+    rerenderedReviewDisabled,
+    reviewsAfterRerender,
+    reviews,
     value: textarea.value,
     draft: drafts.at(-1),
     buttonText: document.querySelector('[data-action="activity"]').textContent,
+    captureActivityButtons,
+    reviewDisabledWithoutCaptures,
+    emptyReviewDisabled,
     mobileButtons: mobile.querySelectorAll('[data-action="activity"]').length,
   });
 </script>`,
@@ -367,9 +446,26 @@ test("desktop Activity control is single-flight and stays off mobile", async () 
     assert.equal(result.busyDuringFetch, "true");
     assert.equal(result.loadingIcon, "loader-circle");
     assert.equal(result.disabledDuringFetch, true);
+    assert.equal(result.reviewDisabledDuringFetch, true);
+    assert.equal(result.reviewsDuringFetch, 0, "Review must not run against partial Activity files");
+    assert.equal(result.rerenderedActivityDisabled, true);
+    assert.equal(result.rerenderedReviewDisabled, true);
+    assert.equal(
+      result.reviewsAfterRerender,
+      0,
+      "A rerender must preserve the Activity/Review operation lock"
+    );
+    assert.equal(result.reviews, 1, "Review should run after Activity finishes");
     assert.equal(result.value, "Existing thought");
     assert.equal(result.draft, "view updated its latest state");
     assert.equal(result.buttonText, "");
+    assert.equal(result.captureActivityButtons, 0, "Capture should no longer own Activity fetching");
+    assert.equal(
+      result.reviewDisabledWithoutCaptures,
+      false,
+      "Activity-only selections should remain reviewable"
+    );
+    assert.equal(result.emptyReviewDisabled, true, "Review should disable when no source exists");
     assert.equal(result.mobileButtons, 0, "Activity fetching should stay off mobile");
   } finally {
     await cleanupBrowser(browser, debugPort, profileDir, tempDir);
@@ -467,7 +563,14 @@ function obsidianBrowserStubPlugin() {
               }
             }
             export class Component {}
-            export class TFile {}
+            export class TFile {
+              constructor(path = '') {
+                this.path = path;
+                this.name = path.split('/').at(-1) ?? '';
+                this.basename = this.name.replace(/\.md$/, '');
+              }
+            }
+            globalThis.__DashboardTFile = TFile;
             export class TFolder {}
             export const MarkdownRenderer = {};
             export const Platform = { isDesktopApp: true };

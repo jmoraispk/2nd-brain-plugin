@@ -33,6 +33,7 @@ import { emitUsageEvent } from "./usageTelemetry";
 export const DAYTRACE_EVIDENCE_PATH =
   "🧑 Me/Activity/Daytrace/Evidence/{ISO_YEAR}/Q{Q}/W{WW}/{YYYY-MM-DD}.json";
 export { DAYTRACE_SUMMARY_PATH } from "./daytraceReview";
+export { daytraceDatesInRange, processDaytraceRange } from "./daytraceRange";
 
 type Requester = (request: RequestUrlParam) => Promise<RequestUrlResponse>;
 
@@ -54,6 +55,7 @@ export interface DaytraceGeneration {
   evidenceFile: TFile;
   summaryFile?: TFile;
   fallbackCode?: string;
+  summaryStatus: "generated" | "unchanged" | "fallback";
 }
 
 const DAYTRACE_PROGRESS_LABELS: Record<ProgressEvent["stage"], string> = {
@@ -92,6 +94,8 @@ export function mergeCaptureDraft(current: string, fetched: string): string {
   return `${existing}\n\n${activity}`;
 }
 
+const DAYTRACE_EVIDENCE_CHANGE_THRESHOLD = 0.05;
+
 /** Keep successful Activity out of Capture; deterministic fallback remains editable. */
 export function activityCaptureDraft(
   current: string,
@@ -100,6 +104,24 @@ export function activityCaptureDraft(
   return result.summaryFile
     ? current
     : mergeCaptureDraft(current, result.captureMarkdown);
+}
+
+/** Decide whether fresh evidence is different enough to justify another AI run. */
+export function shouldRegenerateDaytraceSummary(
+  existingSummary: string | undefined,
+  evidenceBytes: number
+): boolean {
+  if (!existingSummary) return true;
+  const match = existingSummary.match(
+    /^daytrace-evidence-bytes:\s*(\d+)\s*$/m
+  );
+  if (!match) return true;
+  const baseline = Number(match[1]);
+  if (!Number.isFinite(baseline) || baseline <= 0) return true;
+  return (
+    Math.abs(evidenceBytes - baseline) / baseline >
+    DAYTRACE_EVIDENCE_CHANGE_THRESHOLD
+  );
 }
 
 /** Adapt Obsidian's desktop-capable HTTP client to DayTrace's AW boundary. */
@@ -209,13 +231,33 @@ export async function generateDaytraceActivity(
   });
 
   const evidencePath = applyDatePlaceholders(DAYTRACE_EVIDENCE_PATH, day);
+  const summaryPath = applyDatePlaceholders(DAYTRACE_SUMMARY_PATH, day);
+  const existingSummary = app.vault.getAbstractFileByPath(summaryPath);
+  const existingSummaryContent =
+    existingSummary instanceof TFile
+      ? await app.vault.read(existingSummary)
+      : undefined;
+  const evidenceContent = renderEpisodeJson(bundle, { details: true, raw: true });
+  const evidenceBytes = new TextEncoder().encode(evidenceContent).length;
   options.signal?.throwIfAborted();
   const evidenceFile = await upsertVaultFile(
     app,
     evidencePath,
-    renderEpisodeJson(bundle, { details: true, raw: true })
+    evidenceContent
   );
   options.signal?.throwIfAborted();
+
+  if (
+    existingSummary instanceof TFile &&
+    !shouldRegenerateDaytraceSummary(existingSummaryContent, evidenceBytes)
+  ) {
+    return {
+      captureMarkdown: stripDaytraceSummaryMetadata(existingSummaryContent ?? ""),
+      evidenceFile,
+      summaryFile: existingSummary,
+      summaryStatus: "unchanged",
+    };
+  }
 
   const plan = buildSummaryPlan(bundle);
   const outcome = await summarizeBundleOrFallback(
@@ -232,8 +274,6 @@ export async function generateDaytraceActivity(
 
   if (outcome.kind === "deterministic") {
     options.signal?.throwIfAborted();
-    const summaryPath = applyDatePlaceholders(DAYTRACE_SUMMARY_PATH, day);
-    const existingSummary = app.vault.getAbstractFileByPath(summaryPath);
     if (existingSummary instanceof TFile) {
       await app.vault.modify(
         existingSummary,
@@ -256,6 +296,7 @@ export async function generateDaytraceActivity(
       captureMarkdown: renderEpisodeMarkdown(outcome.bundle),
       evidenceFile,
       fallbackCode: outcome.failure.code,
+      summaryStatus: "fallback",
     };
   }
 
@@ -264,11 +305,39 @@ export async function generateDaytraceActivity(
     outcome.digest,
     outcome.provenance
   );
-  const summaryPath = applyDatePlaceholders(DAYTRACE_SUMMARY_PATH, day);
   options.signal?.throwIfAborted();
-  const summaryFile = await upsertVaultFile(app, summaryPath, captureMarkdown);
+  const summaryFile = await upsertVaultFile(
+    app,
+    summaryPath,
+    renderDaytraceSummaryFile(captureMarkdown, evidencePath, evidenceBytes)
+  );
   options.signal?.throwIfAborted();
-  return { captureMarkdown, evidenceFile, summaryFile };
+  return {
+    captureMarkdown,
+    evidenceFile,
+    summaryFile,
+    summaryStatus: "generated",
+  };
+}
+
+function renderDaytraceSummaryFile(
+  markdown: string,
+  evidencePath: string,
+  evidenceBytes: number
+): string {
+  return [
+    "---",
+    "daytrace-status: available",
+    `daytrace-evidence: "${evidencePath}"`,
+    `daytrace-evidence-bytes: ${evidenceBytes}`,
+    "---",
+    "",
+    markdown,
+  ].join("\n");
+}
+
+function stripDaytraceSummaryMetadata(markdown: string): string {
+  return markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n*/, "");
 }
 
 async function completeOpenAI(

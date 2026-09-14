@@ -38,6 +38,91 @@ test("successful Activity stays out of Capture while fallback remains editable",
   );
 });
 
+test("Activity regenerates only when evidence size changes by more than five percent", async () => {
+  const daytrace = await loadDaytraceModule();
+  const summary = [
+    "---",
+    "daytrace-evidence-bytes: 100",
+    "---",
+    "",
+    "# Existing summary",
+  ].join("\n");
+
+  assert.equal(daytrace.shouldRegenerateDaytraceSummary(undefined, 100), true);
+  assert.equal(daytrace.shouldRegenerateDaytraceSummary(summary, 105), false);
+  assert.equal(daytrace.shouldRegenerateDaytraceSummary(summary, 95), false);
+  assert.equal(daytrace.shouldRegenerateDaytraceSummary(summary, 106), true);
+  assert.equal(daytrace.shouldRegenerateDaytraceSummary(summary, 94), true);
+});
+
+test("Activity date ranges are inclusive", async () => {
+  const daytrace = await loadDaytraceModule();
+  assert.deepEqual(
+    daytrace.daytraceDatesInRange("2026-09-12", "2026-09-14"),
+    ["2026-09-12", "2026-09-13", "2026-09-14"]
+  );
+});
+
+test("multi-day Activity runs sequentially and continues after a failed date", async () => {
+  const daytrace = await loadDaytraceModule();
+  const timeline = [];
+  const entries = await daytrace.processDaytraceRange(
+    ["2026-09-12", "2026-09-13", "2026-09-14"],
+    async (date) => {
+      timeline.push(`start:${date}`);
+      if (date === "2026-09-13") throw new Error("ActivityWatch unavailable");
+      await Promise.resolve();
+      timeline.push(`end:${date}`);
+      return { summaryStatus: date.endsWith("12") ? "generated" : "unchanged" };
+    }
+  );
+
+  assert.deepEqual(timeline, [
+    "start:2026-09-12", "end:2026-09-12",
+    "start:2026-09-13",
+    "start:2026-09-14", "end:2026-09-14",
+  ]);
+  assert.deepEqual(entries.map((entry) => [entry.date, entry.status]), [
+    ["2026-09-12", "generated"],
+    ["2026-09-13", "failed"],
+    ["2026-09-14", "unchanged"],
+  ]);
+  assert.match(entries[1].error.message, /ActivityWatch unavailable/);
+});
+
+test("multi-day Activity announces each date before its request starts", async () => {
+  const daytrace = await loadDaytraceModule();
+  const timeline = [];
+  await daytrace.processDaytraceRange(
+    ["2026-09-12", "2026-09-13"],
+    async (date) => {
+      timeline.push(`request:${date}`);
+      return { summaryStatus: "unchanged" };
+    },
+    (date, index, total) => timeline.push(`notice:${index + 1}/${total}:${date}`)
+  );
+  assert.deepEqual(timeline, [
+    "notice:1/2:2026-09-12", "request:2026-09-12",
+    "notice:2/2:2026-09-13", "request:2026-09-13",
+  ]);
+});
+
+test("cancelling Activity stops the remaining selected dates", async () => {
+  const daytrace = await loadDaytraceModule();
+  const started = [];
+  await assert.rejects(
+    daytrace.processDaytraceRange(
+      ["2026-09-12", "2026-09-13"],
+      async (date) => {
+        started.push(date);
+        throw new DOMException("cancelled", "AbortError");
+      }
+    ),
+    (error) => error?.name === "AbortError"
+  );
+  assert.deepEqual(started, ["2026-09-12"]);
+});
+
 test("every DayTrace stage produces visible elapsed progress", async () => {
   const daytrace = await loadDaytraceModule();
   const cases = [
@@ -229,10 +314,16 @@ test("DayTrace provider calls share one content-free Activity interaction", asyn
   daytrace.configureUsageEventSink(undefined);
 });
 
-test("generation runs the published core, stores Human evidence and AI summary, and returns the table", async () => {
+test("generation migrates a legacy summary, stores Human evidence, and skips unchanged AI work", async () => {
   const daytrace = await loadDaytraceModule();
   const vault = new FakeVault(globalThis.__DaytraceTFile);
+  const summaryPath =
+    "🤖 AI/Activity/Daytrace/Summaries/2026/Q3/W37/2026-09-13.md";
+  await vault.create(summaryPath, "# Legacy DayTrace summary without a size baseline");
   const app = { vault };
+  let providerCalls = 0;
+  const baseEventTitle = "daytrace integration";
+  let eventTitle = baseEventTitle;
   const request = async (input) => {
     const url = new URL(input.url);
     if (url.pathname === "/api/0/info") {
@@ -258,12 +349,13 @@ test("generation runs the published core, stores Human evidence and AI summary, 
             id: 7,
             timestamp: "2026-09-13T16:00:00Z",
             duration: 1800,
-            data: { app: "Visual Studio Code", title: "daytrace integration" },
+            data: { app: "Visual Studio Code", title: eventTitle },
           },
         ],
       };
     }
     if (input.url === "https://api.openai.com/v1/chat/completions") {
+      providerCalls += 1;
       const body = JSON.parse(input.body);
       const episodeId =
         body.response_format.json_schema.schema.properties.workstreams.items.properties
@@ -321,9 +413,70 @@ test("generation runs the published core, stores Human evidence and AI summary, 
   );
   assert.match(result.captureMarkdown, /\| Project \/ workstream \| Apparent achievements \| Work and topics \|/);
   assert.match(result.captureMarkdown, /DayTrace integration/);
+  assert.equal(result.summaryStatus, "generated");
   assert.equal(result.fallbackCode, undefined);
   assert.match(vault.content(result.evidenceFile.path), /"schema": "daytrace\.episode-bundle\.v1"/);
-  assert.equal(vault.content(result.summaryFile.path), result.captureMarkdown);
+  assert.match(vault.content(result.summaryFile.path), /daytrace-evidence-bytes: \d+/);
+  assert.match(vault.content(result.summaryFile.path), /DayTrace integration/);
+
+  await vault.modify(result.evidenceFile, "stale evidence that must be replaced");
+  const unchanged = await daytrace.generateDaytraceActivity(
+    app,
+    settings({ provider: "openai", openaiApiKey: "secret", openaiModel: "gpt-5" }),
+    "2026-09-13",
+    { request, timezoneName: "UTC" }
+  );
+  assert.equal(providerCalls, 1, "unchanged evidence should not spend another AI call");
+  assert.equal(unchanged.summaryStatus, "unchanged");
+  assert.equal(unchanged.summaryFile.path, result.summaryFile.path);
+  assert.match(
+    vault.content(unchanged.evidenceFile.path),
+    /"schema": "daytrace\.episode-bundle\.v1"/,
+    "fresh raw evidence must still replace the saved evidence when AI is skipped"
+  );
+
+  const summaryBaseline = Number(
+    vault.content(result.summaryFile.path).match(/daytrace-evidence-bytes: (\d+)/)?.[1]
+  );
+  let previousEvidenceBytes = new TextEncoder().encode(
+    vault.content(unchanged.evidenceFile.path)
+  ).length;
+  let withinThresholdRuns = 0;
+  let regenerated;
+  for (let added = 1; added <= 200; added += 1) {
+    eventTitle = `${baseEventTitle}${"x".repeat(added)}`;
+    const candidate = await daytrace.generateDaytraceActivity(
+      app,
+      settings({ provider: "openai", openaiApiKey: "secret", openaiModel: "gpt-5" }),
+      "2026-09-13",
+      { request, timezoneName: "UTC" }
+    );
+    const evidenceBytes = new TextEncoder().encode(
+      vault.content(candidate.evidenceFile.path)
+    ).length;
+    if (candidate.summaryStatus === "generated") {
+      assert.ok(
+        Math.abs(evidenceBytes - previousEvidenceBytes) / previousEvidenceBytes <= 0.05,
+        "a small step from the latest evidence should still regenerate once it exceeds the fixed summary baseline"
+      );
+      assert.ok(
+        Math.abs(evidenceBytes - summaryBaseline) / summaryBaseline > 0.05
+      );
+      regenerated = candidate;
+      break;
+    }
+    withinThresholdRuns += 1;
+    assert.equal(candidate.summaryStatus, "unchanged");
+    assert.match(
+      vault.content(candidate.summaryFile.path),
+      new RegExp(`daytrace-evidence-bytes: ${summaryBaseline}(?:\\r?\\n|$)`),
+      "an unchanged run must not roll the summary baseline forward"
+    );
+    previousEvidenceBytes = evidenceBytes;
+  }
+  assert.ok(withinThresholdRuns > 0, "the sequence should include within-threshold refreshes");
+  assert.ok(regenerated, "cumulative evidence growth should eventually regenerate the AI summary");
+  assert.equal(providerCalls, 2);
 });
 
 test("provider network failure returns deterministic activity and marks an older AI summary stale", async () => {
@@ -445,6 +598,9 @@ class FakeVault {
   }
   async modify(file, content) {
     file.content = content;
+  }
+  async read(file) {
+    return file.content;
   }
   content(pathname) {
     return this.items.get(pathname)?.content;

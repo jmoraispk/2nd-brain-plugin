@@ -57,6 +57,7 @@ import {
   defaultSimplifiedDashboardState,
   renderSimplifiedDashboard,
   SimplifiedDashboardState,
+  SimplifiedOperation,
 } from "./simplifiedDashboard";
 import { showFileNotice } from "./fileNotice";
 import {
@@ -66,6 +67,7 @@ import {
 } from "./daytraceIntegration";
 import { createInteractionId } from "./usageHistory";
 import { renderDashboardUtilityButtons } from "./dashboardUtilityButtons";
+import { daytraceDatesInRange, processDaytraceRange } from "./daytraceRange";
 
 export const VIEW_TYPE_SECOND_BRAIN = "second-brain-view";
 
@@ -94,6 +96,7 @@ export class SecondBrainView extends ItemView {
   displayedDate: string = todayISO();
   private activityController?: AbortController;
   private activityRunId = 0;
+  private simplifiedOperation?: SimplifiedOperation;
 
   constructor(leaf: WorkspaceLeaf, plugin: SecondBrainPlugin) {
     super(leaf);
@@ -156,7 +159,8 @@ export class SecondBrainView extends ItemView {
             void this.app.workspace.getLeaf(false).openFile(file);
           },
         },
-        this
+        this,
+        this.simplifiedOperation
       );
       return;
     }
@@ -464,51 +468,75 @@ export class SecondBrainView extends ItemView {
       return;
     }
 
-    if (this.activityController) {
-      new Notice("Activity summary is already running.");
+    if (this.simplifiedOperation || this.activityController) {
+      new Notice("Activity or Review is already running.");
       return;
     }
+    this.simplifiedOperation = "activity";
     const controller = new AbortController();
     const runId = ++this.activityRunId;
     this.activityController = controller;
     const interactionId = createInteractionId();
-    const progress = new Notice("Connecting to ActivityWatch…", 0);
+    const { rangeStart, rangeEnd } = this.simplifiedState;
+    const dates = daytraceDatesInRange(rangeStart, rangeEnd);
+    const progress = new Notice(
+      `Connecting to ActivityWatch for ${dates.length} selected day${
+        dates.length === 1 ? "" : "s"
+      }…`,
+      0
+    );
     try {
-      const result = await generateDaytraceActivity(
-        this.app,
-        this.plugin.settings,
-        todayISO(),
-        {
-          signal: controller.signal,
-          usage: { action: "Activity", interactionId },
-          onProgress: (event) => {
-            if (runId !== this.activityRunId || controller.signal.aborted) return;
-            progress.setMessage(daytraceProgressMessage(event));
-          },
-        }
+      const entries = await processDaytraceRange(
+        dates,
+        (day, index, total) =>
+          generateDaytraceActivity(this.app, this.plugin.settings, day, {
+            signal: controller.signal,
+            usage: { action: "Activity", interactionId },
+            onProgress: (event) => {
+              if (runId !== this.activityRunId || controller.signal.aborted) return;
+              progress.setMessage(
+                `Activity ${index + 1}/${total} · ${day} · ${daytraceProgressMessage(
+                  event
+                )}`
+              );
+            },
+          }),
+        (day, index, total) =>
+          progress.setMessage(
+            `Activity ${index + 1}/${total} · ${day} · Connecting…`
+          )
       );
       if (runId !== this.activityRunId || controller.signal.aborted) return;
 
-      this.simplifiedState.captureDraft = activityCaptureDraft(
-        this.simplifiedState.captureDraft,
-        result
-      );
-
-      if (result.summaryFile) {
-        showFileNotice(
-          this.app,
-          "Activity summary created",
-          result.summaryFile
-        );
-      } else {
-        showFileNotice(
-          this.app,
-          `Activity evidence created; AI summary unavailable (${result.fallbackCode})`,
-          result.evidenceFile,
-          8000
+      for (const entry of entries) {
+        if (entry.status === "failed") {
+          this.plugin.errorLog.push(`daytrace-activity:${entry.date}`, entry.error);
+          continue;
+        }
+        this.simplifiedState.captureDraft = activityCaptureDraft(
+          this.simplifiedState.captureDraft,
+          entry.result
         );
       }
-      await this.render();
+
+      const generated = entries.filter((entry) => entry.status === "generated").length;
+      const unchanged = entries.filter((entry) => entry.status === "unchanged").length;
+      const fallback = entries.filter((entry) => entry.status === "fallback").length;
+      const failed = entries.filter((entry) => entry.status === "failed").length;
+      const only = entries.length === 1 ? entries[0] : undefined;
+      if (only && only.status !== "failed" && only.result.summaryFile) {
+        showFileNotice(
+          this.app,
+          only.status === "generated"
+            ? "Activity summary created"
+            : "Activity summary unchanged",
+          only.result.summaryFile
+        );
+      } else {
+        new Notice(
+          `Activity complete · ${generated} generated · ${unchanged} unchanged · ${fallback} fallback · ${failed} failed`
+        );
+      }
     } catch (err) {
       if (controller.signal.aborted) return;
       this.plugin.errorLog.push("daytrace-activity", err);
@@ -519,6 +547,12 @@ export class SecondBrainView extends ItemView {
     } finally {
       progress.hide();
       if (runId === this.activityRunId) this.activityController = undefined;
+      if (this.simplifiedOperation === "activity") {
+        this.simplifiedOperation = undefined;
+      }
+    }
+    if (!controller.signal.aborted && runId === this.activityRunId) {
+      await this.render();
     }
   }
 
@@ -668,6 +702,11 @@ export class SecondBrainView extends ItemView {
   }
 
   private async runSimplifiedReview(): Promise<void> {
+    if (this.simplifiedOperation) {
+      new Notice("Activity or Review is already running.");
+      return;
+    }
+    this.simplifiedOperation = "review";
     const { rangeStart: start, rangeEnd: end } = this.simplifiedState;
     const reviewCommand: Command = {
       ...DATE_RANGE_REVIEW_COMMAND,
@@ -697,7 +736,6 @@ export class SecondBrainView extends ItemView {
         resultContent: display,
         userReview: "",
       };
-      await this.render();
       this.notifyRunResult(reviewCommand.label, result);
     } catch (err) {
       this.plugin.errorLog.push("run:review-date-range", err);
@@ -707,7 +745,11 @@ export class SecondBrainView extends ItemView {
       );
     } finally {
       progress.hide();
+      if (this.simplifiedOperation === "review") {
+        this.simplifiedOperation = undefined;
+      }
     }
+    await this.render();
   }
 
   /**

@@ -8,10 +8,12 @@ import {
   TFolder,
 } from "obsidian";
 import SecondBrainPlugin from "../main";
+import { loadDaytraceReviewSource } from "./daytraceReview";
 import { applyDatePlaceholders, todayISO } from "./paths";
 import { ReviewTabState } from "./reviewTab";
 
 export type ActivityMetric = "captures" | "words";
+export type SimplifiedOperation = "activity" | "review";
 
 export function nextActivityMetric(metric: ActivityMetric): ActivityMetric {
   return metric === "captures" ? "words" : "captures";
@@ -104,6 +106,7 @@ interface DayActivity {
   date: string;
   captures: number;
   words: number;
+  hasActivitySummary: boolean;
 }
 
 export async function renderSimplifiedDashboard(
@@ -112,14 +115,24 @@ export async function renderSimplifiedDashboard(
   state: SimplifiedDashboardState,
   reviewState: ReviewTabState,
   cb: SimplifiedDashboardCallbacks,
-  viewComponent: Component
+  viewComponent: Component,
+  activeOperation?: SimplifiedOperation
 ): Promise<void> {
   const body = parent.createDiv({ cls: "second-brain-simple" });
   renderCapture(body, state, cb);
 
   const activity = await loadMonthActivity(plugin, state.month);
   renderMonthMap(body, state, activity, cb);
-  renderRangeReview(body, state, activity, reviewState, cb, plugin, viewComponent);
+  renderRangeReview(
+    body,
+    state,
+    activity,
+    reviewState,
+    cb,
+    plugin,
+    viewComponent,
+    activeOperation
+  );
   body.createDiv({
     cls: "second-brain-simple-bottom-gap",
     attr: { "aria-hidden": "true" },
@@ -148,33 +161,6 @@ export function renderCapture(
   textarea.addEventListener("input", () => cb.setCaptureDraft(textarea.value));
 
   const actions = section.createDiv({ cls: "second-brain-simple-actions" });
-  if (Platform.isDesktopApp) {
-    const activity = actions.createEl("button", {
-      cls: "second-brain-simple-activity-button",
-      attr: {
-        type: "button",
-        "data-action": "activity",
-        title: "Fetch today's ActivityWatch summary",
-        "aria-label": "Fetch today's ActivityWatch summary",
-      },
-    });
-    setIcon(activity, "activity");
-    activity.addEventListener("click", async () => {
-      if (activity.hasAttribute("disabled")) return;
-      activity.setAttribute("disabled", "true");
-      activity.setAttribute("aria-busy", "true");
-      activity.classList.add("is-loading");
-      setIcon(activity, "loader-circle");
-      try {
-        await cb.fetchActivity();
-      } finally {
-        activity.removeAttribute("disabled");
-        activity.removeAttribute("aria-busy");
-        activity.classList.remove("is-loading");
-        setIcon(activity, "activity");
-      }
-    });
-  }
   const save = actions.createEl("button", {
     text: "Capture",
     cls: "second-brain-button second-brain-button-primary",
@@ -421,7 +407,8 @@ function renderRangeReview(
   reviewState: ReviewTabState,
   cb: SimplifiedDashboardCallbacks,
   plugin: SecondBrainPlugin,
-  viewComponent: Component
+  viewComponent: Component,
+  activeOperation?: SimplifiedOperation
 ) {
   const section = body.createDiv({
     cls: "second-brain-simple-card second-brain-simple-review",
@@ -441,6 +428,8 @@ function renderRangeReview(
   );
   const captures = selected.reduce((sum, day) => sum + day.captures, 0);
   const words = selected.reduce((sum, day) => sum + day.words, 0);
+  const hasReviewSources =
+    captures > 0 || selected.some((day) => day.hasActivitySummary);
   section.createEl("p", {
     cls: "second-brain-simple-range-summary",
     text: `${captures} capture${captures === 1 ? "" : "s"} · ${words} word${
@@ -448,19 +437,52 @@ function renderRangeReview(
     } selected`,
   });
 
-  const run = section.createEl("button", {
+  const reviewActions = section.createDiv({ cls: "second-brain-simple-actions" });
+  const activityButton = createActivityButton(reviewActions);
+  const run = reviewActions.createEl("button", {
     text: "Review",
     cls: "second-brain-button second-brain-button-primary second-brain-simple-review-button second-brain-simple-review-run",
   });
-  if (captures === 0) run.setAttribute("disabled", "true");
-  run.addEventListener("click", async () => {
-    if (run.hasAttribute("disabled")) return;
+  if (!hasReviewSources || activeOperation) run.setAttribute("disabled", "true");
+  if (activeOperation === "review") run.setText("Reviewing…");
+  if (activeOperation) activityButton?.setAttribute("disabled", "true");
+  if (activeOperation === "activity" && activityButton) {
+    activityButton.setAttribute("aria-busy", "true");
+    activityButton.classList.add("is-loading");
+    setIcon(activityButton, "loader-circle");
+  }
+  let operationRunning = Boolean(activeOperation);
+  activityButton?.addEventListener("click", async () => {
+    if (operationRunning) return;
+    operationRunning = true;
+    activityButton.setAttribute("disabled", "true");
+    activityButton.setAttribute("aria-busy", "true");
+    activityButton.classList.add("is-loading");
+    setIcon(activityButton, "loader-circle");
     run.setAttribute("disabled", "true");
+    try {
+      await cb.fetchActivity();
+    } finally {
+      operationRunning = false;
+      activityButton.removeAttribute("disabled");
+      activityButton.removeAttribute("aria-busy");
+      activityButton.classList.remove("is-loading");
+      setIcon(activityButton, "activity");
+      if (hasReviewSources) run.removeAttribute("disabled");
+    }
+  });
+  run.addEventListener("click", async () => {
+    if (operationRunning || run.hasAttribute("disabled")) return;
+    operationRunning = true;
+    run.setAttribute("disabled", "true");
+    activityButton?.setAttribute("disabled", "true");
     run.setText("Reviewing…");
     try {
       await cb.runReview();
     } finally {
+      operationRunning = false;
       run.removeAttribute("disabled");
+      activityButton?.removeAttribute("disabled");
       run.setText("Review");
     }
   });
@@ -508,6 +530,21 @@ function renderRangeReview(
   renderCallButton(reflectionActions, "Talk through this review", cb.startReviewCall);
 }
 
+function createActivityButton(parent: HTMLElement): HTMLButtonElement | undefined {
+  if (!Platform.isDesktopApp) return undefined;
+  const activity = parent.createEl("button", {
+    cls: "second-brain-simple-activity-button",
+    attr: {
+      type: "button",
+      "data-action": "activity",
+      title: "Fetch ActivityWatch for the selected dates",
+      "aria-label": "Fetch ActivityWatch for the selected dates",
+    },
+  });
+  setIcon(activity, "activity");
+  return activity;
+}
+
 function renderCallButton(
   parent: HTMLElement,
   label: string,
@@ -551,6 +588,7 @@ async function loadMonthActivity(
   const activity: DayActivity[] = [];
   for (let day = 1; day <= days; day++) {
     const date = `${month}-${String(day).padStart(2, "0")}`;
+    const activitySummary = await loadDaytraceReviewSource(plugin.app, date);
     const templatePath = applyDatePlaceholders(
       plugin.settings.dailyLogPathTemplate,
       date
@@ -558,11 +596,20 @@ async function loadMonthActivity(
     const templateFile = plugin.app.vault.getAbstractFileByPath(templatePath);
     const file = filesByDate.get(date) ?? templateFile;
     if (!(file instanceof TFile)) {
-      activity.push({ date, captures: 0, words: 0 });
+      activity.push({
+        date,
+        captures: 0,
+        words: 0,
+        hasActivitySummary: Boolean(activitySummary),
+      });
       continue;
     }
     const content = await plugin.app.vault.cachedRead(file);
-    activity.push({ date, ...captureStats(content) });
+    activity.push({
+      date,
+      ...captureStats(content),
+      hasActivitySummary: Boolean(activitySummary),
+    });
   }
   return activity;
 }
