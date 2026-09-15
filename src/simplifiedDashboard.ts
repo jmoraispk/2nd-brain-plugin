@@ -180,18 +180,11 @@ export function renderCapture(
     }
   };
   save.addEventListener("click", submit);
-  textarea.addEventListener("keydown", (event) => {
-    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-      event.preventDefault();
-      void submit();
-    }
-  });
 }
 
 /** Route Obsidian's desktop Ctrl+Enter hotkey to the focused Capture box. */
 export function submitFocusedSimplifiedCapture(
-  document: Document,
-  checking = false
+  document: Document
 ): boolean {
   const Textarea = document.defaultView?.HTMLTextAreaElement;
   const active = document.activeElement;
@@ -207,26 +200,39 @@ export function submitFocusedSimplifiedCapture(
     .closest(".second-brain-simple-capture")
     ?.querySelector<HTMLButtonElement>(".second-brain-simple-capture-submit");
   if (!button || button.hasAttribute("disabled")) return false;
-  if (!checking) button.click();
+  button.click();
   return true;
 }
 
-/** Register the Obsidian-level shortcut that survives desktop key routing. */
+/** Capture Ctrl+Enter before Obsidian's document-level key routing. */
 export function registerSimplifiedCaptureHotkey(
   plugin: Plugin,
   isDesktop = Platform.isDesktopApp
 ): void {
   if (!isDesktop) return;
-  plugin.addCommand({
-    id: "submit-focused-capture",
-    name: "Submit focused capture",
-    hotkeys: [{ modifiers: ["Ctrl"], key: "Enter" }],
-    checkCallback: (checking) =>
-      submitFocusedSimplifiedCapture(
-        plugin.app.workspace.containerEl.ownerDocument,
-        checking
-      ),
-  });
+  const document = plugin.app.workspace.containerEl.ownerDocument;
+  const window = document.defaultView;
+  if (!window) return;
+  plugin.registerDomEvent(
+    window,
+    "keydown",
+    (event) => {
+      if (
+        !event.ctrlKey ||
+        event.metaKey ||
+        event.altKey ||
+        event.shiftKey ||
+        event.repeat ||
+        (event.key !== "Enter" && event.code !== "NumpadEnter")
+      ) {
+        return;
+      }
+      if (!submitFocusedSimplifiedCapture(document)) return;
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    { capture: true }
+  );
 }
 
 function renderMonthMap(

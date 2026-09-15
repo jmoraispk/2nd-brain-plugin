@@ -472,7 +472,7 @@ test("desktop Activity control uses the Review selection and stays off Capture a
   }
 });
 
-test("desktop hotkey routing submits only the focused non-empty Capture box", async () => {
+test("desktop window capture submits before Obsidian can intercept Ctrl+Enter", async () => {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "second-brain-capture-hotkey-"));
   const profileDir = path.join(tempDir, "edge-profile");
   const debugPort = 10300 + Math.floor(Math.random() * 500);
@@ -504,7 +504,8 @@ test("desktop hotkey routing submits only the focused non-empty Capture box", as
 <script>
   const saved = [];
   const desktopCommands = [];
-  const mobileCommands = [];
+  const desktopListeners = [];
+  const mobileListeners = [];
   const registrationAvailable =
     typeof dashboard.registerSimplifiedCaptureHotkey === 'function';
   if (registrationAvailable) {
@@ -512,13 +513,20 @@ test("desktop hotkey routing submits only the focused non-empty Capture box", as
       {
         app: { workspace: { containerEl: document.body } },
         addCommand: (command) => desktopCommands.push(command),
+        registerDomEvent: (target, type, callback, options) => {
+          desktopListeners.push({ target, type, callback, options });
+          target.addEventListener(type, callback, options);
+        },
       },
       true
     );
     dashboard.registerSimplifiedCaptureHotkey(
       {
         app: { workspace: { containerEl: document.body } },
-        addCommand: (command) => mobileCommands.push(command),
+        addCommand: () => {},
+        registerDomEvent: (target, type, callback, options) => {
+          mobileListeners.push({ target, type, callback, options });
+        },
       },
       false
     );
@@ -536,36 +544,68 @@ test("desktop hotkey routing submits only the focused non-empty Capture box", as
   textarea.focus();
   textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   const savesAfterPlainEnter = saved.length;
-  const command = desktopCommands[0];
-  const checkingHandled = command?.checkCallback(true) ?? false;
-  const savesAfterChecking = saved.length;
+  let documentIntercepted = 0;
   document.addEventListener('keydown', (event) => {
-    if (event.ctrlKey && event.key === 'Enter') command?.checkCallback(false);
+    if (
+      !event.ctrlKey || event.metaKey || event.altKey || event.shiftKey ||
+      event.repeat || event.key !== 'Enter'
+    ) return;
+    documentIntercepted += 1;
+    event.stopImmediatePropagation();
   }, { capture: true });
-  textarea.dispatchEvent(new KeyboardEvent('keydown', {
+  const firstDispatchCancelled = !textarea.dispatchEvent(new KeyboardEvent('keydown', {
     key: 'Enter', ctrlKey: true, bubbles: true,
+    cancelable: true,
   }));
-  Promise.resolve().then(() => {
+  (async () => {
+    await Promise.resolve();
+    const savesAfterBlockedCtrl = saved.length;
     textarea.value = '';
     textarea.focus();
-    const emptyHandled = command?.checkCallback(false) ?? false;
+    textarea.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true,
+    }));
+    const savesAfterUnfocused = saved.length;
+    const savesAfterEmpty = saved.length;
     textarea.value = 'Ignored while unfocused';
     document.querySelector('#outside').focus();
-    const unfocusedHandled = command?.checkCallback(false) ?? false;
+    textarea.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true,
+    }));
+    const invalidShortcuts = [
+      { ctrlKey: true, repeat: true },
+      { ctrlKey: true, shiftKey: true },
+      { ctrlKey: true, altKey: true },
+      { ctrlKey: true, metaKey: true },
+      { metaKey: true },
+    ];
+    for (const shortcut of invalidShortcuts) {
+      textarea.value = 'Must not submit';
+      textarea.focus();
+      textarea.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Enter', bubbles: true, cancelable: true, ...shortcut,
+      }));
+      await Promise.resolve();
+    }
     document.body.dataset.captureHotkey = JSON.stringify({
       registrationAvailable,
       desktopCommandCount: desktopCommands.length,
-      mobileCommandCount: mobileCommands.length,
-      modifiers: command?.hotkeys?.[0]?.modifiers ?? [],
-      key: command?.hotkeys?.[0]?.key ?? '',
-      checkingHandled,
-      savesAfterChecking,
-      emptyHandled,
-      unfocusedHandled,
+      desktopListenerCount: desktopListeners.length,
+      mobileListenerCount: mobileListeners.length,
+      listenerType: desktopListeners[0]?.type ?? '',
+      listenerCapture: desktopListeners[0]?.options === true ||
+        desktopListeners[0]?.options?.capture === true,
+      listenerIsWindow: desktopListeners[0]?.target === window,
+      firstDispatchCancelled,
+      savesAfterBlockedCtrl,
+      savesAfterEmpty,
+      savesAfterUnfocused,
+      savesAfterInvalidShortcuts: saved.length,
+      documentIntercepted,
       savesAfterPlainEnter,
       saved,
     });
-  });
+  })();
 </script>`,
       "utf8"
     );
@@ -586,16 +626,24 @@ test("desktop hotkey routing submits only the focused non-empty Capture box", as
     const result = await waitForDataset(page.webSocketDebuggerUrl, "captureHotkey");
 
     assert.equal(result.registrationAvailable, true);
-    assert.equal(result.desktopCommandCount, 1);
-    assert.equal(result.mobileCommandCount, 0);
-    assert.deepEqual(result.modifiers, ["Ctrl"]);
-    assert.equal(result.key, "Enter");
-    assert.equal(result.checkingHandled, true);
-    assert.equal(result.savesAfterChecking, 0, "Checking shortcut availability must not submit");
+    assert.equal(result.desktopCommandCount, 0, "The shortcut should not depend on Obsidian hotkey routing");
+    assert.equal(result.desktopListenerCount, 1);
+    assert.equal(result.mobileListenerCount, 0);
+    assert.equal(result.listenerType, "keydown");
+    assert.equal(result.listenerCapture, true);
+    assert.equal(result.listenerIsWindow, true);
+    assert.equal(result.firstDispatchCancelled, true);
+    assert.equal(result.savesAfterBlockedCtrl, 1, "Window capture must run before document interception");
+    assert.equal(result.savesAfterEmpty, 1, "Empty Capture text must not submit");
+    assert.equal(result.savesAfterUnfocused, 1, "An unfocused Capture box must not submit");
+    assert.equal(
+      result.savesAfterInvalidShortcuts,
+      1,
+      "Repeated or modified Enter shortcuts must not submit"
+    );
+    assert.equal(result.documentIntercepted, 2, "Only ignored shortcuts should reach the interceptor");
     assert.deepEqual(result.saved, ["Shortcut capture"]);
     assert.equal(result.savesAfterPlainEnter, 0, "Plain Enter must remain a newline");
-    assert.equal(result.emptyHandled, false, "Empty Capture text must not submit");
-    assert.equal(result.unfocusedHandled, false, "The hotkey must not target an unfocused Capture box");
   } finally {
     await cleanupBrowser(browser, debugPort, profileDir, tempDir);
   }
