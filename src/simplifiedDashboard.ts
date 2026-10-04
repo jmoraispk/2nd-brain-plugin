@@ -391,7 +391,6 @@ function renderMonthMap(
   }
 
   renderActivityMetricControl(header, state.metric, cb.setMetric);
-  section.createEl("p", { cls: "second-brain-calendar-hint", text: "Underline: capture day · Highlight: review range. Hold a day to capture; double-tap to select both." });
 
   const grid = section.createDiv({ cls: "second-brain-month-grid" });
   for (const label of ["M", "T", "W", "T", "F", "S", "S"]) {
