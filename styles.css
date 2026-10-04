@@ -329,7 +329,7 @@ button.second-brain-month-day {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
   min-height: 54px;
   padding: 4px 2px;
@@ -413,6 +413,12 @@ button.second-brain-month-day[disabled] {
   font-size: 13px;
   font-weight: 650;
   line-height: 1;
+}
+
+.second-brain-month-day-number,
+.second-brain-month-day-value {
+  position: relative;
+  top: 2px;
 }
 
 .second-brain-month-day-value {

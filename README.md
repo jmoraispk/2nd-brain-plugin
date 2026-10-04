@@ -169,6 +169,7 @@ frontmatter field.
 
 ## Release log
 
+- v0.19.3 — **Calendar number alignment.** Moves the date and activity count down slightly and tightens their gap from 6px to 4px while preserving the capture-day underline.
 - v0.19.2 — **Cleaner calendar spacing.** Removes the helper sentence below the calendar controls and adds space between each date and its capture/word count, keeping the capture-day underline closer to the date and clear of the count below.
 - v0.19.1 — **Personal, caring voice calls with memory and verbatim transcripts.** Voice settings add Your name and compact editable Voice Memory. Calls use explicit saved goals/projects/threads, seven days of updates, and only the exact previous week's review when present; Review calls also receive the current review. Successful saves update memory in the background with tracked provider costs, preserving saved text and existing memory on failure. Hang-up appends both speakers' unchanged transcript to the draft with a call header and name/agent labels. Subsequent summaries and memory use only the user's statements. Draft/context limits reserve space for memory; desktop and mobile keep the microphone-first call setup and selected capture date.
 
