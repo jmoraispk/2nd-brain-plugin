@@ -649,6 +649,103 @@ test("desktop window capture submits before Obsidian can intercept Ctrl+Enter", 
   }
 });
 
+test("shared calendar renders a seven-day cross-month week and separate capture underline on mobile", async () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "second-brain-calendar-"));
+  const profileDir = path.join(tempDir, "edge-profile");
+  const debugPort = 11300 + Math.floor(Math.random() * 500);
+  let browser;
+  try {
+    const bundle = await buildDashboardBrowserBundle();
+    const css = readFileSync(path.join(repoRoot, "styles.css"), "utf8");
+    const fixturePath = path.join(tempDir, "fixture.html");
+    writeFileSync(fixturePath, `<!doctype html>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>* { box-sizing: border-box; } body { margin: 0; } ${css}</style>
+<main id="host" style="width: 320px"></main>
+<script>
+  window.addEventListener('error', (event) => { document.body.dataset.calendarError = event.message; });
+  window.addEventListener('unhandledrejection', (event) => { document.body.dataset.calendarError = String(event.reason); });
+  HTMLElement.prototype.createEl = function(tag, options = {}) {
+    const element = document.createElement(tag);
+    if (options.type) element.setAttribute('type', options.type);
+    if (options.text !== undefined) element.textContent = options.text;
+    if (options.cls) element.className = options.cls;
+    for (const [name, value] of Object.entries(options.attr ?? {})) element.setAttribute(name, value);
+    this.appendChild(element); return element;
+  };
+  HTMLElement.prototype.createDiv = function(options = {}) { return this.createEl('div', options); };
+  HTMLElement.prototype.createSpan = function(options = {}) { return this.createEl('span', options); };
+  HTMLElement.prototype.setText = function(text) { this.textContent = text; };
+</script>
+<script>${bundle}</script>
+<script type="module">
+  const state = { ...dashboard.defaultSimplifiedDashboardState(), calendarMode: 'week', weekAnchor: '2026-10-01',
+    month: '2026-10', captureDate: '2026-09-30', rangeStart: '2026-09-28', rangeEnd: '2026-10-03' };
+  const host = document.querySelector('#host');
+  const plugin = { settings: { logsFolder: 'Logs', dailyLogPathTemplate: 'Logs/{YYYY-MM-DD}.md' },
+    app: { vault: { getAbstractFileByPath: () => null, cachedRead: async () => '', read: async () => '' } } };
+  const cb = { setCaptureDraft: () => {}, saveCapture: async () => {}, fetchActivity: async () => {},
+    startCaptureCall: () => {}, changeMonth: () => {}, changeWeek: () => {},
+    setCalendarMode: (mode) => { state.calendarMode = mode; }, setMetric: () => {},
+    selectCalendarDate: (date) => dashboard.selectCalendarDay(state, date),
+    selectSingleDay: (date) => dashboard.selectCalendarDay(state, date, true),
+    setCaptureDate: (date) => { state.captureDate = date; },
+    setRangeStart: () => {}, setRangeEnd: () => {}, runReview: async () => {}, setUserReview: () => {},
+    finishReview: async () => {}, startReviewCall: () => {}, openResult: () => {} };
+  const render = async () => {
+    host.replaceChildren();
+    await dashboard.renderSimplifiedDashboard(host, plugin, state, {}, cb, {});
+  };
+  await render();
+  const days = [...host.querySelectorAll('[data-date]')].map((cell) => cell.dataset.date);
+  const selected = host.querySelectorAll('.is-selected').length;
+  const underline = host.querySelector('.is-capture-day').dataset.date;
+  const underlineStyle = getComputedStyle(host.querySelector('.is-capture-day .second-brain-month-day-number')).textDecorationLine;
+  const header = host.querySelector('.second-brain-month-header');
+  const bounds = header.getBoundingClientRect();
+  const headerFits = [...header.children].every((child) => {
+    const b = child.getBoundingClientRect(); return b.left >= bounds.left && b.right <= bounds.right + 1;
+  });
+  const fromMin = host.querySelector('input[type=date]').min;
+  const cell = host.querySelector('[data-date="2026-10-01"]');
+  cell.dispatchEvent(new MouseEvent('click', { detail: 1 }));
+  await render();
+  host.querySelector('[data-date="2026-10-01"]').dispatchEvent(new MouseEvent('click', { detail: 1 }));
+  await render();
+  const headings = [...host.querySelectorAll('h2')].map((heading) => heading.textContent);
+  const doubleTapDate = host.querySelector('.is-capture-day').dataset.date;
+  const doubleTapSelected = host.querySelectorAll('.is-selected').length;
+  host.querySelector('.second-brain-calendar-mode').click();
+  await render();
+  const monthDays = host.querySelectorAll('[data-date]').length;
+  document.body.dataset.calendarResult = JSON.stringify({ days, selected, underline, underlineStyle, headerFits,
+    fromMin, headings, doubleTapDate, doubleTapSelected, monthDays });
+</script>`, "utf8");
+    browser = spawn(edgePath, ["--headless=new", "--disable-gpu", "--no-first-run", "--window-size=320,800",
+      `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profileDir}`, pathToFileURL(fixturePath).href], { stdio: "ignore" });
+    const page = await waitForPage(debugPort, pathToFileURL(fixturePath).href);
+    let result;
+    try { result = await waitForDataset(page.webSocketDebuggerUrl, "calendarResult"); }
+    catch (error) {
+      const detail = await evaluate(page.webSocketDebuggerUrl, "document.body.dataset.calendarError");
+      throw new Error(`${error.message}: ${detail}`);
+    }
+    assert.deepEqual(result.days, ["2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04"]);
+    assert.equal(result.selected, 6);
+    assert.equal(result.underline, "2026-09-30");
+    assert.equal(result.underlineStyle, "underline");
+    assert.equal(result.headerFits, true, "Both toggles and date navigation must fit a narrow phone card");
+    assert.equal(result.fromMin, "2026-09-28");
+    assert.equal(result.doubleTapDate, "2026-10-01");
+    assert.equal(result.doubleTapSelected, 1);
+    assert.ok(result.headings.includes("Capture · Oct 1"));
+    assert.ok(result.headings.includes("Review · Oct 1"));
+    assert.equal(result.monthDays, 31);
+  } finally {
+    await cleanupBrowser(browser, debugPort, profileDir, tempDir);
+  }
+});
+
 async function waitForPage(port, expectedUrl) {
   const endpoint = `http://127.0.0.1:${port}/json/list`;
   for (let attempt = 0; attempt < 50; attempt += 1) {

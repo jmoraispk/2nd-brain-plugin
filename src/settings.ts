@@ -172,7 +172,7 @@ export class SecondBrainSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Dashboard mode")
       .setDesc(
-        "Simplified keeps capture, a one-month activity map, and date-range review together. Complete restores Habits, Projects, Review, Think, proposals, and TODOs."
+        "Simplified keeps dated capture, a week/month activity map, and date-range review together. Complete restores Habits, Projects, Review, Think, proposals, and TODOs."
       )
       .addDropdown((dropdown) =>
         dropdown

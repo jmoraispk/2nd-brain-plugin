@@ -13,6 +13,68 @@ test("activity metric cycling advances and wraps", async () => {
   assert.equal(dashboard.nextActivityMetric?.("words"), "captures");
 });
 
+test("week bounds include every day across month and year boundaries", async () => {
+  const dashboard = await loadDashboardModule();
+  assert.deepEqual(dashboard.calendarBounds?.({ calendarMode: "week", weekAnchor: "2026-01-01" }),
+    { start: "2025-12-29", end: "2026-01-04" });
+  assert.deepEqual(dashboard.calendarBounds?.({ calendarMode: "week", weekAnchor: "2026-03-08" }),
+    { start: "2026-03-02", end: "2026-03-08" });
+});
+
+test("review clicks preserve capture day; a double selection moves both", async () => {
+  const dashboard = await loadDashboardModule();
+  const state = { captureDate: "2026-10-03", rangeStart: "2026-10-03", rangeEnd: "2026-10-03" };
+  assert.equal(typeof dashboard.selectCalendarDay, "function");
+  dashboard.selectCalendarDay(state, "2026-09-30");
+  dashboard.selectCalendarDay(state, "2026-10-02");
+  assert.equal(state.captureDate, "2026-10-03");
+  assert.equal(state.rangeStart, "2026-09-30");
+  assert.equal(state.rangeEnd, "2026-10-02");
+  dashboard.selectCalendarDay(state, "2026-10-01", true);
+  assert.equal(state.captureDate, "2026-10-01");
+  assert.equal(state.rangeStart, "2026-10-01");
+  assert.equal(state.rangeEnd, "2026-10-01");
+  assert.equal(state.rangeAnchor, undefined);
+});
+
+test("calendar hold changes capture only, double tap survives a rebuilt cell", async () => {
+  const dashboard = await loadDashboardModule();
+  assert.equal(typeof dashboard.bindCalendarDayGestures, "function");
+  const taps = {};
+  const actions = [];
+  const makeCell = () => {
+    const cell = new EventTarget();
+    cell.getBoundingClientRect = () => ({ left: 0, top: 0, right: 50, bottom: 50 });
+    cell.setPointerCapture = () => {};
+    cell.hasPointerCapture = () => false;
+    dashboard.bindCalendarDayGestures(cell, "2026-10-03", taps, {
+      selectCalendarDate: (date) => actions.push(["review", date]),
+      setCaptureDate: (date) => actions.push(["capture", date]),
+      selectSingleDay: (date) => actions.push(["both", date]),
+    });
+    return cell;
+  };
+  const event = (name, props) => Object.assign(new Event(name, { cancelable: true }), props);
+  let cell = makeCell();
+  cell.dispatchEvent(event("click", { detail: 1 }));
+  cell = makeCell();
+  cell.dispatchEvent(event("click", { detail: 1 }));
+  assert.deepEqual(actions, [["review", "2026-10-03"], ["both", "2026-10-03"]]);
+  actions.length = 0;
+  cell.dispatchEvent(event("pointerdown", { isPrimary: true, button: 0, pointerId: 1, clientX: 10, clientY: 10 }));
+  await new Promise((resolve) => setTimeout(resolve, 550));
+  cell.dispatchEvent(event("pointerup", { pointerId: 1, clientX: 10, clientY: 10 }));
+  cell.dispatchEvent(event("click", { detail: 1 }));
+  assert.deepEqual(actions, [["capture", "2026-10-03"]]);
+  actions.length = 0;
+  cell.dispatchEvent(event("pointerdown", { isPrimary: true, button: 0, pointerId: 2, clientX: 10, clientY: 10 }));
+  cell.dispatchEvent(event("pointermove", { pointerId: 2, clientX: 30, clientY: 10 }));
+  await new Promise((resolve) => setTimeout(resolve, 550));
+  assert.deepEqual(actions, []);
+  cell.dispatchEvent(event("dblclick", { detail: 2 }));
+  assert.deepEqual(actions, [["both", "2026-10-03"]], "Native laptop double-click must also honor the OS timing");
+});
+
 test("releasing before the hold threshold resolves as a short press", async () => {
   const dashboard = await loadDashboardModule();
   const controller = dashboard.createLongPressController?.(() => {}, 20);

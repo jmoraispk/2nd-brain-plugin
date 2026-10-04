@@ -1,6 +1,6 @@
 # Second Brain — Obsidian plugin
 
-Capture notes into today's log and review any range within a one-month activity map via the Claude / OpenAI API. Mobile-first.
+Capture notes into a chosen day's log and review ranges in a week/month activity map via the Claude / OpenAI API. Mobile-first.
 
 This is the PWA-equivalent surface for the [2nd-brain](https://github.com/jmoraispk/2nd-brain) framework — same daily loop, running inside Obsidian on your phone.
 
@@ -35,12 +35,12 @@ Alongside Me / AI sit the PARA folders (knowledge organized by topic, not by aut
 
 The default Simplified dashboard puts the whole loop on one screen:
 
-1. **Capture** a plain note → appends `[HH:MM] ...` to `🧑 Me/Logs/<today>.md`.
+1. **Capture** a plain note → appends `[HH:MM] ...` to the underlined calendar day's log (today by default). Hold a day for half a second to move the underline while preserving your review range. On a laptop, hold the mouse/trackpad click; keyboard users can focus a day and press Shift+Enter. Double-click or double-tap a day to select it for both Capture and Review. The heading shows the capture date, so an after-midnight note can still go to yesterday.
 2. On desktop, select one or more dates and press the compact **Activity** button beside **Review** to probe ActivityWatch for that range. Each date gets one evidence file under `🧑 Me/Activity/Daytrace/Evidence/` and one validated summary under `🤖 AI/Activity/Daytrace/Summaries/`. Fresh evidence is always saved; the AI summary is generated only when missing or when the evidence size differs by more than 5% from its generation baseline. Successful runs leave the Capture draft untouched; if AI summarization fails, the deterministic fallback is placed in Capture for editing.
-3. Use the one-month activity map to see capture counts or word counts per day.
-4. Select any date range inside that month and press **Review**. Saved Activity summaries join the model context, Activity-only dates are supported, and an exact copy of each saved workstream table is appended under `## Activity`.
+3. Use the **Week/Month** toggle on the left of the date heading to change the activity map; the **Captures/Words** toggle stays on the right. Arrows move one week or month. Weeks run Monday–Sunday, including days across month and year boundaries.
+4. Select a date range in the visible week or month and press **Review**. The highlight and Review heading show the review range; they do not move the underlined capture day. Saved Activity summaries join the model context, Activity-only dates are supported, and an exact copy of each saved workstream table is appended under `## Activity`.
 5. Read the AI summary inline and save your own reflection without leaving the dashboard.
-6. Use the phone button beside **Capture** or **Save reflection** to talk through either draft. The call result returns to the text box for editing; it is never saved automatically.
+6. Use the phone button beside **Capture** or **Save reflection** to talk through either draft. A Capture call uses the underlined day's context and returns its draft to that same date even if midnight passes during the call. The call result returns to the text box for editing; it is never saved automatically.
 7. Press the book icon beside Settings—or open Settings → Second Brain → **History**—to see refreshed metadata-only cost totals and per-interaction details. Vapi charges become exact after desktop reconciliation; OpenAI and Anthropic amounts are token-based estimates.
 
 Range summaries live at `🤖 AI/Reviews/Custom/<start>--<end>.md`; reflections remain separate under `🧑 Me/Reviews/Custom/`. Settings → Second Brain → Interface can restore the Complete dashboard with Habits, Projects, Review, Think, proposals, and TODOs.
@@ -164,6 +164,7 @@ frontmatter field.
 
 ## Release log
 
+- v0.19.0 — **Shared capture calendar + Week/Month view.** A left-side Week/Month toggle matches the right-side Captures/Words control, with Monday–Sunday weeks and cross-month/year reviews. The underlined day controls typed and audio Capture; highlighted ranges control Review independently. Hold a day to move Capture, double-click/double-tap to select one day for both, or use Shift+Enter for keyboard capture selection. Section headings show the destination dates, audio drafts retain their call's day across midnight, and calendar redraws preserve the live cells until vault reads finish so double taps remain available.
 - v0.18.4 — **Capture shortcut before Obsidian interception.** Desktop `Ctrl+Enter` now uses one plugin-lifecycle window capture listener, so the focused simplified Capture box submits before Obsidian's document-level keyboard routing can consume the event. Empty or unfocused boxes remain untouched, plain Enter remains a new line, and mobile registers no listener.
 - v0.18.3 — **Reliable desktop Capture shortcut.** `Ctrl+Enter` now routes through Obsidian's desktop hotkey system when the simplified Capture box is focused, reusing the normal Capture button path while plain Enter continues to insert a new line.
 - v0.18.2 — **Selected-range Activity fetching.** The compact Activity button moves from Capture to Review and processes every selected date sequentially with per-day progress and failure isolation. Each date keeps one raw evidence file and one AI summary; current evidence is always refreshed, while AI runs are skipped unless the summary is missing or evidence size changed by more than 5% from the summary's recorded baseline. Activity-only ranges remain reviewable, and multi-day Reviews continue appending each exact DayTrace table under its date.

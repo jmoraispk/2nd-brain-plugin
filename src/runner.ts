@@ -493,9 +493,6 @@ function datesForRange(range: DateRangeOverride): string[] {
   if (range.start > range.end) {
     throw new Error("The review start date must be before the end date.");
   }
-  if (range.start.slice(0, 7) !== range.end.slice(0, 7)) {
-    throw new Error("Simplified reviews must stay within one calendar month.");
-  }
 
   const start = new Date(`${range.start}T00:00:00`);
   const end = new Date(`${range.end}T00:00:00`);

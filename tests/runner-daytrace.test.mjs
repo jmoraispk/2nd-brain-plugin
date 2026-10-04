@@ -73,6 +73,23 @@ test("malformed Activity is still useful model context but produces no invented 
   assert.doesNotMatch(output, /Project \/ workstream/);
 });
 
+test("a week crossing a month boundary reviews logs from both months", async () => {
+  const { runner, requests } = await loadRunner();
+  const vault = new FakeVault(globalThis.__RunnerTFile);
+  vault.seed("🧑 Me/Logs/2026/Q3/W40/2026-09-30.md", "September work.");
+  // Quarters follow the week's Monday, so this whole week lives in Q3.
+  vault.seed("🧑 Me/Logs/2026/Q3/W40/2026-10-01.md", "October work.");
+  const result = await runner.runCommand(
+    { vault }, settings(), command(), "0.19.0", undefined, undefined,
+    { start: "2026-09-28", end: "2026-10-04" }
+  );
+  assert.equal(result.kind, "fresh");
+  assert.equal(result.file.path, "🤖 AI/Reviews/Custom/2026-09-28--2026-10-04.md");
+  const prompt = JSON.parse(requests[0].body).messages[1].content;
+  assert.match(prompt, /September work/);
+  assert.match(prompt, /October work/);
+});
+
 function settings() {
   return {
     provider: "openai",

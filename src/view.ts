@@ -54,10 +54,13 @@ import { completeTodoInProject } from "./projectMutate";
 import { resolveDailyLogPath, todayISO } from "./paths";
 import {
   ActivityMetric,
+  CalendarMode,
+  calendarBounds,
   defaultSimplifiedDashboardState,
   renderSimplifiedDashboard,
   SimplifiedDashboardState,
   SimplifiedOperation,
+  selectCalendarDay,
 } from "./simplifiedDashboard";
 import { showFileNotice } from "./fileNotice";
 import {
@@ -97,6 +100,7 @@ export class SecondBrainView extends ItemView {
   private activityController?: AbortController;
   private activityRunId = 0;
   private simplifiedOperation?: SimplifiedOperation;
+  private renderRevision = 0;
 
   constructor(leaf: WorkspaceLeaf, plugin: SecondBrainPlugin) {
     super(leaf);
@@ -118,12 +122,13 @@ export class SecondBrainView extends ItemView {
   }
 
   async onClose() {
+    this.renderRevision++;
     this.activityController?.abort();
   }
 
   async render() {
+    const revision = ++this.renderRevision;
     const container = this.containerEl.children[1] as HTMLElement;
-    container.empty();
     container.addClass("second-brain-container");
     container.classList.toggle(
       "second-brain-container-simple",
@@ -131,9 +136,12 @@ export class SecondBrainView extends ItemView {
     );
 
     if (this.plugin.settings.dashboardMode === "simplified") {
-      this.renderSimplifiedTopBar(container);
+      // Keep the live calendar available while vault reads finish. Otherwise
+      // the first tap removes the cell before a second tap can reach it.
+      const staging = container.ownerDocument.createElement("div");
+      this.renderSimplifiedTopBar(staging);
       await renderSimplifiedDashboard(
-        container,
+        staging,
         this.plugin,
         this.simplifiedState,
         this.reviewState,
@@ -145,6 +153,10 @@ export class SecondBrainView extends ItemView {
           fetchActivity: () => this.fetchSimplifiedActivity(),
           startCaptureCall: () => void this.openSimplifiedVoiceCall("capture"),
           changeMonth: (month) => this.changeSimplifiedMonth(month),
+          changeWeek: (date) => this.changeSimplifiedWeek(date),
+          setCalendarMode: (mode) => this.setSimplifiedCalendarMode(mode),
+          setCaptureDate: (date) => this.setSimplifiedCaptureDate(date),
+          selectSingleDay: (date) => this.selectSimplifiedDate(date, true),
           selectCalendarDate: (date) => this.selectSimplifiedDate(date),
           setRangeStart: (date) => this.setSimplifiedRangeStart(date),
           setRangeEnd: (date) => this.setSimplifiedRangeEnd(date),
@@ -162,9 +174,13 @@ export class SecondBrainView extends ItemView {
         this,
         this.simplifiedOperation
       );
+      if (revision === this.renderRevision) {
+        container.replaceChildren(...Array.from(staging.childNodes));
+      }
       return;
     }
 
+    container.empty();
     this.renderTopBar(container);
     this.renderVerbRow(container);
 
@@ -448,7 +464,7 @@ export class SecondBrainView extends ItemView {
         this.app,
         this.plugin.settings,
         content,
-        todayISO()
+        this.simplifiedState.captureDate
       );
       this.simplifiedState.captureDraft = "";
       showFileNotice(this.app, "Captured", path);
@@ -558,7 +574,7 @@ export class SecondBrainView extends ItemView {
 
   private openSimplifiedVoiceCall(mode: VoiceCallMode): void {
     try {
-      const targetDate = todayISO();
+      const targetDate = mode === "capture" ? this.simplifiedState.captureDate : todayISO();
       let context: string | (() => Promise<string>);
       let existingDraft: string;
       if (mode === "capture") {
@@ -571,7 +587,7 @@ export class SecondBrainView extends ItemView {
           const file = this.app.vault.getAbstractFileByPath(path);
           return file instanceof TFile
             ? (await this.app.vault.read(file)).trim()
-            : "(no captures yet today)";
+            : `(no captures yet for ${targetDate})`;
         };
         existingDraft = this.simplifiedState.captureDraft;
       } else {
@@ -595,6 +611,9 @@ export class SecondBrainView extends ItemView {
         onDraft: async (draft) => {
           if (mode === "capture") {
             this.simplifiedState.captureDraft = draft;
+            // Keep the audio draft on the day chosen before the call, even
+            // if midnight passes or the calendar changes while it is open.
+            this.simplifiedState.captureDate = targetDate;
           } else {
             this.reviewState.userReview = draft;
           }
@@ -623,35 +642,61 @@ export class SecondBrainView extends ItemView {
   private changeSimplifiedMonth(month: string) {
     const currentMonth = todayISO().slice(0, 7);
     this.simplifiedState.month = month > currentMonth ? currentMonth : month;
-    const start = `${this.simplifiedState.month}-01`;
-    const end =
-      this.simplifiedState.month === currentMonth
-        ? todayISO()
-        : this.lastDateOfMonth(this.simplifiedState.month);
-    this.simplifiedState.rangeStart = start;
-    this.simplifiedState.rangeEnd = end;
-    this.simplifiedState.rangeAnchor = undefined;
+    this.selectVisibleCalendarPeriod();
+  }
+
+  private selectSimplifiedDate(date: string, both = false) {
+    if (!this.isVisibleCalendarDate(date)) return;
+    selectCalendarDay(this.simplifiedState, date, both);
     this.clearSimplifiedReview();
     void this.render();
   }
 
-  private selectSimplifiedDate(date: string) {
-    const anchor = this.simplifiedState.rangeAnchor;
-    if (!anchor) {
-      this.simplifiedState.rangeStart = date;
-      this.simplifiedState.rangeEnd = date;
-      this.simplifiedState.rangeAnchor = date;
+  private setSimplifiedCaptureDate(date: string) {
+    if (!this.isVisibleCalendarDate(date)) return;
+    this.simplifiedState.captureDate = date;
+    void this.render();
+  }
+
+  private isVisibleCalendarDate(date: string): boolean {
+    const bounds = calendarBounds(this.simplifiedState);
+    return /^\d{4}-\d{2}-\d{2}$/.test(date) && date >= bounds.start && date <= bounds.end && date <= todayISO();
+  }
+
+  private changeSimplifiedWeek(date: string) {
+    this.simplifiedState.weekAnchor = date > todayISO() ? todayISO() : date;
+    this.simplifiedState.month = this.simplifiedState.weekAnchor.slice(0, 7);
+    this.selectVisibleCalendarPeriod();
+  }
+
+  private setSimplifiedCalendarMode(mode: CalendarMode) {
+    const anchor = this.simplifiedState.calendarMode === "week"
+      ? this.simplifiedState.weekAnchor
+      : this.simplifiedState.rangeEnd;
+    this.simplifiedState.calendarMode = mode;
+    this.simplifiedState.weekAnchor = anchor;
+    this.simplifiedState.month = anchor.slice(0, 7);
+    // Changing the view preserves a review selection when it still fits.
+    const bounds = calendarBounds(this.simplifiedState);
+    if (this.simplifiedState.rangeStart < bounds.start || this.simplifiedState.rangeEnd > bounds.end) {
+      this.selectVisibleCalendarPeriod();
     } else {
-      this.simplifiedState.rangeStart = anchor < date ? anchor : date;
-      this.simplifiedState.rangeEnd = anchor < date ? date : anchor;
-      this.simplifiedState.rangeAnchor = undefined;
+      void this.render();
     }
+  }
+
+  private selectVisibleCalendarPeriod() {
+    const bounds = calendarBounds(this.simplifiedState);
+    this.simplifiedState.rangeStart = bounds.start;
+    this.simplifiedState.rangeEnd = bounds.end > todayISO() ? todayISO() : bounds.end;
+    this.simplifiedState.rangeAnchor = undefined;
+    this.simplifiedState.calendarTap = undefined;
     this.clearSimplifiedReview();
     void this.render();
   }
 
   private setSimplifiedRangeStart(date: string) {
-    if (!date) return;
+    if (!this.isVisibleCalendarDate(date)) return;
     this.simplifiedState.rangeStart = date;
     if (date > this.simplifiedState.rangeEnd) {
       this.simplifiedState.rangeEnd = date;
@@ -662,7 +707,7 @@ export class SecondBrainView extends ItemView {
   }
 
   private setSimplifiedRangeEnd(date: string) {
-    if (!date) return;
+    if (!this.isVisibleCalendarDate(date)) return;
     this.simplifiedState.rangeEnd = date;
     if (date < this.simplifiedState.rangeStart) {
       this.simplifiedState.rangeStart = date;
@@ -685,7 +730,7 @@ export class SecondBrainView extends ItemView {
       return;
     }
     container
-      .querySelector<HTMLButtonElement>(".second-brain-simple-metric")
+      .querySelector<HTMLButtonElement>(".second-brain-simple-metric:not(.second-brain-calendar-mode)")
       ?.focus({ preventScroll: true });
   }
 
@@ -693,12 +738,6 @@ export class SecondBrainView extends ItemView {
     this.reviewState.resultFile = undefined;
     this.reviewState.resultContent = undefined;
     this.reviewState.userReview = "";
-  }
-
-  private lastDateOfMonth(month: string): string {
-    const [year, monthNumber] = month.split("-").map(Number);
-    const day = new Date(year, monthNumber, 0).getDate();
-    return `${month}-${String(day).padStart(2, "0")}`;
   }
 
   private async runSimplifiedReview(): Promise<void> {

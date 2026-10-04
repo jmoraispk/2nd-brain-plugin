@@ -10,10 +10,11 @@ import {
 } from "obsidian";
 import SecondBrainPlugin from "../main";
 import { loadDaytraceReviewSource } from "./daytraceReview";
-import { applyDatePlaceholders, todayISO } from "./paths";
+import { anchorWeekDates, applyDatePlaceholders, todayISO } from "./paths";
 import { ReviewTabState } from "./reviewTab";
 
 export type ActivityMetric = "captures" | "words";
+export type CalendarMode = "week" | "month";
 export type SimplifiedOperation = "activity" | "review";
 
 export function nextActivityMetric(metric: ActivityMetric): ActivityMetric {
@@ -67,6 +68,11 @@ export function createLongPressController(
 
 export interface SimplifiedDashboardState {
   captureDraft: string;
+  /** Underlined day; independent of the highlighted review range. */
+  captureDate: string;
+  calendarMode: CalendarMode;
+  weekAnchor: string;
+  calendarTap?: { date: string; time: number };
   month: string;
   rangeStart: string;
   rangeEnd: string;
@@ -79,6 +85,9 @@ export function defaultSimplifiedDashboardState(): SimplifiedDashboardState {
   const today = todayISO();
   return {
     captureDraft: "",
+    captureDate: today,
+    calendarMode: "month",
+    weekAnchor: today,
     month: today.slice(0, 7),
     rangeStart: today,
     rangeEnd: today,
@@ -92,6 +101,10 @@ export interface SimplifiedDashboardCallbacks {
   fetchActivity: () => Promise<void>;
   startCaptureCall: () => void;
   changeMonth: (month: string) => void;
+  changeWeek: (date: string) => void;
+  setCalendarMode: (mode: CalendarMode) => void;
+  setCaptureDate: (date: string) => void;
+  selectSingleDay: (date: string) => void;
   selectCalendarDate: (date: string) => void;
   setRangeStart: (date: string) => void;
   setRangeEnd: (date: string) => void;
@@ -120,9 +133,12 @@ export async function renderSimplifiedDashboard(
   activeOperation?: SimplifiedOperation
 ): Promise<void> {
   const body = parent.createDiv({ cls: "second-brain-simple" });
-  renderCapture(body, state, cb);
 
-  const activity = await loadMonthActivity(plugin, state.month);
+  const bounds = calendarBounds(state);
+  const months = [...new Set([bounds.start.slice(0, 7), bounds.end.slice(0, 7)])];
+  const activity = (await Promise.all(months.map((month) => loadMonthActivity(plugin, month))))
+    .flat().filter((day) => day.date >= bounds.start && day.date <= bounds.end);
+  renderCapture(body, state, cb);
   renderMonthMap(body, state, activity, cb);
   renderRangeReview(
     body,
@@ -148,7 +164,7 @@ export function renderCapture(
   const section = body.createDiv({
     cls: "second-brain-simple-card second-brain-simple-capture",
   });
-  section.createEl("h2", { text: "Capture" });
+  section.createEl("h2", { text: `Capture · ${shortDateLabel(state.captureDate ?? todayISO())}` });
 
   const textarea = section.createEl("textarea", {
     cls: "second-brain-simple-capture-input",
@@ -235,6 +251,103 @@ export function registerSimplifiedCaptureHotkey(
   );
 }
 
+export function calendarBounds(state: Pick<SimplifiedDashboardState, "month" | "calendarMode" | "weekAnchor">): { start: string; end: string } {
+  if (state.calendarMode === "week") {
+    const dates = anchorWeekDates(state.weekAnchor);
+    return { start: dates[0], end: dates[6] };
+  }
+  return { start: `${state.month}-01`, end: monthEnd(state.month) };
+}
+
+export function selectCalendarDay(state: SimplifiedDashboardState, date: string, both = false): void {
+  if (both) {
+    state.captureDate = date;
+    state.rangeStart = date;
+    state.rangeEnd = date;
+    state.rangeAnchor = undefined;
+  } else if (!state.rangeAnchor) {
+    state.rangeStart = date;
+    state.rangeEnd = date;
+    state.rangeAnchor = date;
+  } else {
+    state.rangeStart = state.rangeAnchor < date ? state.rangeAnchor : date;
+    state.rangeEnd = state.rangeAnchor < date ? date : state.rangeAnchor;
+    state.rangeAnchor = undefined;
+  }
+}
+
+/** Share tap history across renders so the second tap can land on a rebuilt cell. */
+export function bindCalendarDayGestures(
+  cell: HTMLButtonElement,
+  date: string,
+  state: Pick<SimplifiedDashboardState, "calendarTap">,
+  cb: Pick<SimplifiedDashboardCallbacks, "selectCalendarDate" | "setCaptureDate" | "selectSingleDay">
+): void {
+  let pointer: number | undefined;
+  let origin: { x: number; y: number } | undefined;
+  let suppressClick = false;
+  let doubleHandled = false;
+  const press = createLongPressController(() => {
+    suppressClick = true;
+    state.calendarTap = undefined;
+    cb.setCaptureDate(date);
+  });
+  const cancel = () => { press.cancel(); pointer = undefined; origin = undefined; };
+  cell.addEventListener("pointerdown", (event) => {
+    if (!event.isPrimary || event.button !== 0) return;
+    suppressClick = false;
+    doubleHandled = false;
+    pointer = event.pointerId;
+    origin = { x: event.clientX, y: event.clientY };
+    cell.setPointerCapture(pointer);
+    press.start();
+  });
+  cell.addEventListener("pointermove", (event) => {
+    if (pointer !== event.pointerId || !origin) return;
+    if (Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 10) {
+      suppressClick = true;
+      cancel();
+    }
+  });
+  cell.addEventListener("pointerup", (event) => {
+    if (pointer !== event.pointerId) return;
+    const bounds = cell.getBoundingClientRect();
+    if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) {
+      suppressClick = true;
+    }
+    press.finish();
+    cancel();
+    if (cell.hasPointerCapture(event.pointerId)) cell.releasePointerCapture(event.pointerId);
+  });
+  cell.addEventListener("pointercancel", () => { suppressClick = true; cancel(); });
+  cell.addEventListener("lostpointercapture", cancel);
+  cell.addEventListener("contextmenu", (event) => event.preventDefault());
+  cell.addEventListener("click", (event) => {
+    if (suppressClick) { suppressClick = false; event.preventDefault(); return; }
+    const now = Date.now();
+    if (event.detail !== 0 && state.calendarTap?.date === date && now - state.calendarTap.time < 400) {
+      state.calendarTap = undefined;
+      doubleHandled = true;
+      cb.selectSingleDay(date);
+    } else {
+      state.calendarTap = event.detail === 0 ? undefined : { date, time: now };
+      cb.selectCalendarDate(date);
+    }
+  });
+  cell.addEventListener("dblclick", (event) => {
+    event.preventDefault();
+    if (doubleHandled) return;
+    state.calendarTap = undefined;
+    cb.selectSingleDay(date);
+  });
+  cell.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && event.shiftKey) {
+      event.preventDefault();
+      cb.setCaptureDate(date);
+    }
+  });
+}
+
 function renderMonthMap(
   body: HTMLElement,
   state: SimplifiedDashboardState,
@@ -246,29 +359,39 @@ function renderMonthMap(
   });
 
   const header = section.createDiv({ cls: "second-brain-month-header" });
+  renderChoiceControl(header, state.calendarMode ?? "month", [
+    ["week", "Week"], ["month", "Month"],
+  ], cb.setCalendarMode, "Calendar view", "second-brain-calendar-mode");
+  const bounds = calendarBounds(state);
+  const isWeek = state.calendarMode === "week";
   const monthNav = header.createDiv({ cls: "second-brain-month-nav" });
   const previous = monthNav.createEl("button", {
     text: "‹",
     cls: "second-brain-month-arrow",
-    attr: { title: "Previous month", "aria-label": "Previous month" },
+    attr: { title: `Previous ${isWeek ? "week" : "month"}`, "aria-label": `Previous ${isWeek ? "week" : "month"}` },
   });
-  previous.addEventListener("click", () => cb.changeMonth(shiftMonth(state.month, -1)));
+  previous.addEventListener("click", () => isWeek
+    ? cb.changeWeek(shiftDay(state.weekAnchor, -7))
+    : cb.changeMonth(shiftMonth(state.month, -1)));
 
-  monthNav.createEl("h2", { text: monthLabel(state.month) });
+  monthNav.createEl("h2", { text: isWeek ? dateRangeLabel(bounds.start, bounds.end) : monthLabel(state.month) });
 
   const next = monthNav.createEl("button", {
     text: "›",
     cls: "second-brain-month-arrow",
-    attr: { title: "Next month", "aria-label": "Next month" },
+    attr: { title: `Next ${isWeek ? "week" : "month"}`, "aria-label": `Next ${isWeek ? "week" : "month"}` },
   });
   const currentMonth = todayISO().slice(0, 7);
-  if (state.month >= currentMonth) {
+  if (isWeek ? bounds.end >= todayISO() : state.month >= currentMonth) {
     next.setAttribute("disabled", "true");
   } else {
-    next.addEventListener("click", () => cb.changeMonth(shiftMonth(state.month, 1)));
+    next.addEventListener("click", () => isWeek
+      ? cb.changeWeek(shiftDay(state.weekAnchor, 7))
+      : cb.changeMonth(shiftMonth(state.month, 1)));
   }
 
   renderActivityMetricControl(header, state.metric, cb.setMetric);
+  section.createEl("p", { cls: "second-brain-calendar-hint", text: "Underline: capture day · Highlight: review range. Hold a day to capture; double-tap to select both." });
 
   const grid = section.createDiv({ cls: "second-brain-month-grid" });
   for (const label of ["M", "T", "W", "T", "F", "S", "S"]) {
@@ -276,7 +399,7 @@ function renderMonthMap(
   }
 
   const [year, month] = state.month.split("-").map(Number);
-  const firstWeekday = (new Date(year, month - 1, 1).getDay() + 6) % 7;
+  const firstWeekday = isWeek ? 0 : (new Date(year, month - 1, 1).getDay() + 6) % 7;
   for (let i = 0; i < firstWeekday; i++) {
     grid.createDiv({ cls: "second-brain-month-blank" });
   }
@@ -292,15 +415,17 @@ function renderMonthMap(
         "second-brain-month-day",
         `level-${level}`,
         inRange ? "is-selected" : "",
+        day.date === state.captureDate ? "is-capture-day" : "",
         day.date === today ? "is-today" : "",
       ]
         .filter(Boolean)
         .join(" "),
       attr: {
+        "data-date": day.date,
         title: `${longDateLabel(day.date)}: ${day.captures} capture${
           day.captures === 1 ? "" : "s"
         }, ${day.words} word${day.words === 1 ? "" : "s"}`,
-        "aria-label": `${longDateLabel(day.date)}, ${day.captures} captures, ${day.words} words`,
+        "aria-label": `${longDateLabel(day.date)}, ${day.captures} captures, ${day.words} words${day.date === state.captureDate ? ", capture day" : ""}${inRange ? ", selected for review" : ""}. Hold or Shift+Enter to set capture day; double-click to select both.`,
       },
     });
     cell.createSpan({ cls: "second-brain-month-day-number", text: day.date.slice(-2).replace(/^0/, "") });
@@ -308,7 +433,7 @@ function renderMonthMap(
     if (day.date > today) {
       cell.setAttribute("disabled", "true");
     } else {
-      cell.addEventListener("click", () => cb.selectCalendarDate(day.date));
+      bindCalendarDayGestures(cell, day.date, state, cb);
     }
   }
 }
@@ -318,15 +443,26 @@ export function renderActivityMetricControl(
   currentMetric: ActivityMetric,
   setMetric: (metric: ActivityMetric) => void
 ): HTMLButtonElement {
+  return renderChoiceControl(parent, currentMetric, [["captures", "Captures"], ["words", "Words"]], setMetric, "Calendar activity metric");
+}
+
+function renderChoiceControl<T extends string>(
+  parent: HTMLElement,
+  current: T,
+  choices: readonly (readonly [T, string])[],
+  onChange: (value: T) => void,
+  label: string,
+  extraClass = ""
+): HTMLButtonElement {
+  const nextValue = () => choices[(choices.findIndex(([value]) => value === current) + 1) % choices.length][0];
+  const currentLabel = choices.find(([value]) => value === current)![1];
   const metric = parent.createEl("button", {
-    text: currentMetric === "captures" ? "Captures" : "Words",
-    cls: "second-brain-simple-metric",
+    text: currentLabel,
+    cls: `second-brain-simple-metric ${extraClass}`.trim(),
     attr: {
       type: "button",
-      title: "Click to switch metric. Hold to choose.",
-      "aria-label": `Calendar activity metric: ${
-        currentMetric === "captures" ? "Captures" : "Words"
-      }. Press Enter or Space to switch; press Arrow Down to choose.`,
+      title: `Click to switch ${label.toLowerCase()}. Hold to choose.`,
+      "aria-label": `${label}: ${currentLabel}. Press Enter or Space to switch; press Arrow Down to choose.`,
       "aria-haspopup": "menu",
       "aria-expanded": "false",
     },
@@ -337,15 +473,12 @@ export function renderActivityMetricControl(
     metric.setAttribute("aria-expanded", "true");
 
     const menu = new Menu().setNoIcon();
-    for (const [value, label] of [
-      ["captures", "Captures"],
-      ["words", "Words"],
-    ] as const) {
+    for (const [value, label] of choices) {
       menu.addItem((item) =>
         item
           .setTitle(label)
-          .setChecked(value === currentMetric)
-          .onClick(() => setMetric(value))
+          .setChecked(value === current)
+          .onClick(() => onChange(value))
       );
     }
     menu.onHide(() => {
@@ -414,7 +547,7 @@ export function renderActivityMetricControl(
         suppressPostLongPressClick = false;
       }, 0);
     } else if (result === "short") {
-      setMetric(nextActivityMetric(currentMetric));
+      onChange(nextValue());
     }
   });
   metric.addEventListener("pointercancel", (event) => {
@@ -433,7 +566,7 @@ export function renderActivityMetricControl(
       return;
     }
     if (event.detail === 0) {
-      setMetric(nextActivityMetric(currentMetric));
+      onChange(nextValue());
     }
   });
   metric.addEventListener("keydown", (event) => {
@@ -461,13 +594,13 @@ function renderRangeReview(
   const section = body.createDiv({
     cls: "second-brain-simple-card second-brain-simple-review",
   });
-  section.createEl("h2", { text: "Review" });
+  section.createEl("h2", { text: `Review · ${dateRangeLabel(state.rangeStart, state.rangeEnd)}` });
 
   const dates = section.createDiv({ cls: "second-brain-simple-range" });
-  renderDateInput(dates, "From", state.rangeStart, state.month, (value) =>
+  renderDateInput(dates, "From", state.rangeStart, state, (value) =>
     cb.setRangeStart(value)
   );
-  renderDateInput(dates, "To", state.rangeEnd, state.month, (value) =>
+  renderDateInput(dates, "To", state.rangeEnd, state, (value) =>
     cb.setRangeEnd(value)
   );
 
@@ -610,15 +743,16 @@ function renderDateInput(
   parent: HTMLElement,
   label: string,
   value: string,
-  month: string,
+  state: SimplifiedDashboardState,
   onChange: (value: string) => void
 ) {
   const wrap = parent.createEl("label", { cls: "second-brain-simple-date-field" });
   wrap.createSpan({ text: label });
   const input = wrap.createEl("input", { type: "date" });
   input.value = value;
-  input.min = `${month}-01`;
-  input.max = month === todayISO().slice(0, 7) ? todayISO() : monthEnd(month);
+  const bounds = calendarBounds(state);
+  input.min = bounds.start;
+  input.max = bounds.end > todayISO() ? todayISO() : bounds.end;
   input.addEventListener("change", () => onChange(input.value));
 }
 
@@ -714,4 +848,21 @@ function longDateLabel(date: string): string {
     month: "long",
     day: "numeric",
   });
+}
+
+export function shiftDay(date: string, amount: number): string {
+  const value = new Date(`${date}T12:00:00`);
+  value.setDate(value.getDate() + amount);
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
+function shortDateLabel(date: string): string {
+  return new Date(`${date}T12:00:00`).toLocaleDateString("en-US", {
+    month: "short", day: "numeric",
+    ...(date.slice(0, 4) !== todayISO().slice(0, 4) ? { year: "numeric" } : {}),
+  });
+}
+
+function dateRangeLabel(start: string, end: string): string {
+  return start === end ? shortDateLabel(start) : `${shortDateLabel(start)}–${shortDateLabel(end)}`;
 }
