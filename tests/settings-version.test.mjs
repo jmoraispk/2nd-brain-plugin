@@ -151,6 +151,7 @@ function obsidianStubPlugin() {
               addSlider(callback) { callback(new FakeControl()); return this; }
               addText(callback) { callback(new FakeControl()); return this; }
               addTextArea(callback) { callback(new FakeControl()); return this; }
+              addToggle(callback) { callback(new FakeControl()); return this; }
             }
             export class App {}
             export class Component {}

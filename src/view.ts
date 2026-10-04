@@ -466,6 +466,7 @@ export class SecondBrainView extends ItemView {
         content,
         this.simplifiedState.captureDate
       );
+      this.plugin.rememberSavedText(content, this.simplifiedState.captureDate);
       this.simplifiedState.captureDraft = "";
       showFileNotice(this.app, "Captured", path);
       await this.render();
@@ -578,28 +579,23 @@ export class SecondBrainView extends ItemView {
       let context: string | (() => Promise<string>);
       let existingDraft: string;
       if (mode === "capture") {
-        context = async () => {
-          const path = await resolveDailyLogPath(
-            this.app,
-            this.plugin.settings,
-            targetDate
-          );
-          const file = this.app.vault.getAbstractFileByPath(path);
-          return file instanceof TFile
-            ? (await this.app.vault.read(file)).trim()
-            : `(no captures yet for ${targetDate})`;
-        };
+        context = () => this.plugin.voiceMemory.callContext({
+          mode, today: todayISO(), settings: this.plugin.settings,
+        });
         existingDraft = this.simplifiedState.captureDraft;
       } else {
         if (!this.reviewState.resultContent) {
           new Notice("Run Review first, then use the call button below the summary.");
           return;
         }
-        context = [
+        const currentReview = [
           `Review period: ${this.simplifiedState.rangeStart} to ${this.simplifiedState.rangeEnd}`,
           "",
           this.reviewState.resultContent,
         ].join("\n");
+        context = () => this.plugin.voiceMemory.callContext({
+          mode, today: todayISO(), currentReview, settings: this.plugin.settings,
+        });
         existingDraft = this.reviewState.userReview;
       }
 
@@ -942,6 +938,7 @@ export class SecondBrainView extends ItemView {
         anchor,
         today
       );
+      this.plugin.rememberSavedText(userReview, today);
       showFileNotice(this.app, "Saved your review", userFile);
       this.reviewState = defaultReviewTabState();
       if (this.plugin.settings.dashboardMode === "complete") {
@@ -1251,17 +1248,9 @@ class CaptureModal extends Modal {
       this.close();
       new VoiceCallModal(this.app, this.plugin, {
         mode: "capture",
-        context: async () => {
-          const path = await resolveDailyLogPath(
-            this.app,
-            this.plugin.settings,
-            targetDate
-          );
-          const file = this.app.vault.getAbstractFileByPath(path);
-          return file instanceof TFile
-            ? (await this.app.vault.read(file)).trim()
-            : "(no captures yet today)";
-        },
+        context: () => this.plugin.voiceMemory.callContext({
+          mode: "capture", today: todayISO(), settings: this.plugin.settings,
+        }),
         existingDraft,
         targetDate,
         onDraft: reopenCapture,
@@ -1299,6 +1288,7 @@ class CaptureModal extends Modal {
           content,
           this.targetDate
         );
+        this.plugin.rememberSavedText(content, date);
         showFileNotice(this.app, "Captured", path);
       }
       this.onSaved?.();

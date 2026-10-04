@@ -2,6 +2,7 @@ import { App, TFile } from "obsidian";
 import { Command, CommandInput } from "./types";
 import { SecondBrainSettings } from "./settings";
 import { callLLM } from "./llm";
+import { extractVoiceMemoryEvidence } from "./voiceMemory";
 import { resolveRoute, taskGroupForCommand } from "./modelRoutes";
 import {
   resolveDailyLogPath,
@@ -362,7 +363,7 @@ async function readInput(
       if (f instanceof TFile) {
         const c = await app.vault.read(f);
         if (c.trim()) {
-          dailyContent = c;
+          dailyContent = extractVoiceMemoryEvidence(c);
           paths.push(p);
           files.push({
             path: p,
@@ -460,7 +461,8 @@ async function readInput(
   return {
     label,
     sourcePath: path,
-    content,
+    content: input.kind === "today-log" || input.kind === "yesterday-log"
+      ? extractVoiceMemoryEvidence(content) : content,
     files: [
       {
         path,

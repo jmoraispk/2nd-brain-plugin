@@ -1,4 +1,4 @@
-import { Platform, Plugin, WorkspaceLeaf } from "obsidian";
+import { Notice, Platform, Plugin, WorkspaceLeaf } from "obsidian";
 import { SecondBrainView, VIEW_TYPE_SECOND_BRAIN } from "./src/view";
 import {
   SecondBrainSettingTab,
@@ -15,11 +15,16 @@ import {
   type VapiReconcileResult,
 } from "./src/vapiUsage";
 import { registerSimplifiedCaptureHotkey } from "./src/simplifiedDashboard";
+import { VoiceMemoryStore } from "./src/voiceMemoryVault";
+import { callLLM } from "./src/llm";
+import { resolveRoute } from "./src/modelRoutes";
+import { todayISO } from "./src/paths";
 
 export default class SecondBrainPlugin extends Plugin {
   settings: SecondBrainSettings;
   errorLog = new ErrorLog();
   usageHistory!: UsageHistoryStore;
+  voiceMemory!: VoiceMemoryStore;
   private usageRefresh?: Promise<VapiReconcileResult>;
   private settingTab!: SecondBrainSettingTab;
 
@@ -36,6 +41,12 @@ export default class SecondBrainPlugin extends Plugin {
     configureUsageEventSink((event) =>
       this.usageHistory.recordProviderUsage(event)
     );
+    this.voiceMemory = new VoiceMemoryStore(this.app, async request => {
+      const route = resolveRoute(this.settings, "ask");
+      return callLLM(this.settings, request.systemPrompt, request.userMessage, {
+        model: route.model, effort: route.effort, usage: { action: "Voice memory update" },
+      });
+    });
     await this.migrateSettings();
     await this.bootstrapVaultFolders();
 
@@ -74,6 +85,15 @@ export default class SecondBrainPlugin extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
+  }
+
+  /** Invoked only after a capture/reflection was successfully saved. */
+  rememberSavedText(content: string, entryDate: string): void {
+    if (this.settings.voiceMemoryEnabled === false || !this.settings.vapiAssistantId?.trim()) return;
+    void this.voiceMemory.remember(content, entryDate, todayISO()).catch(() => {
+      this.errorLog.push("voice-memory", new Error("Voice memory update failed; saved text and previous memory are unchanged."));
+      new Notice("Saved successfully, but Voice Memory couldn't update. Your existing memory was preserved; check provider settings or recent edits to the memory file.", 6_000);
+    });
   }
 
   async refreshExactUsageCosts(): Promise<VapiReconcileResult> {

@@ -1,13 +1,12 @@
 /**
  * In-plugin Vapi call for capture and review. The call is conversational;
- * after it ends, the plugin's configured LLM turns only the user's spoken
- * lines into an editable draft. Nothing is written to the vault here.
+ * after it ends, both speakers' final transcript returns to an editable draft.
+ * Nothing is written to the vault here.
  */
 
 import { App, Modal, Notice } from "obsidian";
 import SecondBrainPlugin from "../main";
-import { callLLM } from "./llm";
-import { resolveRoute } from "./modelRoutes";
+import { todayISO } from "./paths";
 import {
   createInteractionId,
   type UsageHistoryEntry,
@@ -67,6 +66,8 @@ export class VoiceCallModal extends Modal {
   private muted = false;
   private agentSpeaking = false;
   private lines: VoiceTranscriptLine[] = [];
+  private pendingUserLine?: number;
+  private finishing?: Promise<void>;
   private errorMsg = "";
   private connectionStage = "";
   private discardOnClose = true;
@@ -85,25 +86,9 @@ export class VoiceCallModal extends Modal {
     this.modalEl.addClass("second-brain-capture-modal");
     this.modalEl.addClass("second-brain-voice-call-modal");
     this.finalizeDraft = createVoiceDraftFinalizer({
-      mode: options.mode,
       existingDraft: options.existingDraft,
-      synthesize: async (request) => {
-        const route = resolveRoute(this.plugin.settings, "ask");
-        return callLLM(
-          this.plugin.settings,
-          request.systemPrompt,
-          request.userMessage,
-          {
-            model: route.model,
-            effort: route.effort,
-            usage: {
-              action:
-                options.mode === "capture" ? "Capture call" : "Review call",
-              interactionId: this.interactionId,
-            },
-          }
-        );
-      },
+      userName: plugin.settings.voiceUserName ?? "",
+      date: todayISO(),
       applyDraft: async (draft) => {
         if (this.closed || this.discardOnClose) return;
         await options.onDraft(draft);
@@ -151,8 +136,8 @@ export class VoiceCallModal extends Modal {
       cls: "second-brain-muted",
       text:
         this.options.mode === "capture"
-          ? "Talk it through. When the call ends, your words return to Capture as an editable draft."
-          : "Talk through the summary. When the call ends, your words return to Your reflection as an editable draft.",
+          ? "Talk it through. The full transcript returns to Capture for you to edit and save."
+          : "Talk through the review. The full transcript returns to Your reflection for you to edit and save.",
     });
 
     this.statusEl = contentEl.createDiv({ cls: "second-brain-voice-status" });
@@ -195,7 +180,7 @@ export class VoiceCallModal extends Modal {
         ? `Connecting — ${this.connectionStage}…`
         : "Connecting…",
       live: this.agentSpeaking ? "Agent speaking…" : "Listening…",
-      processing: "Creating your editable draft…",
+      processing: "Preparing your transcript…",
       error: `Error: ${this.errorMsg}`,
     };
     this.statusEl.setText(status[this.phase]);
@@ -211,7 +196,7 @@ export class VoiceCallModal extends Modal {
           line.role === "assistant"
             ? "second-brain-interview-q"
             : "second-brain-interview-a",
-        text: line.text,
+        text: `${line.role === "assistant" ? "Agent" : this.plugin.settings.voiceUserName || "User"} said: ${line.text}`,
       });
     }
     this.transcriptEl.scrollTop = this.transcriptEl.scrollHeight;
@@ -292,15 +277,25 @@ export class VoiceCallModal extends Modal {
         if (this.closed) return;
         if (
           message?.type !== "transcript" ||
-          message.transcriptType !== "final" ||
+          (message.transcriptType !== "final" && message.transcriptType !== "partial") ||
+          (message.role !== "user" && message.role !== "assistant") ||
           !message.transcript
         ) {
           return;
         }
-        this.lines.push({
-          role: message.role === "assistant" ? "assistant" : "user",
+        if (message.transcriptType === "partial" && message.role !== "user") return;
+        const line: VoiceTranscriptLine = {
+          role: message.role,
           text: String(message.transcript),
-        });
+          ...(message.transcriptType === "partial" ? { unfinished: true } : {}),
+        };
+        if (message.role === "user" && this.pendingUserLine !== undefined) {
+          this.lines[this.pendingUserLine] = line;
+          if (message.transcriptType === "final") this.pendingUserLine = undefined;
+        } else {
+          if (message.transcriptType === "partial") this.pendingUserLine = this.lines.length;
+          this.lines.push(line);
+        }
         this.renderTranscript();
       });
       vapi.on("error", (error: AnyVapi) => {
@@ -311,7 +306,9 @@ export class VoiceCallModal extends Modal {
       const settings = this.plugin.settings;
       const variables = buildVoiceSessionVariables({
         mode: this.options.mode,
-        today: this.options.targetDate,
+        today: todayISO(),
+        targetDate: this.options.targetDate,
+        userName: settings.voiceUserName,
         context,
         currentDraft: this.options.existingDraft,
         talkativeness:
@@ -413,6 +410,11 @@ export class VoiceCallModal extends Modal {
     this.endBtn?.setAttribute("disabled", "true");
     this.renderStatus();
     try {
+      // Give the transcriber a brief silence boundary before stop destroys
+      // the audio connection. Keep any unresolved user partial verbatim.
+      this.vapi.setMuted(true);
+      await new Promise(resolve => setTimeout(resolve, 700));
+      if (this.closed) return;
       await this.vapi.stop();
     } catch (error) {
       this.plugin.errorLog.push("vapi:stop", error);
@@ -421,23 +423,31 @@ export class VoiceCallModal extends Modal {
     await this.finishDraft();
   }
 
-  private async finishDraft() {
+  private finishDraft(): Promise<void> {
+    if (!this.finishing) this.finishing = this.drainAndFinishDraft();
+    return this.finishing;
+  }
+
+  private async drainAndFinishDraft() {
     this.phase = "processing";
     this.endBtn?.setAttribute("disabled", "true");
     this.renderStatus();
     try {
+      // Final transcript messages can be queued just after call-end.
+      await new Promise(resolve => setTimeout(resolve, 150));
+      if (this.closed || this.discardOnClose) return;
       const applied = await this.finalizeDraft(this.lines);
       if (this.closed) return;
       if (!applied) {
-        new Notice("Nothing was said — no draft created.");
+        new Notice("No user speech was received — your draft is unchanged.");
       } else {
         this.completion.markApplied();
-        new Notice("Voice draft ready — review it before saving.");
+        new Notice("Call transcript ready — review it before saving.");
       }
       this.discardOnClose = true;
       this.close();
     } catch (error) {
-      this.handleError("vapi:synth", voiceErrorMessage(error), error);
+      this.handleError("vapi:transcript", voiceErrorMessage(error), error);
       this.endBtn?.removeAttribute("disabled");
       new Notice(
         `Couldn't create the draft: ${voiceErrorMessage(error)}\nSee Settings → Logs.`,

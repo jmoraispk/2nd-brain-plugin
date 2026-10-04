@@ -36,6 +36,25 @@ test("selected-date Review accepts Activity-only dates and appends exact tables"
   assert.match(output, new RegExp(escapeRegex(`### 2026-09-14\n\n${table("DayTrace")}`)));
 });
 
+test("review input uses user transcript statements and excludes the agent's claims", async () => {
+  const { runner, requests } = await loadRunner();
+  const vault = new FakeVault(globalThis.__RunnerTFile);
+  vault.seed("🧑 Me/Logs/2026/Q3/W37/2026-09-13.md", `Typed progress.
+<!-- second-brain-call:start -->
+## Call transcript — 2026-09-13
+**Agent said:**
+> You finished every goal this week.
+**João said:**
+> No. I am still working on the voice agent.
+<!-- second-brain-call:end -->`);
+  await runner.runCommand({ vault }, settings(), command(), "0.19.1", undefined, undefined,
+    { start: "2026-09-13", end: "2026-09-13" });
+  const userPrompt = JSON.parse(requests[0].body).messages[1].content;
+  assert.match(userPrompt, /Typed progress/);
+  assert.match(userPrompt, /still working on the voice agent/);
+  assert.doesNotMatch(userPrompt, /finished every goal/);
+});
+
 test("Activity fingerprints cache Reviews and invalidate after summary changes", async () => {
   const { runner, requests } = await loadRunner();
   const vault = new FakeVault(globalThis.__RunnerTFile);

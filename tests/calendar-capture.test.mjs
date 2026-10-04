@@ -46,29 +46,40 @@ async function fixture() {
     },
   } };
   const errors = [];
-  const plugin = { settings: { logsFolder: "Logs", dailyLogPathTemplate: "Logs/{YYYY-MM-DD}.md" }, errorLog: { push: (...args) => errors.push(args) } };
+  const remembered = [];
+  const contexts = [];
+  const plugin = {
+    settings: { logsFolder: "Logs", dailyLogPathTemplate: "Logs/{YYYY-MM-DD}.md" },
+    errorLog: { push: (...args) => errors.push(args) },
+    rememberSavedText: (content, date) => remembered.push({ content, date }),
+    voiceMemory: { callContext: async input => { contexts.push(input); return "Saved compact memory"; } },
+  };
   const view = new SecondBrainView({ app }, plugin);
   view.render = async () => {};
-  return { view, files, errors };
+  return { view, files, errors, remembered, contexts };
 }
 
 test("typed capture saves to the underlined day even while a different review range is selected", async () => {
-  const { view, files, errors } = await fixture();
+  const { view, files, errors, remembered } = await fixture();
   Object.assign(view.simplifiedState, { captureDate: "2026-09-30", rangeStart: "2026-10-01", rangeEnd: "2026-10-03" });
   await view.saveSimplifiedCapture("Late night note");
   assert.deepEqual(errors, []);
   assert.equal(files.size, 1);
   assert.match(files.get("Logs/2026-09-30.md")?.content ?? "", /Late night note/);
+  assert.deepEqual(remembered, [{ content: "Late night note", date: "2026-09-30" }]);
 });
 
-test("audio reads its chosen day's context and restores that day with its returned draft", async () => {
-  const { view, files, errors } = await fixture();
+test("audio uses compact memory and restores its chosen capture day with the returned draft", async () => {
+  const { view, files, errors, remembered, contexts } = await fixture();
   view.simplifiedState.captureDate = "2026-09-30";
   await view.saveSimplifiedCapture("Earlier September context");
   view.openSimplifiedVoiceCall("capture");
   const options = globalThis.__calendarVoice;
   assert.equal(options.targetDate, "2026-09-30");
-  assert.match(await options.context(), /Earlier September context/);
+  assert.equal(await options.context(), "Saved compact memory");
+  assert.equal(contexts[0].mode, "capture");
+  assert.notEqual(contexts[0].today, "2026-09-30", "memory freshness uses the call date, not a backdated capture destination");
+  assert.equal(remembered.length, 1, "starting a call cannot update memory");
   view.simplifiedState.captureDate = "2026-10-01";
   const realWindow = globalThis.window;
   globalThis.window = { setTimeout: () => {} };
@@ -78,4 +89,22 @@ test("audio reads its chosen day's context and restores that day with its return
   assert.match(files.get("Logs/2026-09-30.md").content, /Audio after midnight/);
   assert.equal(files.size, 1);
   assert.deepEqual(errors, []);
+});
+
+test("a failed capture never asks for a memory update", async () => {
+  const { view, remembered } = await fixture();
+  view.app.vault.create = async () => { throw new Error("disk failure"); };
+  await view.saveSimplifiedCapture("This did not save");
+  assert.deepEqual(remembered, []);
+});
+
+test("Save reflection passes only the saved reflection to memory", async () => {
+  const { view, files, remembered } = await fixture();
+  view.reviewState.resultFile = new globalThis.__calendarFile("🤖 AI/Reviews/Custom/2026-09-30--2026-10-03.md");
+  view.reviewState.resultContent = "AI claims are not personal memory evidence";
+  view.reviewState.userReview = "I decided to focus on voice next week.";
+  await view.finishReview();
+  assert.equal(files.size, 1);
+  assert.equal(remembered.length, 1);
+  assert.equal(remembered[0].content, "I decided to focus on voice next week.");
 });

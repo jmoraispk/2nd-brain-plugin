@@ -23,5 +23,7 @@ test("the managed Vapi assistant is a dynamic capture and review surface", async
   assert.equal(config.artifactPlan.recordingEnabled, false);
   assert.equal(config.maxDurationSeconds, 1800);
   assert.equal(config.server, undefined);
-  assert.equal(config.metadata.schemaVersion, "2");
+  assert.equal(config.metadata.schemaVersion, "3");
+  assert.match(config.model.messages[0].content, /{{userName}}/);
+  assert.match(config.model.messages[0].content, /warm, kind, and caring/i);
 });

@@ -3,6 +3,7 @@ export type VoiceCallMode = "capture" | "review";
 export interface VoiceTranscriptLine {
   role: "user" | "assistant";
   text: string;
+  unfinished?: boolean;
 }
 
 export interface VoiceSessionInput {
@@ -13,6 +14,8 @@ export interface VoiceSessionInput {
   talkativeness: number;
   capturePrompt?: string;
   reviewPrompt?: string;
+  userName?: string;
+  targetDate?: string;
 }
 
 export interface VoiceCapabilities {
@@ -37,9 +40,12 @@ export const DEFAULT_CAPTURE_CALL_PROMPT = `Help the user develop and capture wh
 
 export const DEFAULT_REVIEW_CALL_PROMPT = `Help the user reflect on the factual review in the session context. ${ACTIVE_LISTENING_METHOD} Explore what mattered, what changed, what was learned, and what remains unresolved. Prefer questions like "What made that matter today?", "What changed?", and "What would you want future you to remember?" when they fit. Do not reread the summary, force its sections into a checklist, or invent conclusions.`;
 
-const CAPTURE_DRAFT_SYSTEM = `Turn only the user's spoken statements into an editable first-person capture draft. Preserve concrete facts, names, decisions, emotions, and useful detail. You may merge in the existing user-written draft, but never add claims made only by the voice agent. Use short paragraphs or bullets when natural. No heading, preamble, advice, or commentary. Output only the draft.`;
+export const VOICE_RELATIONSHIP_GUIDANCE = `Be warm, kind, and caring. Acknowledge a specific difficulty or meaningful effort before asking the next question. Show patient curiosity and use gentle wording; avoid sounding like an interrogation. Use the user's name naturally in the greeting and occasionally later, never every turn. If no name is provided, do not guess. Use dated memory to follow up on an existing thread when relevant, checking whether older plans still hold. Distinguish the user's facts from the agent's questions and suggestions. Avoid exaggerated praise and invented familiarity.`;
 
-const REVIEW_DRAFT_SYSTEM = `Turn only the user's spoken statements into an editable first-person reflection draft. Preserve their conclusions, lessons, reactions, uncertainties, and details in their voice. You may merge in the existing user-written reflection, but never add claims made only by the voice agent. Do not merely repeat the AI review. Use short paragraphs or bullets when natural. No heading, preamble, advice, or commentary. Output only the reflection draft.`;
+export function normalizeVoiceUserName(value?: string): string {
+  const name = (value ?? "").replace(/[\r\n<>*_[\]{}]/g, "").trim().slice(0, 80);
+  return /^(agent|assistant)$/i.test(name) ? "" : name;
+}
 
 export function normalizeTalkativeness(value: number): number {
   if (!Number.isFinite(value)) return DEFAULT_VOICE_TALKATIVENESS;
@@ -60,17 +66,19 @@ export function buildTalkativenessGuidance(value: number): string {
 export function boundCaptureVoiceContext(
   input: VoiceSessionInput
 ): { currentDraft: string; context: string } {
-  const draft = input.currentDraft.trim();
+  const rawDraft = input.currentDraft.trim();
+  const draft = rawDraft.length <= 4_000 ? rawDraft
+    : DRAFT_OMISSION + rawDraft.slice(-(4_000 - DRAFT_OMISSION.length));
   const context = input.context.trim();
-  if (input.mode !== "capture") return { currentDraft: draft, context };
-
-  const maximumDraft =
-    MAX_CAPTURE_CONTEXT_CHARS - NO_ADDITIONAL_CONTEXT.length;
-  if (draft.length >= maximumDraft) {
-    const keep = maximumDraft - DRAFT_OMISSION.length;
+  if (input.mode === "review") {
+    // The review is first in the context, so retain its beginning even when
+    // the review or current reflection is unusually long.
+    const currentDraft = draft;
+    const budget = MAX_CAPTURE_CONTEXT_CHARS - currentDraft.length;
+    const marker = "\n[Additional review context omitted]";
     return {
-      currentDraft: DRAFT_OMISSION + draft.slice(-keep),
-      context: NO_ADDITIONAL_CONTEXT,
+      currentDraft,
+      context: context.length <= budget ? context : context.slice(0, budget - marker.length) + marker,
     };
   }
 
@@ -91,6 +99,7 @@ export function buildVoiceSessionVariables(
   input: VoiceSessionInput
 ): Record<string, string> {
   const talkativeness = normalizeTalkativeness(input.talkativeness);
+  const userName = normalizeVoiceUserName(input.userName);
   const bounded = boundCaptureVoiceContext(input);
   const sessionInstructions =
     (input.mode === "capture" ? input.capturePrompt : input.reviewPrompt)?.trim() ||
@@ -101,49 +110,40 @@ export function buildVoiceSessionVariables(
   return {
     mode: input.mode,
     today: input.today,
-    sessionInstructions,
+    targetDate: input.targetDate ?? input.today,
+    userName: userName || "(name not provided)",
+    sessionInstructions: `${sessionInstructions}\n\n${VOICE_RELATIONSHIP_GUIDANCE}`,
     sessionContext: bounded.context || "(no context yet)",
     currentDraft: bounded.currentDraft || "(empty)",
     talkativeness: String(talkativeness),
     talkativenessGuidance: buildTalkativenessGuidance(talkativeness),
     firstMessage:
       input.mode === "capture"
-        ? "What would you like to capture?"
-        : "What stands out to you from this review?",
+        ? `${userName ? `Hi ${userName}. ` : "Hi. "}What's on your mind today? What would you like to capture?`
+        : `${userName ? `Hi ${userName}. ` : "Hi. "}What stands out to you from this review?`,
   };
 }
 
-export function buildVoiceDraftRequest(
-  mode: VoiceCallMode,
+export function buildVoiceTranscriptDraft(
   lines: VoiceTranscriptLine[],
-  existingDraft: string
-): { systemPrompt: string; userMessage: string } | null {
-  const spoken = lines
-    .filter((line) => line.role === "user")
-    .map((line) => line.text.trim())
-    .filter(Boolean);
-  if (spoken.length === 0) return null;
-
-  return {
-    systemPrompt:
-      mode === "capture" ? CAPTURE_DRAFT_SYSTEM : REVIEW_DRAFT_SYSTEM,
-    userMessage: [
-      "## Existing user-written draft",
-      existingDraft.trim() || "(empty)",
-      "",
-      "## User's spoken statements",
-      ...spoken.map((text) => `- ${text}`),
-    ].join("\n"),
-  };
+  existingDraft: string,
+  userName: string,
+  date: string
+): string | null {
+  if (!lines.some(line => line.role === "user" && line.text.trim())) return null;
+  const name = normalizeVoiceUserName(userName) || "User";
+  const conversation = lines
+    .filter(line => (line.role === "user" || line.role === "assistant") && line.text.trim())
+    .map(line => `**${line.role === "user" ? name : "Agent"} said:**\n${line.text.split(/\r?\n/).map(text => `> ${text}`).join("\n")}${line.unfinished ? "\n\n_This turn was still being transcribed when the call ended._" : ""}`)
+    .join("\n\n");
+  const transcript = `<!-- second-brain-call:start -->\n## Call transcript — ${date}\n\n_This is a call between me and my AI agent._\n\n${conversation}\n<!-- second-brain-call:end -->`;
+  return existingDraft ? `${existingDraft}\n\n${transcript}` : transcript;
 }
 
 interface VoiceDraftFinalizerOptions {
-  mode: VoiceCallMode;
   existingDraft: string;
-  synthesize: (request: {
-    systemPrompt: string;
-    userMessage: string;
-  }) => Promise<string>;
+  userName: string;
+  date: string;
   applyDraft: (draft: string) => void | Promise<void>;
 }
 
@@ -154,13 +154,12 @@ export function createVoiceDraftFinalizer(
   return (lines) => {
     if (result) return result;
     result = (async () => {
-      const request = buildVoiceDraftRequest(
-        options.mode,
+      const draft = buildVoiceTranscriptDraft(
         lines,
-        options.existingDraft
+        options.existingDraft,
+        options.userName,
+        options.date
       );
-      if (!request) return false;
-      const draft = (await options.synthesize(request)).trim();
       if (!draft) return false;
       await options.applyDraft(draft);
       return true;

@@ -30,10 +30,14 @@ test("capture sessions use the editable prompt and clamp talkativeness", async (
     talkativeness: 99,
     capturePrompt: "Ask about concrete decisions.",
     reviewPrompt: "Unused review prompt.",
+    userName: "João",
   });
 
   assert.equal(variables.mode, "capture");
-  assert.equal(variables.sessionInstructions, "Ask about concrete decisions.");
+  assert.match(variables.sessionInstructions, /Ask about concrete decisions/);
+  assert.match(variables.sessionInstructions, /warm|caring/i);
+  assert.equal(variables.userName, "João");
+  assert.match(variables.firstMessage, /João/);
   assert.equal(variables.sessionContext, "Morning notes");
   assert.equal(variables.currentDraft, "An opening thought");
   assert.equal(variables.talkativeness, "10");
@@ -59,7 +63,7 @@ test("review sessions use the review prompt and a balanced default", async () =>
 
   assert.equal(DEFAULT_VOICE_TALKATIVENESS, 5);
   assert.equal(variables.mode, "review");
-  assert.equal(variables.sessionInstructions, "Ask what I learned.");
+  assert.match(variables.sessionInstructions, /Ask what I learned/);
   assert.equal(variables.talkativeness, "5");
   assert.match(variables.talkativenessGuidance, /balanced/i);
   assert.match(variables.firstMessage, /review/i);
@@ -108,7 +112,7 @@ test("capture context keeps the draft and newest log text within 12,000 characte
   );
 });
 
-test("review context is not truncated by the capture budget", async () => {
+test("review calls bound oversized drafts while preserving the current review", async () => {
   const { buildVoiceSessionVariables } = await loadVoiceSupport();
   const context = "review context ".repeat(1_000);
   const draft = "reflection draft ".repeat(200);
@@ -121,11 +125,11 @@ test("review context is not truncated by the capture budget", async () => {
     talkativeness: 5,
   });
 
-  assert.equal(variables.sessionContext, context.trim());
-  assert.equal(variables.currentDraft, draft.trim());
+  assert.ok(variables.sessionContext.startsWith("review context"));
+  assert.ok(variables.sessionContext.length + variables.currentDraft.length <= 12_000);
 });
 
-test("an oversized capture draft keeps its newest text and no log context", async () => {
+test("an oversized capture draft retains recent draft text and saved memory", async () => {
   const { buildVoiceSessionVariables, MAX_CAPTURE_CONTEXT_CHARS } =
     await loadVoiceSupport();
   const draft = "old".repeat(5_000) + "NEWEST-DRAFT-TEXT";
@@ -133,51 +137,61 @@ test("an oversized capture draft keeps its newest text and no log context", asyn
   const variables = buildVoiceSessionVariables({
     mode: "capture",
     today: "2026-09-13",
-    context: "old daily log",
+    context: "Dated voice memory about the launch",
     currentDraft: draft,
     talkativeness: 5,
   });
 
   assert.ok(variables.currentDraft.startsWith("[Older draft text omitted]"));
   assert.ok(variables.currentDraft.endsWith("NEWEST-DRAFT-TEXT"));
-  assert.equal(variables.sessionContext, "(no additional context)");
+  assert.equal(variables.sessionContext, "Dated voice memory about the launch");
   assert.ok(
     variables.currentDraft.length + variables.sessionContext.length <=
       MAX_CAPTURE_CONTEXT_CHARS
   );
 });
 
-test("draft synthesis includes user speech but excludes the agent", async () => {
-  const { buildVoiceDraftRequest } = await loadVoiceSupport();
+test("an empty name uses a generic greeting and repeated transcript blocks preserve every turn", async () => {
+  const { buildVoiceSessionVariables, buildVoiceTranscriptDraft } = await loadVoiceSupport();
+  const variables = buildVoiceSessionVariables({mode:"capture",today:"2026-10-04",context:"",currentDraft:"",talkativeness:5,userName:""});
+  assert.equal(variables.userName, "(name not provided)");
+  assert.doesNotMatch(variables.firstMessage, /João|undefined/);
+  const lines = [{role:"assistant",text:"What happened?"},{role:"user",text:"Well, um, I shipped it!\nThen I went home."}];
+  const first = buildVoiceTranscriptDraft(lines, "Typed opening", "", "2026-10-04");
+  const second = buildVoiceTranscriptDraft([{role:"user",text:"I also tested it."}], first, "", "2026-10-04");
+  assert.match(second, /\*\*User said:\*\*\n> Well, um, I shipped it!\n> Then I went home\./);
+  assert.equal(second.match(/## Call transcript/g).length,2);
+});
 
-  const request = buildVoiceDraftRequest(
-    "review",
+test("transcripts retain both speakers, exact words and existing draft", async () => {
+  const { buildVoiceTranscriptDraft } = await loadVoiceSupport();
+
+  const draft = buildVoiceTranscriptDraft(
     [
       { role: "assistant", text: "You doubled your exercise this week." },
       { role: "user", text: "I learned that afternoon walks clear my head." },
       { role: "assistant", text: "You should schedule one every day." },
       { role: "user", text: "I also want to remember Friday's launch." },
     ],
-    "Sleep felt more consistent."
+    "Sleep felt more consistent.", "João", "2026-10-04"
   );
 
-  assert.ok(request);
-  assert.match(request.systemPrompt, /reflection draft/i);
-  assert.match(request.userMessage, /afternoon walks clear my head/i);
-  assert.match(request.userMessage, /Friday's launch/i);
-  assert.match(request.userMessage, /Sleep felt more consistent/i);
-  assert.doesNotMatch(request.userMessage, /doubled your exercise/i);
-  assert.doesNotMatch(request.userMessage, /schedule one every day/i);
+  assert.ok(draft.startsWith("Sleep felt more consistent."));
+  assert.match(draft, /Call transcript — 2026-10-04/);
+  assert.match(draft, /call between me and my AI agent/);
+  assert.match(draft, /\*\*João said:\*\*\n> I learned that afternoon walks clear my head\./);
+  assert.ok(draft.indexOf("doubled your exercise") < draft.indexOf("afternoon walks"));
+  assert.ok(draft.indexOf("afternoon walks") < draft.indexOf("schedule one every day"));
+  assert.match(draft, /Friday's launch/);
 });
 
-test("draft synthesis returns nothing when the user said nothing", async () => {
-  const { buildVoiceDraftRequest } = await loadVoiceSupport();
+test("an agent-only call leaves the existing draft untouched", async () => {
+  const { buildVoiceTranscriptDraft } = await loadVoiceSupport();
 
   assert.equal(
-    buildVoiceDraftRequest(
-      "capture",
+    buildVoiceTranscriptDraft(
       [{ role: "assistant", text: "What is on your mind?" }],
-      ""
+      "Unsaved text", "", "2026-10-04"
     ),
     null
   );
@@ -185,16 +199,11 @@ test("draft synthesis returns nothing when the user said nothing", async () => {
 
 test("ending twice applies one editable draft and performs no implicit save", async () => {
   const { createVoiceDraftFinalizer } = await loadVoiceSupport();
-  let synthesisCalls = 0;
   const appliedDrafts = [];
   const finalizer = createVoiceDraftFinalizer({
-    mode: "capture",
     existingDraft: "",
-    synthesize: async (request) => {
-      synthesisCalls += 1;
-      assert.match(request.userMessage, /The launch went well/);
-      return "The launch went well.";
-    },
+    userName: "João",
+    date: "2026-10-04",
     applyDraft: async (draft) => {
       appliedDrafts.push(draft);
     },
@@ -205,8 +214,8 @@ test("ending twice applies one editable draft and performs no implicit save", as
 
   assert.equal(first, true);
   assert.equal(second, true);
-  assert.equal(synthesisCalls, 1);
-  assert.deepEqual(appliedDrafts, ["The launch went well."]);
+  assert.equal(appliedDrafts.length, 1);
+  assert.match(appliedDrafts[0], /\*\*João said:\*\*\n> The launch went well/);
 });
 
 test("voice capability checks report the first missing browser primitive", async () => {

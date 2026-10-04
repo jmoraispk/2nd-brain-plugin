@@ -22,6 +22,7 @@ import {
 } from "./voiceCallSupport";
 import type { UsageHistoryState } from "./usageHistory";
 import { renderUsageHistory } from "./usageHistorySettings";
+import { VOICE_MEMORY_PATH } from "./voiceMemory";
 
 export type LLMProvider = "anthropic" | "openai";
 export type DashboardMode = "simplified" | "complete";
@@ -61,6 +62,8 @@ export interface SecondBrainSettings {
   voiceTalkativeness: number;
   voiceCapturePrompt?: string;
   voiceReviewPrompt?: string;
+  voiceUserName?: string;
+  voiceMemoryEnabled: boolean;
   /** Private, metadata-only provider usage and cost history. */
   usageHistory?: UsageHistoryState;
   /**
@@ -82,6 +85,7 @@ export const DEFAULT_SETTINGS: SecondBrainSettings = {
   dailyLogPathTemplate: "🧑 Me/Logs/{ISO_YEAR}/Q{Q}/W{WW}/{YYYY-MM-DD}.md",
   reviewsPathTemplate: "🤖 AI/Reviews/Daily/{ISO_YEAR}/Q{Q}/W{WW}/{YYYY-MM-DD}.md",
   voiceTalkativeness: DEFAULT_VOICE_TALKATIVENESS,
+  voiceMemoryEnabled: true,
   customCommands: [],
 };
 
@@ -612,8 +616,36 @@ export class SecondBrainSettingTab extends PluginSettingTab {
   private renderVoice(containerEl: HTMLElement) {
     containerEl.createEl("p", {
       cls: "second-brain-muted",
-      text: "Internet voice calls via Vapi on desktop and mobile. Calls receive only the context shown in Capture or Review. When a call ends, its result returns as an editable draft and is never saved automatically.",
+      text: "Internet voice calls on desktop and mobile use your name, saved Voice Memory, and last week's review when available. Review calls also receive the displayed review. Both speakers' transcript returns to your draft for you to edit and save.",
     });
+
+    new Setting(containerEl)
+      .setName("Your name")
+      .setDesc("How the agent addresses you and labels your transcript turns.")
+      .addText(text => text.setPlaceholder("e.g. João")
+        .setValue(this.plugin.settings.voiceUserName ?? "")
+        .onChange(async value => {
+          this.plugin.settings.voiceUserName = value.trim();
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName("Voice memory")
+      .setDesc("After Capture or Save reflection, keep compact dated facts and ongoing threads for your next call. Uses your configured text provider; costs appear in History. Recent updates cover seven days.")
+      .addToggle(toggle => toggle.setValue(this.plugin.settings.voiceMemoryEnabled !== false)
+        .onChange(async value => {
+          this.plugin.settings.voiceMemoryEnabled = value;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName("View voice memory")
+      .setDesc(`Editable dated bullets in ${VOICE_MEMORY_PATH}. Memory starts with your next saved capture or reflection.`)
+      .addButton(button => button.setButtonText("Open memory").onClick(async () => {
+        const file = this.app.vault.getFileByPath(VOICE_MEMORY_PATH);
+        if (file) await this.app.workspace.getLeaf(false).openFile(file);
+        else new Notice("Voice Memory will be created after your next saved capture or reflection.");
+      }));
 
     new Setting(containerEl)
       .setName("Vapi public key")
