@@ -443,7 +443,10 @@ export class SecondBrainView extends ItemView {
 
     const right = topbar.createDiv({ cls: "second-brain-topbar-right" });
     renderDashboardUtilityButtons(right, {
-      onRefresh: () => void this.render(),
+      onRefresh: () => {
+        this.simplifiedState.captureDate = todayISO();
+        void this.render();
+      },
       onHistory: () => this.plugin.openUsageHistory(),
       onSettings: () => this.openSettings(),
     });

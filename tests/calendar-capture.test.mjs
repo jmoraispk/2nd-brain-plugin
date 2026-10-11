@@ -69,6 +69,40 @@ test("typed capture saves to the underlined day even while a different review ra
   assert.deepEqual(remembered, [{ content: "Late night note", date: "2026-09-30" }]);
 });
 
+test("Refresh uses the current local day for the next capture without moving notes or clearing drafts and review selection", async () => {
+  const RealDate = globalThis.Date;
+  globalThis.Date = class extends RealDate {
+    constructor(...args) { super(...(args.length ? args : [2027, 0, 1, 0, 5])); }
+  };
+  try {
+    const { view, files } = await fixture();
+    view.simplifiedState.captureDate = "2026-12-31";
+    await view.saveSimplifiedCapture("Yesterday's saved note");
+    const previousNote = files.get("Logs/2026-12-31.md").content;
+    Object.assign(view.simplifiedState, {
+      captureDraft: "New draft", rangeStart: "2026-12-28", rangeEnd: "2026-12-31",
+    });
+    const buttons = new Map();
+    const host = {
+      createDiv: () => host,
+      createEl: (_tag, options = {}) => ({
+        addEventListener: (_event, callback) => buttons.set(options.attr?.title, callback),
+      }),
+    };
+    view.renderSimplifiedTopBar(host);
+    buttons.get("Refresh")();
+    assert.equal(view.simplifiedState.captureDate, "2027-01-01");
+    assert.equal(view.simplifiedState.captureDraft, "New draft");
+    assert.equal(view.simplifiedState.rangeStart, "2026-12-28");
+    assert.equal(view.simplifiedState.rangeEnd, "2026-12-31");
+    await view.saveSimplifiedCapture(view.simplifiedState.captureDraft);
+    assert.match(files.get("Logs/2027-01-01.md").content, /New draft/);
+    assert.equal(files.get("Logs/2026-12-31.md").content, previousNote);
+  } finally {
+    globalThis.Date = RealDate;
+  }
+});
+
 test("audio uses compact memory and restores its chosen capture day with the returned draft", async () => {
   const { view, files, errors, remembered, contexts } = await fixture();
   view.simplifiedState.captureDate = "2026-09-30";
