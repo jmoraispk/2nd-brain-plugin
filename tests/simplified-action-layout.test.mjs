@@ -684,19 +684,39 @@ test("shared calendar renders a seven-day cross-month week and separate capture 
   const host = document.querySelector('#host');
   const plugin = { settings: { logsFolder: 'Logs', dailyLogPathTemplate: 'Logs/{YYYY-MM-DD}.md' },
     app: { vault: { getAbstractFileByPath: () => null, cachedRead: async () => '', read: async () => '' } } };
-  const cb = { setCaptureDraft: () => {}, saveCapture: async () => {}, fetchActivity: async () => {},
+  const reflectionState = { resultContent: '# Saved review', resultFile: new globalThis.__DashboardTFile('Reviews/test.md'), userReview: '' };
+  const cb = { setCaptureDraft: (value) => { state.captureDraft = value; }, saveCapture: async () => {}, fetchActivity: async () => {},
     startCaptureCall: () => {}, changeMonth: () => {}, changeWeek: () => {},
     setCalendarMode: (mode) => { state.calendarMode = mode; }, setMetric: () => {},
     selectCalendarDate: (date) => dashboard.selectCalendarDay(state, date),
     selectSingleDay: (date) => dashboard.selectCalendarDay(state, date, true),
     setCaptureDate: (date) => { state.captureDate = date; },
-    setRangeStart: () => {}, setRangeEnd: () => {}, runReview: async () => {}, setUserReview: () => {},
+    setRangeStart: () => {}, setRangeEnd: () => {}, runReview: async () => {}, setUserReview: (value) => { reflectionState.userReview = value; },
     finishReview: async () => {}, startReviewCall: () => {}, openResult: () => {} };
   const render = async () => {
     host.replaceChildren();
-    await dashboard.renderSimplifiedDashboard(host, plugin, state, {}, cb, {});
+    await dashboard.renderSimplifiedDashboard(host, plugin, state, reflectionState, cb, {});
   };
   await render();
+  const weekDefault = dashboard.defaultSimplifiedDashboardState().calendarMode;
+  const cardOrder = [...host.querySelectorAll('.second-brain-simple > .second-brain-simple-card')]
+    .map((card) => card.classList.contains('second-brain-month-card') ? 'calendar' : 'workspace');
+  const capturePanel = host.querySelector('.second-brain-simple-capture');
+  const reviewPanel = host.querySelector('.second-brain-simple-review');
+  const initiallyCapture = !capturePanel.hidden && reviewPanel.hidden;
+  const captureInput = capturePanel.querySelector('textarea');
+  captureInput.value = 'Keep this capture draft';
+  captureInput.dispatchEvent(new Event('input'));
+  const modeButtons = host.querySelectorAll('.second-brain-workspace-modes button');
+  modeButtons[1]?.click();
+  const switchedToReview = capturePanel.hidden && !reviewPanel.hidden && state.actionMode === 'review';
+  const reflectionInput = reviewPanel.querySelector('textarea');
+  reflectionInput.value = 'Keep this reflection draft';
+  reflectionInput.dispatchEvent(new Event('input'));
+  modeButtons[0]?.click();
+  await render();
+  const draftSurvived = host.querySelector('.second-brain-simple-capture textarea').value === 'Keep this capture draft'
+    && host.querySelector('.second-brain-simple-review textarea').value === 'Keep this reflection draft';
   const days = [...host.querySelectorAll('[data-date]')].map((cell) => cell.dataset.date);
   const selected = host.querySelectorAll('.is-selected').length;
   const underline = host.querySelector('.is-capture-day').dataset.date;
@@ -718,7 +738,8 @@ test("shared calendar renders a seven-day cross-month week and separate capture 
   host.querySelector('.second-brain-calendar-mode').click();
   await render();
   const monthDays = host.querySelectorAll('[data-date]').length;
-  document.body.dataset.calendarResult = JSON.stringify({ days, selected, underline, underlineStyle, headerFits,
+  document.body.dataset.calendarResult = JSON.stringify({ weekDefault, cardOrder, initiallyCapture, switchedToReview, draftSurvived,
+    days, selected, underline, underlineStyle, headerFits,
     fromMin, headings, doubleTapDate, doubleTapSelected, monthDays });
 </script>`, "utf8");
     browser = spawn(edgePath, ["--headless=new", "--disable-gpu", "--no-first-run", "--window-size=320,800",
@@ -731,6 +752,11 @@ test("shared calendar renders a seven-day cross-month week and separate capture 
       throw new Error(`${error.message}: ${detail}`);
     }
     assert.deepEqual(result.days, ["2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04"]);
+    assert.equal(result.weekDefault, "week");
+    assert.deepEqual(result.cardOrder, ["calendar", "workspace"]);
+    assert.equal(result.initiallyCapture, true);
+    assert.equal(result.switchedToReview, true);
+    assert.equal(result.draftSurvived, true);
     assert.equal(result.selected, 6);
     assert.equal(result.underline, "2026-09-30");
     assert.equal(result.underlineStyle, "underline");
@@ -846,7 +872,7 @@ function obsidianBrowserStubPlugin() {
             }
             globalThis.__DashboardTFile = TFile;
             export class TFolder {}
-            export const MarkdownRenderer = {};
+            export const MarkdownRenderer = { render() {} };
             export const Platform = { isDesktopApp: true };
             globalThis.__obsidianPlatform = Platform;
             export async function requestUrl() { return {}; }

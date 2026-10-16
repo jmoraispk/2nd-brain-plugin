@@ -71,6 +71,7 @@ export interface SimplifiedDashboardState {
   /** Underlined day; independent of the highlighted review range. */
   captureDate: string;
   calendarMode: CalendarMode;
+  actionMode: "capture" | "review";
   weekAnchor: string;
   calendarTap?: { date: string; time: number };
   month: string;
@@ -86,7 +87,8 @@ export function defaultSimplifiedDashboardState(): SimplifiedDashboardState {
   return {
     captureDraft: "",
     captureDate: today,
-    calendarMode: "month",
+    calendarMode: "week",
+    actionMode: "capture",
     weekAnchor: today,
     month: today.slice(0, 7),
     rangeStart: today,
@@ -138,10 +140,15 @@ export async function renderSimplifiedDashboard(
   const months = [...new Set([bounds.start.slice(0, 7), bounds.end.slice(0, 7)])];
   const activity = (await Promise.all(months.map((month) => loadMonthActivity(plugin, month))))
     .flat().filter((day) => day.date >= bounds.start && day.date <= bounds.end);
-  renderCapture(body, state, cb);
   renderMonthMap(body, state, activity, cb);
-  renderRangeReview(
-    body,
+  const workspace = body.createDiv({ cls: "second-brain-simple-card second-brain-simple-workspace" });
+  const modes = workspace.createDiv({
+    cls: "second-brain-subtabs second-brain-workspace-modes",
+    attr: { role: "group", "aria-label": "Capture or Review" },
+  });
+  const capture = renderCapture(workspace, state, cb);
+  const review = renderRangeReview(
+    workspace,
     state,
     activity,
     reviewState,
@@ -150,6 +157,29 @@ export async function renderSimplifiedDashboard(
     viewComponent,
     activeOperation
   );
+  const modeButtons = (["capture", "review"] as const).map((mode) => {
+    const button = modes.createEl("button", {
+      text: mode === "capture" ? "Capture" : "Review",
+      cls: "second-brain-subtab",
+      attr: { type: "button" },
+    });
+    button.addEventListener("click", () => {
+      state.actionMode = mode;
+      state.calendarTap = undefined;
+      showMode();
+    });
+    return { mode, button };
+  });
+  const showMode = () => {
+    const mode = state.actionMode ?? "capture";
+    capture.hidden = mode !== "capture";
+    review.hidden = mode !== "review";
+    for (const item of modeButtons) {
+      item.button.classList.toggle("active", item.mode === mode);
+      item.button.setAttribute("aria-pressed", String(item.mode === mode));
+    }
+  };
+  showMode();
   body.createDiv({
     cls: "second-brain-simple-bottom-gap",
     attr: { "aria-hidden": "true" },
@@ -162,7 +192,7 @@ export function renderCapture(
   cb: SimplifiedDashboardCallbacks
 ) {
   const section = body.createDiv({
-    cls: "second-brain-simple-card second-brain-simple-capture",
+    cls: "second-brain-workspace-panel second-brain-simple-capture",
   });
   section.createEl("h2", { text: `Capture · ${shortDateLabel(state.captureDate ?? todayISO())}` });
 
@@ -196,6 +226,7 @@ export function renderCapture(
     }
   };
   save.addEventListener("click", submit);
+  return section;
 }
 
 /** Route Obsidian's desktop Ctrl+Enter hotkey to the focused Capture box. */
@@ -280,7 +311,7 @@ export function selectCalendarDay(state: SimplifiedDashboardState, date: string,
 export function bindCalendarDayGestures(
   cell: HTMLButtonElement,
   date: string,
-  state: Pick<SimplifiedDashboardState, "calendarTap">,
+  state: Pick<SimplifiedDashboardState, "calendarTap" | "actionMode">,
   cb: Pick<SimplifiedDashboardCallbacks, "selectCalendarDate" | "setCaptureDate" | "selectSingleDay">
 ): void {
   let pointer: number | undefined;
@@ -331,7 +362,8 @@ export function bindCalendarDayGestures(
       cb.selectSingleDay(date);
     } else {
       state.calendarTap = event.detail === 0 ? undefined : { date, time: now };
-      cb.selectCalendarDate(date);
+      if (state.actionMode === "review") cb.selectCalendarDate(date);
+      else cb.setCaptureDate(date);
     }
   });
   cell.addEventListener("dblclick", (event) => {
@@ -591,7 +623,7 @@ function renderRangeReview(
   activeOperation?: SimplifiedOperation
 ) {
   const section = body.createDiv({
-    cls: "second-brain-simple-card second-brain-simple-review",
+    cls: "second-brain-workspace-panel second-brain-simple-review",
   });
   section.createEl("h2", { text: `Review · ${dateRangeLabel(state.rangeStart, state.rangeEnd)}` });
 
@@ -667,7 +699,7 @@ function renderRangeReview(
     }
   });
 
-  if (!reviewState.resultContent || !reviewState.resultFile) return;
+  if (!reviewState.resultContent || !reviewState.resultFile) return section;
 
   const resultHeader = section.createDiv({ cls: "second-brain-simple-result-header" });
   resultHeader.createEl("h3", { text: "Summary" });
@@ -708,6 +740,7 @@ function renderRangeReview(
   });
   finish.addEventListener("click", () => void cb.finishReview());
   renderCallButton(reflectionActions, "Talk through this review", cb.startReviewCall);
+  return section;
 }
 
 function createActivityButton(parent: HTMLElement): HTMLButtonElement | undefined {

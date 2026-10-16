@@ -40,7 +40,7 @@ test("review clicks preserve capture day; a double selection moves both", async 
 test("calendar hold changes capture only, double tap survives a rebuilt cell", async () => {
   const dashboard = await loadDashboardModule();
   assert.equal(typeof dashboard.bindCalendarDayGestures, "function");
-  const taps = {};
+  const taps = { actionMode: "review" };
   const actions = [];
   const makeCell = () => {
     const cell = new EventTarget();
@@ -73,6 +73,11 @@ test("calendar hold changes capture only, double tap survives a rebuilt cell", a
   assert.deepEqual(actions, []);
   cell.dispatchEvent(event("dblclick", { detail: 2 }));
   assert.deepEqual(actions, [["both", "2026-10-03"]], "Native laptop double-click must also honor the OS timing");
+  actions.length = 0;
+  taps.actionMode = "capture";
+  cell = makeCell();
+  cell.dispatchEvent(event("click", { detail: 0 }));
+  assert.deepEqual(actions, [["capture", "2026-10-03"]], "Capture mode taps must not start a review range");
 });
 
 test("releasing before the hold threshold resolves as a short press", async () => {
