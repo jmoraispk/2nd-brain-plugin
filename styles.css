@@ -131,9 +131,20 @@
   line-height: 1.2;
 }
 
-.second-brain-simple-capture > h2,
-.second-brain-simple-review > h2 {
-  text-align: center;
+.second-brain-workspace-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.second-brain-workspace-header h2 {
+  min-width: 0;
+  font-size: 16px;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .second-brain-workspace-panel:not([hidden]) {
@@ -142,8 +153,8 @@
   gap: 10px;
 }
 
-.second-brain-workspace-modes {
-  align-self: center;
+.second-brain-workspace-panel[hidden] {
+  display: none !important;
 }
 
 .second-brain-simple-capture-input {
@@ -447,6 +458,7 @@ button.second-brain-month-day[disabled] {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 600;
@@ -455,6 +467,8 @@ button.second-brain-month-day[disabled] {
 .second-brain-simple-date-field input {
   box-sizing: border-box;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   padding: 9px;
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;

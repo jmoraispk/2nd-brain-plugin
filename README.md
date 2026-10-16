@@ -35,7 +35,7 @@ Alongside Me / AI sit the PARA folders (knowledge organized by topic, not by aut
 
 The default Simplified dashboard puts the whole loop on one screen:
 
-The calendar appears first and starts in **Week** mode whenever the plugin restarts or updates. The single box below it has a **Capture / Review** toggle. Switching preserves both draft texts and any generated review.
+The calendar appears first and starts in **Week** mode whenever the plugin restarts or updates. The single box below it has a **Capture / Review** toggle on the left and its date title on the right of the same header row. Click the toggle to switch modes, or hold it to choose from the menu. Switching preserves both draft texts and any generated review.
 
 1. In **Capture** mode, tap a calendar day, then capture a plain note → appends `[HH:MM] ...` to the underlined day's log (today by default). Hold a day for half a second to move the underline from either mode while preserving your review range. On a laptop, hold the mouse/trackpad click; keyboard users can focus a day and press Shift+Enter. Double-click or double-tap a day to select it for both Capture and Review. The heading shows the capture date, so an after-midnight note can still go to yesterday.
 2. On desktop, select one or more dates and press the compact **Activity** button beside **Review** to probe ActivityWatch for that range. Each date gets one evidence file under `🧑 Me/Activity/Daytrace/Evidence/` and one validated summary under `🤖 AI/Activity/Daytrace/Summaries/`. Fresh evidence is always saved; the AI summary is generated only when missing or when the evidence size differs by more than 5% from its generation baseline. Successful runs leave the Capture draft untouched; if AI summarization fails, the deterministic fallback is placed in Capture for editing.
@@ -171,6 +171,7 @@ frontmatter field.
 
 ## Release log
 
+- v0.20.1 — **One-line mode header + Review layout fixes.** The Capture/Review control sits on the left with the selected date or range title on the right. Inactive panels stay hidden even under theme display overrides, and native Review date inputs can shrink within narrow columns without overlapping. The desktop-only Activity button remains available beside Review.
 - v0.20.0 — **Calendar first + combined Capture/Review box.** The calendar moves to the top and starts in Week mode after restart or update. A compact Capture/Review switch below it shares one card while preserving each mode's draft and the generated review. Calendar taps select a single capture day in Capture mode or a review range in Review mode; long-press and double-tap shortcuts remain available.
 - v0.19.4 — **Refresh captures for today.** Clicking the simplified dashboard's Refresh button resets the capture day to the current local date, including after midnight. Existing notes, unsaved draft text, the visible calendar period, and the selected Review range are preserved. The next capture saves to today; to backdate that draft, select the earlier capture day again before saving.
 - v0.19.3 — **Calendar number alignment.** Moves the date and activity count down slightly and tightens their gap from 6px to 4px while preserving the capture-day underline.

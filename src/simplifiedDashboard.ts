@@ -142,10 +142,7 @@ export async function renderSimplifiedDashboard(
     .flat().filter((day) => day.date >= bounds.start && day.date <= bounds.end);
   renderMonthMap(body, state, activity, cb);
   const workspace = body.createDiv({ cls: "second-brain-simple-card second-brain-simple-workspace" });
-  const modes = workspace.createDiv({
-    cls: "second-brain-subtabs second-brain-workspace-modes",
-    attr: { role: "group", "aria-label": "Capture or Review" },
-  });
+  const header = workspace.createDiv({ cls: "second-brain-workspace-header" });
   const capture = renderCapture(workspace, state, cb);
   const review = renderRangeReview(
     workspace,
@@ -157,27 +154,23 @@ export async function renderSimplifiedDashboard(
     viewComponent,
     activeOperation
   );
-  const modeButtons = (["capture", "review"] as const).map((mode) => {
-    const button = modes.createEl("button", {
-      text: mode === "capture" ? "Capture" : "Review",
-      cls: "second-brain-subtab",
-      attr: { type: "button" },
-    });
-    button.addEventListener("click", () => {
-      state.actionMode = mode;
-      state.calendarTap = undefined;
-      showMode();
-    });
-    return { mode, button };
-  });
   const showMode = () => {
     const mode = state.actionMode ?? "capture";
     capture.hidden = mode !== "capture";
     review.hidden = mode !== "review";
-    for (const item of modeButtons) {
-      item.button.classList.toggle("active", item.mode === mode);
-      item.button.setAttribute("aria-pressed", String(item.mode === mode));
-    }
+    const hadFocus = header.contains(header.ownerDocument.activeElement);
+    header.replaceChildren();
+    const control = renderChoiceControl(header, mode, [["capture", "Capture"], ["review", "Review"]], (next) => {
+      state.actionMode = next;
+      state.calendarTap = undefined;
+      showMode();
+    }, "Capture or Review", "second-brain-workspace-mode");
+    header.createEl("h2", {
+      text: mode === "capture" ? shortDateLabel(state.captureDate) : dateRangeLabel(state.rangeStart, state.rangeEnd),
+      cls: "second-brain-workspace-title",
+      attr: { title: mode === "capture" ? state.captureDate : `${state.rangeStart} to ${state.rangeEnd}` },
+    });
+    if (hadFocus) control.focus({ preventScroll: true });
   };
   showMode();
   body.createDiv({
@@ -194,7 +187,6 @@ export function renderCapture(
   const section = body.createDiv({
     cls: "second-brain-workspace-panel second-brain-simple-capture",
   });
-  section.createEl("h2", { text: `Capture · ${shortDateLabel(state.captureDate ?? todayISO())}` });
 
   const textarea = section.createEl("textarea", {
     cls: "second-brain-simple-capture-input",
@@ -625,7 +617,6 @@ function renderRangeReview(
   const section = body.createDiv({
     cls: "second-brain-workspace-panel second-brain-simple-review",
   });
-  section.createEl("h2", { text: `Review · ${dateRangeLabel(state.rangeStart, state.rangeEnd)}` });
 
   const dates = section.createDiv({ cls: "second-brain-simple-range" });
   renderDateInput(dates, "From", state.rangeStart, state, (value) =>

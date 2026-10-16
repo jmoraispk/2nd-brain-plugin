@@ -330,6 +330,8 @@ test("desktop Activity control uses the Review selection and stays off Capture a
     },
   };
   const state = {
+    ...dashboard.defaultSimplifiedDashboardState(),
+    calendarMode: 'month', captureDate: '2026-09-14',
     captureDraft: 'Existing thought', month: '2026-09',
     rangeStart: '2026-09-13', rangeEnd: '2026-09-14', metric: 'captures',
   };
@@ -660,7 +662,7 @@ test("shared calendar renders a seven-day cross-month week and separate capture 
     const fixturePath = path.join(tempDir, "fixture.html");
     writeFileSync(fixturePath, `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<style>* { box-sizing: border-box; } body { margin: 0; } ${css}</style>
+<style>* { box-sizing: border-box; } body { margin: 0; } div { display: block; } input[type=date] { min-width: 170px; } ${css}</style>
 <main id="host" style="width: 320px"></main>
 <script>
   window.addEventListener('error', (event) => { document.body.dataset.calendarError = event.message; });
@@ -703,17 +705,30 @@ test("shared calendar renders a seven-day cross-month week and separate capture 
     .map((card) => card.classList.contains('second-brain-month-card') ? 'calendar' : 'workspace');
   const capturePanel = host.querySelector('.second-brain-simple-capture');
   const reviewPanel = host.querySelector('.second-brain-simple-review');
-  const initiallyCapture = !capturePanel.hidden && reviewPanel.hidden;
+  const initiallyCapture = !capturePanel.hidden && getComputedStyle(reviewPanel).display === 'none';
   const captureInput = capturePanel.querySelector('textarea');
   captureInput.value = 'Keep this capture draft';
   captureInput.dispatchEvent(new Event('input'));
-  const modeButtons = host.querySelectorAll('.second-brain-workspace-modes button');
-  modeButtons[1]?.click();
-  const switchedToReview = capturePanel.hidden && !reviewPanel.hidden && state.actionMode === 'review';
+  const toggleMode = () => host.querySelector('.second-brain-workspace-mode').click();
+  toggleMode();
+  const switchedToReview = getComputedStyle(capturePanel).display === 'none' && !reviewPanel.hidden && state.actionMode === 'review';
+  const workspaceHeader = host.querySelector('.second-brain-workspace-header');
+  const title = workspaceHeader?.querySelector('h2');
+  const toggleBounds = workspaceHeader?.querySelector('button')?.getBoundingClientRect();
+  const titleBounds = title?.getBoundingClientRect();
+  const sharedHeaderFits = Boolean(toggleBounds && titleBounds && toggleBounds.right <= titleBounds.left
+    && Math.abs((toggleBounds.top + toggleBounds.bottom) / 2 - (titleBounds.top + titleBounds.bottom) / 2) < 2);
+  const reviewTitle = title?.textContent;
+  const dateInputs = [...reviewPanel.querySelectorAll('input[type=date]')];
+  const firstDate = dateInputs[0].getBoundingClientRect();
+  const lastDate = dateInputs[1].getBoundingClientRect();
+  const datesFit = firstDate.right <= lastDate.left && lastDate.right <= reviewPanel.getBoundingClientRect().right + 1;
+  const desktopActivityVisible = reviewPanel.querySelector('[data-action=activity]').getClientRects().length > 0;
   const reflectionInput = reviewPanel.querySelector('textarea');
   reflectionInput.value = 'Keep this reflection draft';
   reflectionInput.dispatchEvent(new Event('input'));
-  modeButtons[0]?.click();
+  toggleMode();
+  const returnedToCapture = !capturePanel.hidden && getComputedStyle(reviewPanel).display === 'none' && state.actionMode === 'capture';
   await render();
   const draftSurvived = host.querySelector('.second-brain-simple-capture textarea').value === 'Keep this capture draft'
     && host.querySelector('.second-brain-simple-review textarea').value === 'Keep this reflection draft';
@@ -738,7 +753,8 @@ test("shared calendar renders a seven-day cross-month week and separate capture 
   host.querySelector('.second-brain-calendar-mode').click();
   await render();
   const monthDays = host.querySelectorAll('[data-date]').length;
-  document.body.dataset.calendarResult = JSON.stringify({ weekDefault, cardOrder, initiallyCapture, switchedToReview, draftSurvived,
+  document.body.dataset.calendarResult = JSON.stringify({ weekDefault, cardOrder, initiallyCapture, switchedToReview, returnedToCapture,
+    sharedHeaderFits, reviewTitle, datesFit, desktopActivityVisible, draftSurvived,
     days, selected, underline, underlineStyle, headerFits,
     fromMin, headings, doubleTapDate, doubleTapSelected, monthDays });
 </script>`, "utf8");
@@ -756,6 +772,11 @@ test("shared calendar renders a seven-day cross-month week and separate capture 
     assert.deepEqual(result.cardOrder, ["calendar", "workspace"]);
     assert.equal(result.initiallyCapture, true);
     assert.equal(result.switchedToReview, true);
+    assert.equal(result.returnedToCapture, true);
+    assert.equal(result.sharedHeaderFits, true);
+    assert.equal(result.reviewTitle, "Sep 28–Oct 3");
+    assert.equal(result.datesFit, true);
+    assert.equal(result.desktopActivityVisible, true);
     assert.equal(result.draftSurvived, true);
     assert.equal(result.selected, 6);
     assert.equal(result.underline, "2026-09-30");
@@ -764,8 +785,7 @@ test("shared calendar renders a seven-day cross-month week and separate capture 
     assert.equal(result.fromMin, "2026-09-28");
     assert.equal(result.doubleTapDate, "2026-10-01");
     assert.equal(result.doubleTapSelected, 1);
-    assert.ok(result.headings.includes("Capture · Oct 1"));
-    assert.ok(result.headings.includes("Review · Oct 1"));
+    assert.ok(result.headings.includes("Oct 1"));
     assert.equal(result.monthDays, 31);
   } finally {
     await cleanupBrowser(browser, debugPort, profileDir, tempDir);
