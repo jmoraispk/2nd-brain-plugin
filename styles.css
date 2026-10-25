@@ -151,6 +151,11 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-height: 240px;
+}
+
+.second-brain-workspace-panel > .second-brain-simple-actions {
+  margin-top: auto;
 }
 
 .second-brain-workspace-panel[hidden] {
@@ -159,6 +164,7 @@
 
 .second-brain-simple-capture-input {
   box-sizing: border-box;
+  flex: 1;
   width: 100%;
   min-height: 126px;
   padding: 14px;
@@ -470,6 +476,7 @@ button.second-brain-month-day[disabled] {
   min-width: 0;
   max-width: 100%;
   padding: 9px;
+  padding-inline-end: 36px;
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
   background: var(--background-primary);
@@ -518,20 +525,51 @@ button.second-brain-month-day[disabled] {
 
 @media (max-width: 520px) {
   .second-brain-month-header {
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
     gap: 4px;
   }
 
   .second-brain-month-nav {
-    flex-wrap: wrap;
+    display: contents;
+  }
+
+  .second-brain-month-arrow {
+    grid-row: 1;
+    width: 44px;
+    height: 44px;
+  }
+
+  .second-brain-month-arrow:first-child {
+    grid-column: 1;
+  }
+
+  .second-brain-month-arrow:last-child {
+    grid-column: 3;
+  }
+
+  .second-brain-calendar-mode {
+    grid-row: 2;
+    grid-column: 1 / 3;
+    justify-self: start;
+  }
+
+  .second-brain-month-header > .second-brain-simple-metric:not(.second-brain-calendar-mode) {
+    grid-row: 2;
+    grid-column: 2 / 4;
+    justify-self: end;
   }
 
   .second-brain-month-header h2 {
-    order: -1;
-    flex-basis: 100%;
+    grid-row: 1;
+    grid-column: 2;
     padding: 0;
     text-align: center;
     font-size: 13px;
     white-space: normal;
+  }
+
+  .second-brain-simple-range {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .second-brain-container {

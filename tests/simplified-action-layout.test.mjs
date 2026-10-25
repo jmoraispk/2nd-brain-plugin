@@ -722,7 +722,8 @@ test("shared calendar renders a seven-day cross-month week and separate capture 
   const dateInputs = [...reviewPanel.querySelectorAll('input[type=date]')];
   const firstDate = dateInputs[0].getBoundingClientRect();
   const lastDate = dateInputs[1].getBoundingClientRect();
-  const datesFit = firstDate.right <= lastDate.left && lastDate.right <= reviewPanel.getBoundingClientRect().right + 1;
+  const datesFit = (firstDate.right <= lastDate.left || firstDate.bottom <= lastDate.top)
+    && lastDate.right <= reviewPanel.getBoundingClientRect().right + 1;
   const desktopActivityVisible = reviewPanel.querySelector('[data-action=activity]').getClientRects().length > 0;
   const reflectionInput = reviewPanel.querySelector('textarea');
   reflectionInput.value = 'Keep this reflection draft';
@@ -738,7 +739,7 @@ test("shared calendar renders a seven-day cross-month week and separate capture 
   const underlineStyle = getComputedStyle(host.querySelector('.is-capture-day .second-brain-month-day-number')).textDecorationLine;
   const header = host.querySelector('.second-brain-month-header');
   const bounds = header.getBoundingClientRect();
-  const headerFits = [...header.children].every((child) => {
+  const headerFits = [...header.querySelectorAll('button, h2')].every((child) => {
     const b = child.getBoundingClientRect(); return b.left >= bounds.left && b.right <= bounds.right + 1;
   });
   const fromMin = host.querySelector('input[type=date]').min;
@@ -753,8 +754,29 @@ test("shared calendar renders a seven-day cross-month week and separate capture 
   host.querySelector('.second-brain-calendar-mode').click();
   await render();
   const monthDays = host.querySelectorAll('[data-date]').length;
+  reflectionState.resultContent = '';
+  state.actionMode = 'capture';
+  const phoneLayouts = [];
+  for (const width of [320, 390]) {
+    for (const calendarMode of ['week', 'month']) {
+      state.calendarMode = calendarMode;
+      host.style.width = width + 'px';
+      await render();
+      const captureHeight = host.querySelector('.second-brain-simple-capture').getBoundingClientRect().height;
+      toggleMode();
+      const reviewHeight = host.querySelector('.second-brain-simple-review').getBoundingClientRect().height;
+      const datePadding = parseFloat(getComputedStyle(host.querySelector('input[type=date]')).paddingRight);
+      const nav = host.querySelector('.second-brain-month-nav');
+      const [previous, calendarTitle, next] = [...nav.children].map((element) => element.getBoundingClientRect());
+      phoneLayouts.push({ width, calendarMode, captureHeight, reviewHeight, datePadding,
+        arrowsFlankTitle: previous.right <= calendarTitle.left && calendarTitle.right <= next.left
+          && Math.abs((previous.top + previous.bottom) / 2 - (next.top + next.bottom) / 2) < 1
+          && Math.abs((previous.top + previous.bottom) / 2 - (calendarTitle.top + calendarTitle.bottom) / 2) < 1 });
+      state.actionMode = 'capture';
+    }
+  }
   document.body.dataset.calendarResult = JSON.stringify({ weekDefault, cardOrder, initiallyCapture, switchedToReview, returnedToCapture,
-    sharedHeaderFits, reviewTitle, datesFit, desktopActivityVisible, draftSurvived,
+    phoneLayouts, sharedHeaderFits, reviewTitle, datesFit, desktopActivityVisible, draftSurvived,
     days, selected, underline, underlineStyle, headerFits,
     fromMin, headings, doubleTapDate, doubleTapSelected, monthDays });
 </script>`, "utf8");
@@ -787,6 +809,11 @@ test("shared calendar renders a seven-day cross-month week and separate capture 
     assert.equal(result.doubleTapSelected, 1);
     assert.ok(result.headings.includes("Oct 1"));
     assert.equal(result.monthDays, 31);
+    for (const layout of result.phoneLayouts) {
+      assert.ok(Math.abs(layout.captureHeight - layout.reviewHeight) < 1, `Panel heights should match: ${JSON.stringify(layout)}`);
+      assert.ok(layout.datePadding >= 32, "The native date icon needs reserved space");
+      assert.equal(layout.arrowsFlankTitle, true, "Arrows must flank the calendar title on the same row");
+    }
   } finally {
     await cleanupBrowser(browser, debugPort, profileDir, tempDir);
   }
