@@ -192,7 +192,7 @@ export function renderCapture(
     cls: "second-brain-simple-capture-input",
     attr: {
       placeholder: "What's on your mind?",
-      rows: "5",
+      rows: "3",
       "aria-label": "Capture note",
     },
   });

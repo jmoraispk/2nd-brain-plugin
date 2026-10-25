@@ -662,7 +662,15 @@ test("shared calendar renders a seven-day cross-month week and separate capture 
     const fixturePath = path.join(tempDir, "fixture.html");
     writeFileSync(fixturePath, `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<style>* { box-sizing: border-box; } body { margin: 0; } div { display: block; } input[type=date] { min-width: 170px; } ${css}</style>
+<style>
+  * { box-sizing: border-box; } body { margin: 0; } div { display: block; }
+  input[type=date] { min-width: 170px; position: relative; }
+  input[type=date]:not([disabled="true"])::-webkit-calendar-picker-indicator {
+    position: absolute; left: 4px; right: auto; width: 16px; opacity: 0.5;
+  }
+  ${css}
+</style>
+<body class="is-android">
 <main id="host" style="width: 320px"></main>
 <script>
   window.addEventListener('error', (event) => { document.body.dataset.calendarError = event.message; });
@@ -707,6 +715,7 @@ test("shared calendar renders a seven-day cross-month week and separate capture 
   const reviewPanel = host.querySelector('.second-brain-simple-review');
   const initiallyCapture = !capturePanel.hidden && getComputedStyle(reviewPanel).display === 'none';
   const captureInput = capturePanel.querySelector('textarea');
+  const captureInputHeight = captureInput.getBoundingClientRect().height;
   captureInput.value = 'Keep this capture draft';
   captureInput.dispatchEvent(new Event('input'));
   const toggleMode = () => host.querySelector('.second-brain-workspace-mode').click();
@@ -721,6 +730,7 @@ test("shared calendar renders a seven-day cross-month week and separate capture 
   const reviewTitle = title?.textContent;
   const dateInputs = [...reviewPanel.querySelectorAll('input[type=date]')];
   const firstDate = dateInputs[0].getBoundingClientRect();
+  const dateTextInset = parseFloat(getComputedStyle(dateInputs[0]).paddingLeft);
   const lastDate = dateInputs[1].getBoundingClientRect();
   const datesFit = firstDate.right <= lastDate.left && lastDate.right <= reviewPanel.getBoundingClientRect().right + 1;
   const desktopActivityVisible = reviewPanel.querySelector('[data-action=activity]').getClientRects().length > 0;
@@ -754,7 +764,7 @@ test("shared calendar renders a seven-day cross-month week and separate capture 
   await render();
   const monthDays = host.querySelectorAll('[data-date]').length;
   document.body.dataset.calendarResult = JSON.stringify({ weekDefault, cardOrder, initiallyCapture, switchedToReview, returnedToCapture,
-    sharedHeaderFits, reviewTitle, datesFit, desktopActivityVisible, draftSurvived,
+    captureInputHeight, dateTextInset, sharedHeaderFits, reviewTitle, datesFit, desktopActivityVisible, draftSurvived,
     days, selected, underline, underlineStyle, headerFits,
     fromMin, headings, doubleTapDate, doubleTapSelected, monthDays });
 </script>`, "utf8");
@@ -776,6 +786,9 @@ test("shared calendar renders a seven-day cross-month week and separate capture 
     assert.equal(result.sharedHeaderFits, true);
     assert.equal(result.reviewTitle, "Sep 28–Oct 3");
     assert.equal(result.datesFit, true);
+    assert.ok(result.dateTextInset >= 28, "Review text must clear Obsidian's left-positioned date icon");
+    assert.ok(result.captureInputHeight >= 96 && result.captureInputHeight <= 110,
+      `Capture text area should be compact, got ${result.captureInputHeight}px`);
     assert.equal(result.desktopActivityVisible, true);
     assert.equal(result.draftSurvived, true);
     assert.equal(result.selected, 6);

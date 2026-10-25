@@ -171,6 +171,7 @@ frontmatter field.
 
 ## Release log
 
+- v0.20.4 — **Compact Capture + date-icon clearance.** Capture's text area starts at three rows with a 96px minimum instead of five rows with a 126px minimum. Review date text has left-side clearance for Obsidian's left-positioned calendar icon, including on Android. Review fields stay side by side, Review sizing stays compact, and the top calendar is unchanged.
 - v0.20.3 — **Revert phone layout changes.** Restores the v0.20.1 calendar arrangement, Review date layout, and original Capture/Review sizing by reverting v0.20.2. No further layout changes are included.
 - v0.20.2 — **Phone calendar and panel spacing (reverted in v0.20.3).** Moved phone calendar arrows beside the title with toggles below, stacked Review date inputs, and added a shared minimum panel height.
 - v0.20.1 — **One-line mode header + Review layout fixes.** The Capture/Review control sits on the left with the selected date or range title on the right. Inactive panels stay hidden even under theme display overrides, and native Review date inputs can shrink within narrow columns without overlapping. The desktop-only Activity button remains available beside Review.
